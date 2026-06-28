@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>Pickleball 3D</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #06121f;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #fff;
+      -webkit-user-select: none; user-select: none; touch-action: none; }
+    #game { display: block; position: fixed; inset: 0; }
+
+    /* ---- Start menu ---- */
+    #menu { position: fixed; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 22px; z-index: 30;
+      background: radial-gradient(circle at 50% 35%, #143052, #06121f 70%); }
+    #menu h1 { font-size: clamp(28px, 7vw, 54px); letter-spacing: 2px; font-weight: 800;
+      text-shadow: 0 2px 18px rgba(43,212,255,0.4); }
+    #menu p { opacity: 0.7; font-size: 14px; max-width: 320px; text-align: center; line-height: 1.5; }
+    .diffs { display: flex; flex-direction: column; gap: 12px; width: min(280px, 80vw); }
+    .diffs button { padding: 14px 18px; border: none; border-radius: 12px; font-size: 17px;
+      font-weight: 700; color: #0a1420; cursor: pointer; transition: transform 0.1s; }
+    .diffs button:active { transform: scale(0.97); }
+    .diffs button[data-diff="easy"]   { background: #2bd47a; }
+    .diffs button[data-diff="normal"] { background: #ffb43c; }
+    .diffs button[data-diff="hard"]   { background: #e23b5a; color: #fff; }
+    .hint { font-size: 12px; opacity: 0.55; max-width: 340px; text-align: center; line-height: 1.6; }
+
+    /* ---- HUD ---- */
+    #hud { display: none; position: fixed; inset: 0; pointer-events: none; z-index: 20; }
+    .scorebar { position: absolute; top: env(safe-area-inset-top, 12px); left: 50%;
+      transform: translateX(-50%); margin-top: 10px; display: flex; align-items: center; gap: 14px;
+      background: rgba(8,18,30,0.62); padding: 8px 16px; border-radius: 30px; backdrop-filter: blur(6px); }
+    .team { display: flex; align-items: center; gap: 7px; font-weight: 800; font-size: 24px; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; }
+    .dot.near { background: #ff7a1f; } .dot.far { background: #ff3860; }
+    .score.near { color: #ffa75a; } .score.far { color: #ff6c86; }
+    .sep { opacity: 0.4; font-size: 18px; }
+    #callout { position: absolute; top: env(safe-area-inset-top, 12px); left: 50%;
+      transform: translateX(-50%); margin-top: 58px; font-size: 13px; letter-spacing: 1px;
+      opacity: 0.7; font-variant-numeric: tabular-nums; }
+    #levelBadge { position: absolute; top: env(safe-area-inset-top, 12px); right: 14px; margin-top: 12px;
+      padding: 5px 11px; border-radius: 20px; font-size: 11px; font-weight: 800; color: #0a1420;
+      letter-spacing: 0.5px; }
+    #banner { position: absolute; top: 36%; left: 50%; transform: translate(-50%, -50%);
+      font-size: clamp(22px, 6vw, 40px); font-weight: 800; text-align: center; opacity: 0;
+      text-shadow: 0 3px 22px rgba(0,0,0,0.6); transition: opacity 0.1s; width: 90%; }
+    #shotTag { position: absolute; bottom: 22%; left: 50%; transform: translateX(-50%);
+      font-size: 16px; font-weight: 800; letter-spacing: 3px; opacity: 0; color: #2bd4ff; }
+    #serveBtn { display: none; position: absolute; bottom: 16%; left: 50%; transform: translateX(-50%);
+      pointer-events: auto; padding: 14px 34px; border: none; border-radius: 30px; font-size: 18px;
+      font-weight: 800; color: #0a1420; background: #2bd4ff; cursor: pointer;
+      box-shadow: 0 6px 20px rgba(43,212,255,0.45); }
+    #serveBtn:active { transform: translateX(-50%) scale(0.96); }
+
+    /* ---- virtual joystick (touch) ---- */
+    #joy { display: none; position: fixed; width: 120px; height: 120px; margin: -60px 0 0 -60px;
+      border-radius: 50%; border: 2px solid rgba(255,255,255,0.25); background: rgba(255,255,255,0.06);
+      z-index: 15; pointer-events: none; }
+    #joyKnob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px;
+      border-radius: 50%; background: rgba(255,255,255,0.35); }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+    }
+  }
+  </script>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div id="hud">
+    <div class="scorebar">
+      <span class="team"><span class="dot near" id="dotNear"></span><span class="score near" id="scoreNear">0</span></span>
+      <span class="sep">vs</span>
+      <span class="team"><span class="score far" id="scoreFar">0</span><span class="dot far" id="dotFar"></span></span>
+    </div>
+    <div id="callout">0–0–2</div>
+    <div id="levelBadge">INTERMEDIATE</div>
+    <div id="banner"></div>
+    <div id="shotTag"></div>
+    <button id="serveBtn">SERVE</button>
+  </div>
+
+  <div id="joy"><div id="joyKnob"></div></div>
+
+  <div id="menu">
+    <h1>PICKLEBALL 3D</h1>
+    <p>Doubles vs AI — real rules, arcade feel. You + a CPU partner take on two CPUs.</p>
+    <div class="diffs">
+      <button data-diff="easy">BEGINNER</button>
+      <button data-diff="normal">INTERMEDIATE</button>
+      <button data-diff="hard">ADVANCED</button>
+    </div>
+    <div class="hint">
+      <b>Desktop:</b> WASD / arrows move · mouse aims · Space = drive · V = drop/dink · B = lob · Enter / Space serves<br/>
+      <b>Touch:</b> left thumb = move · right thumb = swing &amp; aim (hard swipe = power, soft = touch, flick up = lob)
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

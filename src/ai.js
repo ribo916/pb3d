@@ -1,0 +1,165 @@
+/* ============================================================================
+ * ai.js — Opponent brain: positioning, anticipation, shot selection.
+ * Pure logic. Ported from the original Picklelife js/ai.js (ESM).
+ * ==========================================================================*/
+'use strict';
+
+import { COURT, GRAVITY } from './physics.js';
+import * as Shots from './shots.js';
+
+const C = COURT;
+
+function normalizeLevel(level) {
+  if (level === 'family' || level === 'damaged') return 'family';
+  if (level === 'beginner') return 'easy';
+  if (level === 'intermediate') return 'normal';
+  if (level === 'advanced') return 'hard';
+  return level || 'normal';
+}
+
+export const LEVELS = {
+  family: { speed: 5.2, react: 0.18, err: 0.28, smart: 0.7, aggression: 0.45, miss: 0.08 },
+  easy:   { speed: 4.8, react: 0.30, err: 0.45, smart: 0.4, aggression: 0.25, miss: 0.18 },
+  normal: { speed: 5.2, react: 0.18, err: 0.28, smart: 0.7, aggression: 0.45, miss: 0.08 },
+  hard:   { speed: 5.6, react: 0.09, err: 0.12, smart: 0.92, aggression: 0.6, miss: 0.02 }
+};
+
+export function makeAI(level) {
+  level = normalizeLevel(level);
+  return {
+    cfg: LEVELS[level] || LEVELS.normal,
+    level: level || 'normal',
+    target: { x: 0, z: -C.HALF_L + 0.7 }, // home: behind far baseline
+    reactTimer: 0
+  };
+}
+
+// Predict where the ball will cross the AI's reachable plane (its side).
+// Returns predicted {x, z} landing/intercept on the far side, or null.
+export function predict(ball) {
+  if (!ball.live) return null;
+  // crude forward simulation using physics-free ballistic estimate
+  var p = { x: ball.pos.x, y: ball.pos.y, z: ball.pos.z };
+  var v = { x: ball.vel.x, y: ball.vel.y, z: ball.vel.z };
+  var g = GRAVITY, dt = 1 / 60, steps = 0;
+  while (steps < 240) {
+    v.y -= g * dt;
+    p.x += v.x * dt; p.y += v.y * dt; p.z += v.z * dt;
+    if (p.y <= C.BALL_R && v.y < 0) {
+      return { x: p.x, z: p.z };
+    }
+    // if it reaches deep far court plane, intercept there
+    if (p.z < -C.HALF_L + 0.5 && v.z < 0) return { x: p.x, z: p.z };
+    steps++;
+  }
+  return { x: p.x, z: p.z };
+}
+
+/* Decide where the AI should move this frame.
+ * Returns a target {x, z} for the far-side player. Handles "stack at kitchen"
+ * strategy: after the third shot, good players crash the non-volley line.
+ */
+export function chooseMovement(ai, ball, rally) {
+  var cfg = ai.cfg;
+  var pred = predict(ball);
+  var homeZ = -C.HALF_L + 0.7;
+  var kitchenZ = -C.KITCHEN - 0.25;
+  var tx = 0, tz = homeZ;
+
+  var ballComingToFar = ball.live && ball.vel.z < 0 && ball.pos.z < C.HALF_L;
+
+  if (pred && ballComingToFar) {
+    tx = pred.x;
+    // depth: if it's a soft ball landing near kitchen, step in; else hold deep
+    if (pred.z > -C.KITCHEN - 1.2 && rally && rally.phase === 'open') {
+      tz = Math.max(kitchenZ, pred.z - 0.3);
+    } else {
+      tz = Math.min(homeZ + 1.5, pred.z - 0.4);
+    }
+  } else {
+    // recover toward strategic position (kitchen line if aggressive & rally open)
+    if (rally && rally.phase === 'open' && Math.random() < cfg.aggression) tz = kitchenZ;
+  }
+
+  // clamp to far half + a bit of margin to chase wide balls
+  tx = Math.max(-C.HALF_W - 0.6, Math.min(C.HALF_W + 0.6, tx));
+  tz = Math.max(-C.HALF_L - 0.5, Math.min(-0.4, tz));
+  ai.target = { x: tx, z: tz };
+  return ai.target;
+}
+
+/* Choose a shot when the AI strikes the ball. Returns
+ * { target:{x,z}, apex, spin:{x,y,z} } to feed physics.solveShot + extra spin.
+ * isServe = the AI is serving.
+ */
+export function chooseShot(ai, ball, match, isServe) {
+  var cfg = ai.cfg;
+  var nearBaseZ = C.HALF_L - 0.5;
+  var aim, apex, spin = { x: 0, y: 0, z: 0 }, type = 'drive', margin;
+
+  // Difficulty-driven unforced error: occasionally the CPU misjudges and
+  // either dumps it into the net or sails it long/wide. This is the primary,
+  // monotonic lever that makes lower difficulties easier to beat.
+  if (!isServe && Math.random() < cfg.miss) {
+    var mode = Math.random();
+    if (mode < 0.10) {
+      // occasionally dump into the net (most errors sail out instead, below)
+      return { target: { x: rand(-1, 1), z: 0.4 }, apex: 0.9, spin: { x: 0, y: 0, z: 0 }, fault: 'net' };
+    }
+    // sail it out (beyond baseline or wide)
+    var outX = (Math.random() < 0.5) ? rand(-C.HALF_W * 0.6, C.HALF_W * 0.6) : (Math.random() < 0.5 ? -1 : 1) * (C.HALF_W + 1.2);
+    return { target: { x: outX, z: nearBaseZ + rand(0.8, 2.0) }, apex: 1.6, spin: { x: 3, y: 0, z: 0 }, fault: 'out' };
+  }
+
+  if (isServe) {
+    // diagonal deep serve into correct box
+    var sc = (match.scores.far % 2 === 0); // even -> from right (far perspective)
+    // far server's right is -x; diagonal lands in near-left of screen
+    var rightX = -1;
+    var targetXSign = sc ? -rightX : rightX;
+    aim = { x: targetXSign * (C.HALF_W * 0.5), z: (C.HALF_L * 0.75) };
+    apex = 2.4; spin.x = 2.0; type = 'serve'; // light topspin
+  } else {
+    // SKILL-SCALED shot selection. Intent (power vs touch) is chosen from the
+    // hitter's court zone, the ball height, and difficulty: beginners (low
+    // smart) bang power from everywhere; advanced players drop from the back,
+    // dink at the kitchen, and speed up balls that float high.
+    var smart = cfg.smart;
+    var absZ = Math.abs(ball.pos.z);
+    var zone = Shots.zoneOf(absZ, C.KITCHEN, C.HALF_L);
+    var ballHigh = ball.pos.y > 0.95;
+    var intent;
+    if (Math.random() < 0.06 * smart) {
+      intent = 'lob';                                   // occasional change-up
+    } else if (zone === 'kitchen') {
+      if (ballHigh && Math.random() < smart) intent = 'power';        // attack high ball -> speedup
+      else intent = (Math.random() < Math.max(0, smart - 0.3) * 1.2) ? 'touch' : 'power'; // dink vs pop
+    } else {
+      // deep / transition: third-shot-drop tendency rises sharply with skill.
+      var dropChance = Math.max(0, smart - 0.45) * 1.1;  // easy~0, normal~0.27, hard~0.52
+      intent = (Math.random() < dropChance) ? 'touch' : 'power';
+    }
+    var sr = Shots.resolve(absZ, ball.pos.y, intent, C.KITCHEN, C.HALF_L);
+    type = sr.type; var sp = sr.sp;
+    var aimX;
+    if (type === 'drive' || type === 'lob') {
+      aimX = (Math.random() < 0.5 ? -1 : 1) * C.HALF_W * 0.78; // to a corner
+    } else if (type === 'speedup') {
+      aimX = rand(-C.HALF_W * 0.4, C.HALF_W * 0.4);           // at the body / middle
+    } else {
+      aimX = rand(-C.HALF_W * 0.7, C.HALF_W * 0.7);           // drop / dink
+    }
+    aim = { x: aimX, z: sp.landZ };
+    apex = sp.apex; spin.x = sp.spinX; spin.y = sp.spinY; margin = sp.margin;
+  }
+
+  // Difficulty error: scatter the aim point.
+  var e = cfg.err;
+  aim.x += rand(-e, e) * 1.6;
+  aim.z += rand(-e, e) * 1.4;
+  apex += rand(-e, e) * 0.6;
+
+  return { target: aim, apex: apex, spin: spin, type: type, margin: margin };
+}
+
+function rand(a, b) { return a + Math.random() * (b - a); }

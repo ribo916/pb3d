@@ -1,0 +1,11 @@
+{
+  "name": "pickleball-3d",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Standalone Three.js doubles pickleball game (gameplay ported from Picklelife's 3D match).",
+  "scripts": {
+    "test": "node test/logic.test.mjs",
+    "serve": "npx -y serve -l 5173 ."
+  }
+}
