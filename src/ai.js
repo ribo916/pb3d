@@ -11,9 +11,9 @@ const C = COURT;
 
 function normalizeLevel(level) {
   if (level === 'family' || level === 'damaged') return 'family';
-  if (level === 'beginner') return 'easy';
-  if (level === 'intermediate') return 'normal';
-  if (level === 'advanced') return 'hard';
+  if (level === '4.0' || level === 'beginner' || level === 'easy') return 'easy';
+  if (level === '4.5' || level === 'intermediate' || level === 'normal') return 'normal';
+  if (level === '5.0' || level === 'advanced' || level === 'hard') return 'hard';
   return level || 'normal';
 }
 

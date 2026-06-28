@@ -43,8 +43,8 @@ page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 page.on('pageerror', (e) => errors.push(String(e)));
 
 await page.goto(base, { waitUntil: 'networkidle' });
-// start an intermediate match
-await page.click('[data-diff="normal"]');
+// start an intermediate (4.5) match
+await page.click('[data-diff="4.5"]');
 await page.waitForTimeout(800);
 await page.screenshot({ path: path.join(OUT, 'court.png') });
 

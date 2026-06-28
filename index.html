@@ -23,9 +23,12 @@
     .diffs button { padding: 14px 18px; border: none; border-radius: 12px; font-size: 17px;
       font-weight: 700; color: #0a1420; cursor: pointer; transition: transform 0.1s; }
     .diffs button:active { transform: scale(0.97); }
-    .diffs button[data-diff="easy"]   { background: #2bd47a; }
-    .diffs button[data-diff="normal"] { background: #ffb43c; }
-    .diffs button[data-diff="hard"]   { background: #e23b5a; color: #fff; }
+    .diffs button { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+    .diffs button[data-diff="4.0"] { background: #2bd47a; }
+    .diffs button[data-diff="4.5"] { background: #ffb43c; }
+    .diffs button[data-diff="5.0"] { background: #e23b5a; color: #fff; }
+    .dupr-rating { font-size: 20px; font-weight: 800; line-height: 1.1; }
+    .dupr-label  { font-size: 11px; font-weight: 600; letter-spacing: 1.5px; opacity: 0.75; }
     .hint { font-size: 12px; opacity: 0.55; max-width: 340px; text-align: center; line-height: 1.6; }
     .tod { display: flex; gap: 20px; }
     .tod label { display: flex; align-items: center; gap: 6px; font-size: 15px;
@@ -260,9 +263,9 @@
       <label><input type="radio" name="tod" value="night"> Night</label>
     </div>
     <div class="diffs">
-      <button data-diff="easy">BEGINNER</button>
-      <button data-diff="normal">INTERMEDIATE</button>
-      <button data-diff="hard">ADVANCED</button>
+      <button data-diff="4.0"><span class="dupr-rating">4.0</span><span class="dupr-label">INTERMEDIATE</span></button>
+      <button data-diff="4.5"><span class="dupr-rating">4.5</span><span class="dupr-label">ADVANCED</span></button>
+      <button data-diff="5.0"><span class="dupr-rating">5.0</span><span class="dupr-label">PRO</span></button>
     </div>
     <div class="hint">
       <b>Desktop:</b> WASD move · mouse aim · Space drive · V drop · B lob · C camera<br/>

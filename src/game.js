@@ -25,15 +25,15 @@ export const STATE = { MENU: 'menu', SERVE: 'serve', RALLY: 'rally', POINT: 'poi
 
 const DIFFICULTY_META = {
   family: { label: 'FAMILY', tint: '#8a8f78' },
-  easy:   { label: 'BEGINNER', tint: '#2bd47a' },
-  normal: { label: 'INTERMEDIATE', tint: '#ffb43c' },
-  hard:   { label: 'ADVANCED', tint: '#e23b5a' }
+  easy:   { label: 'DUPR 4.0', tint: '#2bd47a' },
+  normal: { label: 'DUPR 4.5', tint: '#ffb43c' },
+  hard:   { label: 'DUPR 5.0', tint: '#e23b5a' }
 };
 
 function normalizeDifficulty(d) {
-  if (d === 'beginner') return 'easy';
-  if (d === 'intermediate') return 'normal';
-  if (d === 'advanced') return 'hard';
+  if (d === '4.0' || d === 'beginner' || d === 'easy') return 'easy';
+  if (d === '4.5' || d === 'intermediate' || d === 'normal') return 'normal';
+  if (d === '5.0' || d === 'advanced' || d === 'hard') return 'hard';
   if (DIFFICULTY_META[d]) return d;
   return 'normal';
 }
