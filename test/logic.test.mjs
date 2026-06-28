@@ -6,6 +6,7 @@ import * as Physics from '../src/physics.js';
 import * as Shots from '../src/shots.js';
 import * as Rules from '../src/rules.js';
 import * as AI from '../src/ai.js';
+import { buildMusicCatalog, sanitizeMusicState } from '../src/audio.js';
 
 const C = Physics.COURT;
 let passed = 0;
@@ -176,6 +177,30 @@ test('AI chooseShot serve aims diagonally into a service box', () => {
   const shot = AI.chooseShot(ai, ball, m, true);
   assert.ok(shot.target.z > 0, 'far serve aims toward the near (+z) side');
   assert.equal(shot.type, 'serve');
+});
+
+/* ---------------------------- audio helpers ---------------------------- */
+test('music catalog groups tracks by genre', () => {
+  const catalog = buildMusicCatalog([
+    { key: 'a', genre: 'pop', genreLabel: 'POP', label: 'A', file: 'a.wav' },
+    { key: 'b', genre: 'pop', genreLabel: 'POP', label: 'B', file: 'b.wav' },
+    { key: 'c', genre: 'rap', genreLabel: 'RAP', label: 'C', file: 'c.wav' }
+  ]);
+  assert.equal(catalog.length, 2);
+  assert.equal(catalog[0].tracks.length, 2);
+  assert.equal(catalog[1].label, 'RAP');
+});
+
+test('music state sanitization clamps volume and falls back to the first valid track', () => {
+  const catalog = buildMusicCatalog([
+    { key: 'a', genre: 'kpop', genreLabel: 'KPOP', label: 'A', file: 'a.wav' },
+    { key: 'b', genre: 'pop', genreLabel: 'POP', label: 'B', file: 'b.wav' }
+  ]);
+  const state = sanitizeMusicState({ genreKey: 'missing', trackKey: 'unknown', volume: 2, muted: true }, catalog);
+  assert.equal(state.genreKey, 'kpop');
+  assert.equal(state.trackKey, 'a');
+  assert.equal(state.volume, 1);
+  assert.equal(state.muted, true);
 });
 
 console.log('\n' + passed + ' assertions passed.');

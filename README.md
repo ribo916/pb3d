@@ -1,12 +1,12 @@
 # Pickleball 3D
 
 A self-contained **Three.js doubles pickleball game**. You and a CPU partner take on
-two CPUs, with real pickleball rules and arcade-tuned physics that aim for polished
-arcade-tennis feel (Wii Sports / Mario Tennis energy).
+two CPUs, with real pickleball rules, arcade-tuned physics, and a real track-based
+music picker that supports genre folders such as `KPOP`, `RAP`, `COUNTRY`, and `POP`.
 
 It started life as the 3D match inside a larger browser game and was extracted into
-this clean, decoupled project — gameplay only: **no music, character skinning, 2D
-overworld, or save system** (those are documented extension points below).
+this clean, decoupled project — focused on gameplay, music, and presentation without
+character skinning, a 2D overworld, or a save system.
 
 > **Working on this with an AI agent?** Read [`AGENTS.md`](AGENTS.md) — it's the
 > primary context for both Claude Code and Codex. [`CLAUDE.md`](CLAUDE.md) adds
@@ -79,6 +79,7 @@ reaction time, shot smarts, aggression, and unforced-error rate.
 index.html        importmap + <canvas> + HUD DOM + menu; loads src/main.js
 package.json      type:module; test + serve scripts
 src/
+  audio.js        Web Audio SFX + HTMLAudioElement music player + persisted music state
   constants.js    court geometry + ALL tuning (physics/shots/AI/camera/hit)  ← single source of truth
   physics.js      ball integration, net-aware launch() solver, clearsNet()    (pure, no Three)
   shots.js        5 shot types + intent/zone classification                   (pure)  ← THE shot tuning
@@ -92,10 +93,15 @@ src/
   game.js         orchestrator: state machine, hit model, doubles movement, aim marker
   hud.js          DOM HUD (score, serve dots, callout, banner, shot tag)
   main.js         bootstrap: difficulty picker -> Game -> requestAnimationFrame loop
+music/
+  active/         drop genre folders with playable audio files here
+  catalog.js      generated music catalog consumed by src/audio.js
 test/
   logic.test.mjs  Node assertions for the pure modules
 tools/
   shoot.mjs       headless render smoke test (writes tools/shots/*.png)
+  sync-music-catalog.mjs  scans music/active/* and rewrites music/catalog.js
+  generate-music-wavs.mjs generates placeholder WAV tracks, then syncs the catalog
 ```
 
 **Two tuning surfaces hold all the gameplay numbers:** `src/constants.js` (physics,
@@ -109,6 +115,7 @@ Change feel there, not scattered through the code.
 ```bash
 node test/logic.test.mjs   # pure-logic assertions (physics/shots/rules/ai) — no Three.js needed
 node tools/shoot.mjs       # headless WebGL render smoke test; writes tools/shots/*.png
+npm run music:sync         # rescan music/active/* and rebuild music/catalog.js
 ```
 
 The smoke test needs Playwright (not a declared dependency): `npm i -D playwright &&
@@ -117,28 +124,42 @@ PNGs** — much of this was built without a live render loop.
 
 ---
 
-## Extending the game (music, venues, skinning, more)
+## Music workflow
+
+Music now ships in the game and is discovered from a generated catalog:
+
+- Put supported audio files in `music/active/<genre>/`.
+- Supported extensions are `.wav`, `.mp3`, `.ogg`, `.m4a`, `.aac`.
+- Run `npm run music:sync`.
+- Reload the game and the new files appear in the music picker automatically.
+- The title screen includes a `Music Start` choice so a new match can begin either muted or with music already live.
+
+Filename conventions:
+
+- `open-road.wav` becomes the track label `Open Road`.
+- `Artist Name - Track Title.mp3` becomes artist `Artist Name` and title `Track Title`.
+- Genre labels come from folder names and are uppercased in the UI, so `music/active/kpop/` renders as `KPOP`.
+
+The catalog is generated into `music/catalog.js`, which is what `src/audio.js` reads at runtime. The browser does not enumerate static folders directly, so the sync step is intentional.
+
+Fresh installs start with music muted. User mute, volume, selected genre, and selected track are persisted in `localStorage`.
+The repo also includes imported Picklelife tracks grouped into `POP`, `RAP`, `ROCK`, `DISCO`, and `COUNTRY`, alongside the local placeholder library.
+
+If you want the built-in placeholder tracks back or need a seed library for testing, run:
+
+```bash
+npm run music:generate
+```
+
+## Extending the game (venues, skinning, more)
 
 This build is deliberately gameplay-only. The most likely additions all have clean
 seams, documented in detail in [`AGENTS.md` → Extending the game](AGENTS.md#extending-the-game):
 
-### Adding music & sound effects
-The original game used one `audio.js` module: **Web Audio API for procedural SFX**
-(paddle thock, bounce, net, serve, point, fault, cheer, win) plus an
-**`HTMLAudioElement` for music** (MP3 files in `music/active/`). Browser autoplay
-policy means it must be **unlocked by a user gesture** — do that on the
-difficulty-button click. The recipe:
-
-1. Add `src/audio.js` exporting `makeAudio()` → `{ unlock(), sfx{…}, music{…} }`.
-2. In `main.js`, create it, pass `audio` into `new Game(...)`, call `audio.unlock()`
-   on the first button click, and start a track with `audio.music.setTrack(...)`.
-3. Re-add the SFX hooks in `game.js` (the exact spots the original fired them):
-   `_doServe` (serve), `_handleBallEvent` (bounce / net), `_hit` & `_cpuHit`
-   (paddle), `_endPoint` (point / fault / cheer, and win on game over).
-4. Drop your MP3s in `music/active/` and add a station picker if you want.
-
-Keep audio **optional and guarded** (`this.audio?.sfx.paddle()`) so the game still
-runs silently without it. Full code sketch is in `AGENTS.md`.
+### Audio expansion ideas
+- Add richer metadata support to the catalog generator if you want album art, sort order, or artist grouping beyond filename parsing.
+- Add preview snippets, shuffle/repeat behavior, or separate menu-vs-match playlists in `src/audio.js` and `src/main.js`.
+- Keep audio **optional and guarded** (`this.audio?.sfx.paddle()`) so the game still runs silently if assets are missing.
 
 ### Other planned-friendly extensions
 - **More venues** (e.g. a pro stadium) — parameterize `scene.build(scene, opts)`.

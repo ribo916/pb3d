@@ -50,7 +50,8 @@ function readMenuConfig() {
     venue: venue,
     courtPalette: checkedValue('palette', 'blue'),
     timeOfDay: venue === 'indoor' ? 'day' : checkedValue('tod', 'day'),
-    difficulty: checkedValue('difficulty', '4.0')
+    difficulty: checkedValue('difficulty', '4.0'),
+    musicStart: checkedValue('musicStart', 'muted')
   };
 }
 
@@ -82,12 +83,10 @@ function syncMenuSummary() {
   return cfg;
 }
 
-// Mark touch-capable devices so CSS can swap the info-modal section.
 if (IS_TOUCH_DEVICE) {
   document.body.classList.add('touch-device');
 }
 
-/* ---- rAF loop ---- */
 function loop(now) {
   if (!running) return;
   if (paused) {
@@ -103,19 +102,74 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 
-/* ---- audio UI helpers ---- */
-function updateAudioUI() {
-  var musicMuted = audio.music.isMuted();
-  var sfxMuted   = audio.sfx.isMuted();
-  $('muteBtn').classList.toggle('muted', musicMuted);
-  $('sfxMuteBtn').textContent = sfxMuted ? '🔇' : '🔊';
-  var genreLabel = audio.music.getGenreLabel();
-  $('genreBtn').textContent    = genreLabel;
-  $('pauseMuteBtn').textContent  = musicMuted ? '♪ OFF' : '♪ ON';
-  $('pauseGenreBtn').textContent = genreLabel;
+function musicState() {
+  return audio.music.getState();
 }
 
-/* ---- pause / resume / quit ---- */
+function audioCatalog() {
+  return audio.music.getCatalog();
+}
+
+function syncMenuMusicStartFromState() {
+  var state = musicState();
+  var preferred = state.muted ? 'muted' : 'live';
+  var input = document.querySelector('input[name="musicStart"][value="' + preferred + '"]');
+  if (input) input.checked = true;
+}
+
+function applyMenuMusicStart(previewOnly) {
+  var startMode = checkedValue('musicStart', 'muted');
+  audio.music.setMuted(startMode !== 'live', { deferPlayback: !!previewOnly });
+}
+
+function updateAudioUI() {
+  var state = musicState();
+  var sfxMuted = audio.sfx.isMuted();
+  syncMenuMusicStartFromState();
+  $('muteBtn').classList.toggle('muted', state.muted);
+  $('sfxMuteBtn').textContent = sfxMuted ? '🔇' : '🔊';
+  $('genreBtn').querySelector('span').textContent = state.genreLabel;
+  $('pauseMuteBtn').textContent = state.muted ? '♪ OFF' : '♪ ON';
+  $('pauseGenreBtn').textContent = state.genreLabel + ' · ' + state.trackLabel;
+  $('menuMusicGenre').textContent = state.genreLabel;
+  $('menuMusicTrack').textContent = state.hasTrack ? (state.trackLabel + (state.artist ? ' · ' + state.artist : '')) : 'No working track loaded';
+  $('menuMusicStartState').textContent = state.muted ? 'Starts muted' : 'Starts with music live';
+  $('musicCurrentTrack').textContent = state.trackLabel;
+  $('musicCurrentGenre').textContent = state.genreLabel + (state.unavailable ? ' · unavailable' : '');
+  $('musicCurrentArtist').textContent = state.artist || (state.hasTrack ? 'PB3D music catalog' : 'Silent fallback mode');
+  $('musicPlayBtn').textContent = state.muted ? 'UNMUTE' : 'MUTE';
+  $('musicVolume').value = Math.round(state.volume * 100);
+  $('musicVolumeValue').textContent = Math.round(state.volume * 100) + '%';
+  renderMusicPicker();
+}
+
+function renderMusicPicker() {
+  var catalog = audioCatalog();
+  var state = musicState();
+  $('musicGenreList').innerHTML = catalog.map(function (genre) {
+    return '<button class="music-genre-btn' + (genre.key === state.genreKey ? ' active' : '') + '" data-genre="' + genre.key + '">' +
+      '<span>' + genre.label + '</span>' +
+      '</button>';
+  }).join('');
+
+  var currentGenre = catalog.find(function (genre) { return genre.key === state.genreKey; }) || catalog[0] || { tracks: [] };
+  $('musicTrackList').innerHTML = currentGenre.tracks.map(function (track) {
+    return '<button class="music-track-btn' + (track.key === state.trackKey ? ' active' : '') + (track.unavailable ? ' unavailable' : '') + '" data-track="' + track.key + '"' + (track.unavailable ? ' disabled' : '') + '>' +
+      '<strong>' + track.label + '</strong>' +
+      '<span class="music-track-meta">' + (track.artist || 'PB3D House') + (track.unavailable ? ' · unavailable' : '') + '</span>' +
+      '</button>';
+  }).join('') || '<button class="music-track-btn unavailable" disabled><strong>NO TRACKS</strong><span class="music-track-meta">Add audio files under music/active to populate this genre.</span></button>';
+}
+
+function openMusicModal() {
+  updateAudioUI();
+  $('musicModal').classList.add('active');
+}
+
+function closeMusicModal() {
+  $('musicModal').classList.remove('active');
+}
+
 function pauseGame() {
   paused = true;
   updateAudioUI();
@@ -125,39 +179,39 @@ function pauseGame() {
 function resumeGame() {
   paused = false;
   $('pauseModal').classList.remove('active');
-  // Flush any input that accumulated while paused so it isn't consumed on resume.
+  closeMusicModal();
   if (input) {
-    input.state.swingQueued  = false;
-    input.state.serveQueued  = false;
+    input.state.swingQueued = false;
+    input.state.serveQueued = false;
     input.state.camCycleQueued = false;
   }
 }
 
 function quitToMenu() {
   running = false;
-  paused  = false;
+  paused = false;
+  closeMusicModal();
   $('pauseModal').classList.remove('active');
   $('hud').style.display = 'none';
   $('menu').style.display = 'block';
-  // Leave the old renderer/context; the next Game() call takes over the canvas.
-  game  = null;
+  game = null;
   input = null;
-  last  = 0;
+  last = 0;
+  updateAudioUI();
 }
 
-/* ---- start match ---- */
 function startMatch(difficulty, config) {
   $('menu').style.display = 'none';
 
   const hudRefs = {
     scoreNear: $('scoreNear'), scoreFar: $('scoreFar'),
-    dotNear:   $('dotNear'),   dotFar:   $('dotFar'),
-    callout:   $('callout'),   banner:   $('banner'),
-    shotTag:   $('shotTag'),   levelBadge: $('levelBadge'),
-    serveBtn:  $('serveBtn'),  camBtn:   $('camBtn')
+    dotNear: $('dotNear'), dotFar: $('dotFar'),
+    callout: $('callout'), banner: $('banner'),
+    shotTag: $('shotTag'), levelBadge: $('levelBadge'),
+    serveBtn: $('serveBtn'), camBtn: $('camBtn')
   };
 
-  game  = new Game({
+  game = new Game({
     canvas: $('game'),
     difficulty: difficulty,
     audio: audio,
@@ -169,36 +223,46 @@ function startMatch(difficulty, config) {
   input = makeInput($('game'), $('joy'), $('joyKnob'));
   game.setInput(input);
 
-  const hud = makeHUD(hudRefs, () => { input.state.serveQueued = true; });
+  const hud = makeHUD(hudRefs, function () { input.state.serveQueued = true; });
   game.hud = hud;
 
-  $('camBtn').addEventListener('click', (e) => { e.preventDefault(); input.state.camCycleQueued = true; });
-  $('camBtn').addEventListener('touchstart', (e) => { e.preventDefault(); input.state.camCycleQueued = true; }, { passive: false });
+  $('camBtn').addEventListener('click', function (e) { e.preventDefault(); input.state.camCycleQueued = true; });
+  $('camBtn').addEventListener('touchstart', function (e) { e.preventDefault(); input.state.camCycleQueued = true; }, { passive: false });
 
   $('hud').style.display = 'block';
   updateAudioUI();
   game.start();
 
-  window.__game = game; window.__input = input;
+  window.__game = game;
+  window.__input = input;
 
   running = true;
-  paused  = false;
-  last    = 0;
+  paused = false;
+  last = 0;
   requestAnimationFrame(loop);
 }
 
-/* ---- difficulty buttons (also unlock audio on first gesture) ---- */
 document.querySelectorAll('input[name="venue"], input[name="palette"], input[name="tod"], input[name="difficulty"]').forEach(function (el) {
   el.addEventListener('change', syncMenuSummary);
 });
+document.querySelectorAll('input[name="musicStart"]').forEach(function (el) {
+  el.addEventListener('change', function () {
+    applyMenuMusicStart(true);
+    updateAudioUI();
+  });
+});
 
 $('startBtn').addEventListener('click', function () {
-  audio.unlock();
   var cfg = syncMenuSummary();
+  applyMenuMusicStart(true);
+  audio.unlock();
+  applyMenuMusicStart(false);
   startMatch(cfg.difficulty, cfg);
 });
 
 syncMenuSummary();
+syncMenuMusicStartFromState();
+updateAudioUI();
 
 window.__pb3dMenu = {
   readConfig: readMenuConfig,
@@ -206,53 +270,86 @@ window.__pb3dMenu = {
   syncMenuSummary: syncMenuSummary
 };
 
-/* ---- pause button ---- */
-$('pauseBtn').addEventListener('click', (e) => { e.preventDefault(); if (running && !paused) pauseGame(); });
-$('pauseBtn').addEventListener('touchstart', (e) => { e.preventDefault(); if (running && !paused) pauseGame(); }, { passive: false });
+$('pauseBtn').addEventListener('click', function (e) { e.preventDefault(); if (running && !paused) pauseGame(); });
+$('pauseBtn').addEventListener('touchstart', function (e) { e.preventDefault(); if (running && !paused) pauseGame(); }, { passive: false });
 
-/* ---- resume button ---- */
-$('resumeBtn').addEventListener('click', (e) => { e.preventDefault(); resumeGame(); });
-$('resumeBtn').addEventListener('touchstart', (e) => { e.preventDefault(); resumeGame(); }, { passive: false });
+$('resumeBtn').addEventListener('click', function (e) { e.preventDefault(); resumeGame(); });
+$('resumeBtn').addEventListener('touchstart', function (e) { e.preventDefault(); resumeGame(); }, { passive: false });
 
-/* ---- quit button ---- */
-$('quitBtn').addEventListener('click', (e) => { e.preventDefault(); quitToMenu(); });
-$('quitBtn').addEventListener('touchstart', (e) => { e.preventDefault(); quitToMenu(); }, { passive: false });
+$('quitBtn').addEventListener('click', function (e) { e.preventDefault(); quitToMenu(); });
+$('quitBtn').addEventListener('touchstart', function (e) { e.preventDefault(); quitToMenu(); }, { passive: false });
 
-/* ---- mute buttons (HUD + pause modal) ---- */
 function toggleMute() {
   audio.unlock();
   audio.music.setMuted(!audio.music.isMuted());
   updateAudioUI();
 }
-$('muteBtn').addEventListener('click',      (e) => { e.preventDefault(); toggleMute(); });
-$('muteBtn').addEventListener('touchstart', (e) => { e.preventDefault(); toggleMute(); }, { passive: false });
-$('pauseMuteBtn').addEventListener('click',      (e) => { e.preventDefault(); toggleMute(); });
-$('pauseMuteBtn').addEventListener('touchstart', (e) => { e.preventDefault(); toggleMute(); }, { passive: false });
+$('muteBtn').addEventListener('click', function (e) { e.preventDefault(); toggleMute(); });
+$('muteBtn').addEventListener('touchstart', function (e) { e.preventDefault(); toggleMute(); }, { passive: false });
+$('pauseMuteBtn').addEventListener('click', function (e) { e.preventDefault(); toggleMute(); });
+$('pauseMuteBtn').addEventListener('touchstart', function (e) { e.preventDefault(); toggleMute(); }, { passive: false });
+$('musicPlayBtn').addEventListener('click', function (e) { e.preventDefault(); toggleMute(); });
 
-/* ---- SFX mute button (HUD) ---- */
 function toggleSfxMute() {
   audio.unlock();
   audio.sfx.setMuted(!audio.sfx.isMuted());
   updateAudioUI();
 }
-$('sfxMuteBtn').addEventListener('click',      (e) => { e.preventDefault(); toggleSfxMute(); });
-$('sfxMuteBtn').addEventListener('touchstart', (e) => { e.preventDefault(); toggleSfxMute(); }, { passive: false });
+$('sfxMuteBtn').addEventListener('click', function (e) { e.preventDefault(); toggleSfxMute(); });
+$('sfxMuteBtn').addEventListener('touchstart', function (e) { e.preventDefault(); toggleSfxMute(); }, { passive: false });
 
-/* ---- genre cycle button (HUD + pause modal) ---- */
-function cycleGenre() {
+function openMusicPicker(e) {
+  if (e) e.preventDefault();
   audio.unlock();
-  audio.music.cycleGenre();
-  updateAudioUI();
+  openMusicModal();
 }
-$('genreBtn').addEventListener('click',      (e) => { e.preventDefault(); cycleGenre(); });
-$('genreBtn').addEventListener('touchstart', (e) => { e.preventDefault(); cycleGenre(); }, { passive: false });
-$('pauseGenreBtn').addEventListener('click',      (e) => { e.preventDefault(); cycleGenre(); });
-$('pauseGenreBtn').addEventListener('touchstart', (e) => { e.preventDefault(); cycleGenre(); }, { passive: false });
+$('genreBtn').addEventListener('click', openMusicPicker);
+$('genreBtn').addEventListener('touchstart', function (e) { openMusicPicker(e); }, { passive: false });
+$('pauseGenreBtn').addEventListener('click', openMusicPicker);
+$('pauseGenreBtn').addEventListener('touchstart', function (e) { openMusicPicker(e); }, { passive: false });
+$('menuMusicBtn').addEventListener('click', openMusicPicker);
 
-/* ---- info / controls modal ---- */
-$('infoBtn').addEventListener('click',      (e) => { e.preventDefault(); $('infoModal').classList.add('active'); });
-$('infoBtn').addEventListener('touchstart', (e) => { e.preventDefault(); $('infoModal').classList.add('active'); }, { passive: false });
-$('infoCloseBtn').addEventListener('click',      (e) => { e.preventDefault(); $('infoModal').classList.remove('active'); });
-$('infoCloseBtn').addEventListener('touchstart', (e) => { e.preventDefault(); $('infoModal').classList.remove('active'); }, { passive: false });
-// Tap outside the panel closes it.
-$('infoModal').addEventListener('click', (e) => { if (e.target === $('infoModal')) $('infoModal').classList.remove('active'); });
+$('musicCloseBtn').addEventListener('click', function (e) { e.preventDefault(); closeMusicModal(); });
+$('musicDoneBtn').addEventListener('click', function (e) { e.preventDefault(); closeMusicModal(); });
+$('musicModal').addEventListener('click', function (e) { if (e.target === $('musicModal')) closeMusicModal(); });
+
+$('musicGenreList').addEventListener('click', function (e) {
+  var btn = e.target.closest('[data-genre]');
+  if (!btn) return;
+  audio.unlock();
+  audio.music.setGenre(btn.getAttribute('data-genre'));
+  updateAudioUI();
+});
+
+$('musicTrackList').addEventListener('click', function (e) {
+  var btn = e.target.closest('[data-track]');
+  if (!btn) return;
+  audio.unlock();
+  audio.music.setTrack(btn.getAttribute('data-track'));
+  updateAudioUI();
+});
+
+$('musicPrevBtn').addEventListener('click', function (e) {
+  e.preventDefault();
+  audio.unlock();
+  audio.music.prevTrack();
+  updateAudioUI();
+});
+
+$('musicNextBtn').addEventListener('click', function (e) {
+  e.preventDefault();
+  audio.unlock();
+  audio.music.nextTrack();
+  updateAudioUI();
+});
+
+$('musicVolume').addEventListener('input', function () {
+  audio.music.setVolume(Number($('musicVolume').value) / 100);
+  updateAudioUI();
+});
+
+$('infoBtn').addEventListener('click', function (e) { e.preventDefault(); $('infoModal').classList.add('active'); });
+$('infoBtn').addEventListener('touchstart', function (e) { e.preventDefault(); $('infoModal').classList.add('active'); }, { passive: false });
+$('infoCloseBtn').addEventListener('click', function (e) { e.preventDefault(); $('infoModal').classList.remove('active'); });
+$('infoCloseBtn').addEventListener('touchstart', function (e) { e.preventDefault(); $('infoModal').classList.remove('active'); }, { passive: false });
+$('infoModal').addEventListener('click', function (e) { if (e.target === $('infoModal')) $('infoModal').classList.remove('active'); });

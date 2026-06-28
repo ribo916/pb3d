@@ -14,8 +14,8 @@ partner take on two CPUs. Real rules (diagonal serve, two-bounce rule, non-volle
 difficulties, desktop + mobile controls.
 
 The gameplay was ported from a larger project's 3D match and is now fully
-self-contained: **no music, no character skinning, no 2D overworld, no save
-system** — pure gameplay. Those are intentional extension points (see
+self-contained: **real track-based music, no character skinning, no 2D overworld,
+no save system** — pure gameplay plus audio. Those are intentional extension points (see
 [Extending the game](#extending-the-game)).
 
 **The single most important quality bar is swing + ball-contact feel** — it should
@@ -47,6 +47,8 @@ python3 -m http.server      # alternative
 # Tests
 node test/logic.test.mjs    # pure-logic assertions (no Three.js needed)
 node tools/shoot.mjs        # headless render smoke test (needs playwright); writes tools/shots/*.png
+npm run music:sync          # rescan music/active/* and rebuild music/catalog.js
+npm run music:generate      # regenerate bundled placeholder WAVs, then rescan the catalog
 ```
 
 **When to run what:**
@@ -72,16 +74,22 @@ src/
   ai.js           opponent predict/chooseMovement/chooseShot, difficulty LEVELS (pure)
   utils.js        clamp/dist2D/lerp                                            (pure)
   input.js        desktop (WASD/mouse/keys) + dual-thumb touch controls
+  audio.js        Web Audio SFX + HTMLAudioElement music player + persisted music state
   scene.js        court, net, lighting, ball + trail, fence, trees            (Three)
   players.js      Mii-style rig + cross-body swing animation                  (Three)
   camera.js       broadcast camera + follow/shake                             (Three)
   game.js         orchestrator: STATE machine, hit model, doubles movement, aim marker, HUD wiring
   hud.js          DOM HUD (score, serve dots, doubles callout, banner, shot tag, SERVE button)
   main.js         bootstrap: difficulty picker -> Game -> requestAnimationFrame loop
+music/
+  active/         drop genre folders with playable audio files here
+  catalog.js      generated music catalog consumed by src/audio.js
 test/
   logic.test.mjs  Node assertions for the pure modules
 tools/
   shoot.mjs       headless static-server + Playwright render smoke test
+  sync-music-catalog.mjs  scans music/active/* and rewrites music/catalog.js
+  generate-music-wavs.mjs generates placeholder WAV tracks, then syncs the catalog
   shots/          screenshot output (gitignored)
 ```
 
@@ -133,6 +141,12 @@ enters the strike zone during the window), momentum aiming (`_aimTarget`), the
 aim-marker ring, doubles lane responsibility / movement, and HUD wiring. The hit
 tail `_executeHit` snaps the ball to the contact point and calls `launch()`.
 
+**`audio.js`** — Web Audio paddle/bounce/net/serve/point/fault SFX plus a
+track-based `HTMLAudioElement` music player. Music tracks are loaded from the
+generated `music/catalog.js`, which is built by scanning `music/active/<genre>/`
+folders. The player persists mute/volume/genre/track in `localStorage` and starts
+muted on first visit.
+
 **`players.js` / `scene.js` / `camera.js`** — the Three.js layer. Swing is a
 horizontal cross-body arc from an isolated upper-body twist; the paddle extends
 beyond the hand. Court is dark navy, kitchen a mid-blue band, ball neon green with
@@ -157,6 +171,26 @@ behind the near baseline that gently follows the ball and shakes on points.
   `node test/logic.test.mjs` keeps working.
 - Match the existing code style in a file you touch; don't reformat wholesale.
 - After visual changes, regenerate and view screenshots before claiming done.
+- After changing music assets, run `npm run music:sync` so `music/catalog.js`
+  matches the folders on disk.
+
+## Music Asset Workflow
+
+- Supported track formats: `.wav`, `.mp3`, `.ogg`, `.m4a`, `.aac`.
+- Put files in `music/active/<genre>/`.
+- Run `npm run music:sync`.
+- Reload the game; the picker reads the regenerated `music/catalog.js`.
+- The title screen has a `Music Start` radio choice that sets whether the next match begins muted or with music already live.
+
+Filename conventions:
+- `open-road.wav` becomes `Open Road`.
+- `Artist Name - Track Title.mp3` becomes artist `Artist Name` and title `Track Title`.
+- Folder names become uppercase genre labels in the UI, so `music/active/kpop/`
+  renders as `KPOP`.
+
+The browser does not enumerate static folders directly, so the generated catalog is
+intentional. Do not promise "drop files in and refresh" without the sync step.
+The shipped library now includes imported Picklelife MP3 tracks grouped by genre alongside local placeholder tracks.
 
 ---
 
@@ -166,75 +200,20 @@ These were intentionally left out for a clean gameplay core. Each has an obvious
 seam. (The "current game" this was ported from did audio/venues/skinning the way
 described below — mirror that.)
 
-### Audio (SFX + music) — the priority extension
+### Audio expansion
 
-The original game used a single `audio.js` module: **Web Audio API for procedural
-SFX** + an **`HTMLAudioElement` for music** (MP3 files), unlocked on first user
-gesture (mobile autoplay policy requires this).
+The repo already ships with:
+- `src/audio.js` for Web Audio SFX + track-based music playback
+- a music picker in the menu/HUD/pause UI
+- folder-driven asset discovery via `npm run music:sync`
+- placeholder tracks generated by `npm run music:generate`
 
-**1. Add `src/audio.js`** exporting `makeAudio()` that returns
-`{ unlock(), sfx: { paddle, bounce, net, serve, point, fault, cheer, win }, music: { play, pause, setTrack, setVolume } }`.
-
-Sketch:
-
-```js
-export function makeAudio() {
-  const Ctx = window.AudioContext || window.webkitAudioContext;
-  let ac = null, master = null, sfxGain = null, noiseBuf = null;
-  function init() {
-    if (ac) return;
-    ac = new Ctx();
-    master = ac.createGain(); master.gain.value = 0.9; master.connect(ac.destination);
-    sfxGain = ac.createGain(); sfxGain.gain.value = 0.8; sfxGain.connect(master);
-    const n = ac.sampleRate * 1.0;             // shared white-noise buffer for "thock"/cheer
-    noiseBuf = ac.createBuffer(1, n, ac.sampleRate);
-    const d = noiseBuf.getChannelData(0);
-    for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
-  }
-  function unlock() { init(); if (ac.state === 'suspended') ac.resume(); }
-  function tone(freq, type, dur, vol) { /* createOscillator + gain envelope -> sfxGain */ }
-
-  // MP3 music via HTMLAudioElement (autoplay needs the unlock gesture)
-  const musicEl = new Audio(); musicEl.loop = true; musicEl.volume = 0.7;
-  const TRACKS = [{ key: 'theme', label: 'Theme', file: 'music/active/theme.mp3' }];
-
-  return {
-    unlock,
-    sfx: {
-      paddle: () => tone(440, 'square', 0.05, 0.5),     // a short "thock"
-      bounce: () => tone(220, 'sine', 0.04, 0.3),
-      net:    () => tone(140, 'triangle', 0.08, 0.4),
-      serve:  () => tone(520, 'sine', 0.06, 0.4),
-      point:  () => tone(660, 'sine', 0.20, 0.5),
-      fault:  () => tone(180, 'sawtooth', 0.18, 0.4),
-      cheer:  () => { /* filtered noise burst */ },
-      win:    () => { /* little arpeggio */ },
-    },
-    music: {
-      play: () => musicEl.play(),
-      pause: () => musicEl.pause(),
-      setTrack: (k) => { const t = TRACKS.find(x => x.key === k); if (t) { musicEl.src = t.file; musicEl.play(); } },
-      setVolume: (v) => { musicEl.volume = v; },
-    },
-  };
-}
-```
-
-**2. Wire it in `main.js`:** create `const audio = makeAudio()`, pass it into
-`new Game({ ..., audio })`, and call `audio.unlock()` on the difficulty-button
-click (the first user gesture) plus `audio.music.setTrack('theme')` to start music.
-
-**3. Re-add the SFX hooks in `game.js`** (they were removed during the port — these
-are exactly where the original fired them):
-- `_doServe()` → `this.audio?.sfx.serve()`
-- `_handleBallEvent()` → `bounce`/`floor-out` ⇒ `sfx.bounce()`, `net` ⇒ `sfx.net()`
-- `_hit()` and `_cpuHit()` → `sfx.paddle()`
-- `_endPoint()` → `result.scored ? sfx.point() : sfx.fault()`, then `sfx.cheer()`;
-  on `result.gameOver` → `sfx.win()`
-
-**4. Add MP3s** under `music/active/*.mp3` and a small music-picker UI if you want
-station switching. Keep audio fully optional: guard every call (`this.audio &&` or
-`?.`) so the game runs silently without it.
+The important implementation contract:
+- Keep music asset discovery data-driven through `music/catalog.js`.
+- Keep audio fully optional: guard gameplay SFX calls (`this.audio &&` or `?.`) so
+  the game still runs silently if assets are missing or broken.
+- Do not add direct folder-enumeration assumptions to browser code; static servers
+  are inconsistent there, which is why the generated catalog exists.
 
 ### Other extensions
 - **More venues** — `scene.js` is the seam. Parameterize `build(scene, opts)` with

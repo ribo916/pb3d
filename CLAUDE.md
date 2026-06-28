@@ -2,7 +2,7 @@
 
 > **Primary context is in [`AGENTS.md`](AGENTS.md) — read it before starting any task.**
 > It covers: what this is, tech stack, commands, directory structure, architecture,
-> the gameplay contract, conventions, how to extend (audio/music, venues, skinning,
+> the gameplay contract, conventions, music asset workflow, how to extend (venues, skinning,
 > singles), and testing. Both Claude Code and OpenAI Codex use that file.
 
 ---
@@ -34,8 +34,10 @@ pure-logic code goes in the same pattern so it stays node-testable.
 drag-free parabola), and `game._executeHit()` snaps the ball to the contact point.
 Both prevent "balls into the net." Don't simplify either.
 
-### Adding audio later
-See **Extending the game → Audio** in `AGENTS.md` for the full recipe (a
-`src/audio.js` with Web Audio SFX + `HTMLAudioElement` MP3 music, unlocked on the
-difficulty-button gesture, and the exact `game.js` hook points for serve/bounce/
-net/paddle/point/fault/cheer/win). Keep audio optional and guarded.
+### Music assets
+Music is already implemented. To add or replace selectable tracks, drop supported
+audio files into `music/active/<genre>/` and run `npm run music:sync`. The catalog
+is generated into `music/catalog.js`; do not hand-edit that file unless you are
+deliberately bypassing the sync flow.
+The title screen also exposes a `Music Start` choice that controls whether the next
+match begins muted or with music already playing.

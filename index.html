@@ -188,6 +188,7 @@
     .menu-options-time { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .menu-options-palette { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .menu-options-diff { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .menu-options-audio { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .menu-option {
       position: relative;
       display: block;
@@ -412,6 +413,51 @@
       padding-top: 2px;
       grid-column: 1 / -1;
     }
+    .menu-music-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 14px 16px;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background:
+        linear-gradient(135deg, rgba(126,240,255,0.07), rgba(201,255,88,0.04)),
+        rgba(255,255,255,0.03);
+    }
+    .menu-music-copy {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+    }
+    .menu-music-copy strong {
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    .menu-music-copy span {
+      font-size: 11px;
+      line-height: 1.4;
+      color: rgba(228, 242, 255, 0.62);
+    }
+    .menu-music-btn {
+      border: 1px solid rgba(126,240,255,0.28);
+      border-radius: 12px;
+      background: rgba(126,240,255,0.08);
+      color: #eef9ff;
+      min-height: 42px;
+      padding: 10px 14px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      cursor: pointer;
+      font-family: inherit;
+      flex-shrink: 0;
+    }
+    .menu-music-btn:active { opacity: 0.78; }
     #startBtn {
       width: 100%;
       min-height: 54px;
@@ -465,6 +511,7 @@
       .menu-ball { display: none; }
       .menu-panel { grid-template-columns: 1fr; }
       .menu-options-time,
+      .menu-options-audio,
       .menu-options-palette,
       .menu-options-diff { grid-template-columns: 1fr; }
       .menu-actions {
@@ -530,6 +577,19 @@
       cursor: pointer; transition: background 0.15s, opacity 0.15s; white-space: nowrap;
       font-family: inherit; }
     .hud-text-btn:active { opacity: 0.65; }
+    .hud-text-btn small {
+      display: block;
+      font-size: 8px;
+      line-height: 1;
+      letter-spacing: 1.2px;
+      opacity: 0.58;
+    }
+    .hud-text-btn span {
+      display: block;
+      max-width: 112px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
 
     /* ---- Pause modal ---- */
     #pauseModal { display: none; position: fixed; inset: 0; z-index: 40;
@@ -555,6 +615,204 @@
     .pause-quit { background: rgba(226,59,90,0.2); color: #ff6c86;
       border: 1px solid rgba(226,59,90,0.35); }
     .pause-quit:active { opacity: 0.8; }
+
+    /* ---- Music picker modal ---- */
+    #musicModal { display: none; position: fixed; inset: 0; z-index: 45;
+      background: rgba(5, 14, 25, 0.78); backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px); align-items: center; justify-content: center;
+      padding: 18px; }
+    #musicModal.active { display: flex; }
+    .music-panel {
+      width: min(720px, 100%);
+      max-height: min(760px, calc(100vh - 36px));
+      overflow: auto;
+      border-radius: 22px;
+      border: 1px solid rgba(126,240,255,0.18);
+      background:
+        radial-gradient(circle at top right, rgba(126,240,255,0.10), transparent 26%),
+        linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01)),
+        rgba(7, 16, 28, 0.96);
+      box-shadow: 0 26px 80px rgba(0,0,0,0.4);
+      padding: 22px;
+    }
+    .music-panel-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+    .music-panel-head h2 {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: 3px;
+      color: #7ef0ff;
+      margin-bottom: 4px;
+    }
+    .music-panel-head p {
+      font-size: 12px;
+      line-height: 1.45;
+      color: rgba(232, 244, 255, 0.62);
+    }
+    .music-close {
+      width: 34px;
+      height: 34px;
+      border: none;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.72);
+      font-size: 18px;
+      cursor: pointer;
+      font-family: inherit;
+      flex-shrink: 0;
+    }
+    .music-close:active { opacity: 0.7; }
+    .music-current {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: center;
+      padding: 14px 16px;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.03);
+      margin-bottom: 16px;
+    }
+    .music-current-copy strong {
+      display: block;
+      font-size: 15px;
+      font-weight: 800;
+      margin-bottom: 4px;
+    }
+    .music-current-copy span,
+    .music-current-copy em {
+      display: block;
+      font-style: normal;
+      font-size: 11px;
+      color: rgba(228, 242, 255, 0.64);
+    }
+    .music-current-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .music-ctrl {
+      min-height: 36px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(126,240,255,0.18);
+      background: rgba(126,240,255,0.08);
+      color: #f2fbff;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.8px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .music-ctrl:active { opacity: 0.72; }
+    .music-layout {
+      display: grid;
+      grid-template-columns: 170px minmax(0, 1fr);
+      gap: 14px;
+    }
+    .music-genres,
+    .music-tracks {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-width: 0;
+    }
+    .music-section-label {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      color: rgba(232, 244, 255, 0.48);
+      margin-bottom: 2px;
+    }
+    .music-genre-btn,
+    .music-track-btn {
+      width: 100%;
+      text-align: left;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.03);
+      color: #fff;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .music-genre-btn {
+      min-height: 52px;
+      padding: 12px 14px;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 1px;
+    }
+    .music-track-btn {
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .music-genre-btn.active,
+    .music-track-btn.active {
+      border-color: rgba(54,208,111,0.66);
+      background: rgba(54,208,111,0.11);
+      box-shadow: inset 0 0 0 1px rgba(54,208,111,0.24);
+    }
+    .music-genre-btn span,
+    .music-track-btn span {
+      display: block;
+    }
+    .music-track-btn strong {
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .music-track-meta {
+      font-size: 10px;
+      color: rgba(228, 242, 255, 0.62);
+    }
+    .music-track-btn.unavailable {
+      opacity: 0.42;
+    }
+    .music-footer {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: center;
+      margin-top: 16px;
+    }
+    .music-volume {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .music-volume label {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1.6px;
+      color: rgba(232, 244, 255, 0.52);
+      text-transform: uppercase;
+    }
+    .music-volume input[type="range"] {
+      width: 100%;
+      accent-color: #7ef0ff;
+    }
+    #musicVolumeValue {
+      font-size: 11px;
+      color: rgba(228, 242, 255, 0.62);
+    }
+    @media (max-width: 760px) {
+      .music-layout,
+      .music-footer,
+      .music-current {
+        grid-template-columns: 1fr;
+      }
+      .music-current-actions {
+        justify-content: flex-start;
+        flex-wrap: wrap;
+      }
+    }
 
     /* ---- Info / controls modal ---- */
     #infoModal { display: none; position: fixed; inset: 0; z-index: 40;
@@ -625,7 +883,7 @@
     <div class="btns-tr">
       <button id="sfxMuteBtn" class="hud-icon-btn" title="Game Sounds">🔊</button>
       <button id="muteBtn"    class="hud-icon-btn" title="Music">♪</button>
-      <button id="genreBtn"   class="hud-text-btn" title="Genre">UPBEAT</button>
+      <button id="genreBtn"   class="hud-text-btn" title="Music Picker"><small>MUSIC</small><span>KPOP</span></button>
     </div>
 
     <!-- bottom-left: difficulty badge -->
@@ -642,10 +900,51 @@
       <h2>PAUSED</h2>
       <div class="pause-row">
         <button class="pause-ctrl" id="pauseMuteBtn">♪ OFF</button>
-        <button class="pause-ctrl" id="pauseGenreBtn">UPBEAT</button>
+        <button class="pause-ctrl" id="pauseGenreBtn">OPEN MUSIC</button>
       </div>
       <button class="pause-action pause-resume" id="resumeBtn">RESUME</button>
       <button class="pause-action pause-quit"   id="quitBtn">QUIT TO MENU</button>
+    </div>
+  </div>
+
+  <div id="musicModal">
+    <div class="music-panel">
+      <div class="music-panel-head">
+        <div>
+          <h2>MUSIC SELECT</h2>
+          <p>Pick a genre, lock a track, and keep the rally moving.</p>
+        </div>
+        <button class="music-close" id="musicCloseBtn" aria-label="Close music picker">✕</button>
+      </div>
+      <div class="music-current">
+        <div class="music-current-copy">
+          <strong id="musicCurrentTrack">NO TRACK</strong>
+          <span id="musicCurrentGenre">No genre selected</span>
+          <em id="musicCurrentArtist">Silent fallback mode</em>
+        </div>
+        <div class="music-current-actions">
+          <button class="music-ctrl" id="musicPrevBtn">◀ PREV</button>
+          <button class="music-ctrl" id="musicPlayBtn">MUTE</button>
+          <button class="music-ctrl" id="musicNextBtn">NEXT ▶</button>
+        </div>
+      </div>
+      <div class="music-layout">
+        <div class="music-genres">
+          <div class="music-section-label">Genres</div>
+          <div id="musicGenreList"></div>
+        </div>
+        <div class="music-tracks">
+          <div class="music-section-label">Tracks</div>
+          <div id="musicTrackList"></div>
+        </div>
+      </div>
+      <div class="music-footer">
+        <div class="music-volume">
+          <label for="musicVolume">Music Volume <span id="musicVolumeValue">72%</span></label>
+          <input id="musicVolume" type="range" min="0" max="100" step="1" value="72" />
+        </div>
+        <button class="music-ctrl" id="musicDoneBtn">DONE</button>
+      </div>
     </div>
   </div>
 
@@ -770,6 +1069,38 @@
               <div class="menu-swatch swatch-green">
                 <strong>Green Club</strong>
                 <span>Softer club-court energy with warmer surroundings.</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div class="menu-group group-full">
+          <div class="menu-label">Music <em>Real genre-based track playback</em></div>
+          <div class="menu-music-card">
+            <div class="menu-music-copy">
+              <strong id="menuMusicGenre">KPOP</strong>
+              <span id="menuMusicTrack">Neon Spark · PB3D House</span>
+              <span id="menuMusicStartState">Starts muted</span>
+            </div>
+            <button id="menuMusicBtn" class="menu-music-btn" type="button">Choose Music</button>
+          </div>
+        </div>
+
+        <div class="menu-group">
+          <div class="menu-label">Music Start <em>Choose the match audio state</em></div>
+          <div class="menu-options-time menu-options-audio">
+            <label class="menu-option">
+              <input type="radio" name="musicStart" value="muted" checked>
+              <div class="menu-seg">
+                <strong>Start Muted</strong>
+                <span>Open the match silent, then enable music anytime.</span>
+              </div>
+            </label>
+            <label class="menu-option">
+              <input type="radio" name="musicStart" value="live">
+              <div class="menu-seg">
+                <strong>Start With Music</strong>
+                <span>Begin the match with the selected track already live.</span>
               </div>
             </label>
           </div>
