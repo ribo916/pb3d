@@ -42,6 +42,7 @@ export function Game(opts) {
   this.opts = opts || {};
   this.canvas = opts.canvas;
   this.hud = opts.hud || null;
+  this.audio = opts.audio || null;
   this.difficulty = normalizeDifficulty(opts.difficulty);
   this.levelMeta = DIFFICULTY_META[this.difficulty] || DIFFICULTY_META.normal;
   this.partnerDiff = opts.partnerDiff || null;
@@ -243,6 +244,7 @@ Game.prototype._doServe = function () {
   this.ball.pos = p0; this.ball.vel = v; this.ball.spin = serveSpin; this.ball.live = true;
   Rules.onPaddleHit(this.match, this.match.server, { volley: false });
   srvEntry.mesh.swing('serve');
+  if (this.audio) this.audio.sfx.serve();
   this.state = STATE.RALLY;
   this.lastHitCooldown = HIT.COOLDOWN_SERVE;
 };
@@ -255,6 +257,7 @@ Game.prototype._endPoint = function (result) {
   this.cameraShake = result.scored ? 0.25 : 0.12;
   var msg = this._resultMessage(result);
   this._message(msg, 1.6);
+  if (this.audio) { result.scored ? this.audio.sfx.point() : this.audio.sfx.fault(); }
   if (result.gameOver) {
     this.state = STATE.OVER;
     this._message(this.match.winner === 'near' ? 'YOU WIN!' : 'OPPONENT WINS', 6);
@@ -364,8 +367,10 @@ Game.prototype._tickRally = function (dt) {
 Game.prototype._handleBallEvent = function (e) {
   var r = null;
   if (e.type === 'bounce' || e.type === 'floor-out') {
+    if (this.audio) this.audio.sfx.bounce();
     r = Rules.onFloor(this.match, { inBounds: e.type === 'bounce', x: e.x, z: e.z, side: e.side });
   } else if (e.type === 'net') {
+    if (this.audio) this.audio.sfx.net();
     r = Rules.onNetFault(this.match);
   }
   if (rallyOver(r)) this._endPoint(r);
@@ -515,6 +520,7 @@ Game.prototype._hit = function (p, swingType) {
   var res = Rules.onPaddleHit(this.match, p.team, { volley: volley, inKitchen: inKitchen });
   this.cameraShake = Math.max(this.cameraShake, 0.08);
   p.mesh.swing(swingType || 'fh');
+  if (this.audio) this.audio.sfx.paddle();
   if (rallyOver(res)) { this._endPoint(res); return; }
   // Aimed shot from the held directional input (momentum aim).
   var at = this._aimTarget(p);
@@ -537,6 +543,7 @@ Game.prototype._cpuHit = function (p) {
   if (volley && inKitchen) { pos.z = fwd * (C.KITCHEN + 0.3); inKitchen = false; }
   var res = Rules.onPaddleHit(this.match, p.team, { volley: volley, inKitchen: inKitchen });
   p.mesh.swing(Math.random() < 0.3 ? 'bh' : 'fh');
+  if (this.audio) this.audio.sfx.paddle();
   if (rallyOver(res)) { this._endPoint(res); return; }
   var shot = AI.chooseShot(p.ai, this.ball, this.match, false);
   var tgtZ = (p.team === 'near') ? -shot.target.z : shot.target.z; // mirror for near hitter

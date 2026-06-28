@@ -40,9 +40,6 @@
     #callout { position: absolute; top: env(safe-area-inset-top, 12px); left: 50%;
       transform: translateX(-50%); margin-top: 58px; font-size: 13px; letter-spacing: 1px;
       opacity: 0.7; font-variant-numeric: tabular-nums; }
-    #levelBadge { position: absolute; top: env(safe-area-inset-top, 12px); right: 14px; margin-top: 12px;
-      padding: 5px 11px; border-radius: 20px; font-size: 11px; font-weight: 800; color: #0a1420;
-      letter-spacing: 0.5px; }
     #banner { position: absolute; top: 36%; left: 50%; transform: translate(-50%, -50%);
       font-size: clamp(22px, 6vw, 40px); font-weight: 800; text-align: center; opacity: 0;
       text-shadow: 0 3px 22px rgba(0,0,0,0.6); transition: opacity 0.1s; width: 90%; }
@@ -53,11 +50,81 @@
       font-weight: 800; color: #0a1420; background: #2bd4ff; cursor: pointer;
       box-shadow: 0 6px 20px rgba(43,212,255,0.45); }
     #serveBtn:active { transform: translateX(-50%) scale(0.96); }
-    #camBtn { position: absolute; bottom: env(safe-area-inset-bottom, 14px); left: 14px; margin-bottom: 14px;
-      pointer-events: auto; padding: 5px 10px; border: none; border-radius: 20px; font-size: 11px;
-      font-weight: 800; color: rgba(255,255,255,0.75); background: rgba(8,18,30,0.55);
-      cursor: pointer; letter-spacing: 0.5px; backdrop-filter: blur(4px); }
-    #camBtn:active { opacity: 0.7; }
+
+    /* ---- small HUD buttons ---- */
+    .hud-btn { pointer-events: auto; padding: 5px 10px; border: none; border-radius: 20px;
+      font-size: 11px; font-weight: 800; color: rgba(255,255,255,0.75);
+      background: rgba(8,18,30,0.55); cursor: pointer; letter-spacing: 0.5px;
+      backdrop-filter: blur(4px); white-space: nowrap; }
+    .hud-btn:active { opacity: 0.7; }
+
+    /* bottom-left cluster: CAM + MUTE */
+    .btns-bl { position: absolute; bottom: env(safe-area-inset-bottom, 14px); left: 14px;
+      margin-bottom: 14px; pointer-events: none; display: flex; gap: 8px; align-items: center; }
+
+    /* top-right cluster: level badge + PAUSE */
+    .btns-tr { position: absolute; top: env(safe-area-inset-top, 12px); right: 14px;
+      margin-top: 12px; pointer-events: none; display: flex; gap: 8px; align-items: center; }
+    #levelBadge { padding: 5px 11px; border-radius: 20px; font-size: 11px; font-weight: 800;
+      color: #0a1420; letter-spacing: 0.5px; }
+
+    /* bottom-right: INFO */
+    .btns-br { position: absolute; bottom: env(safe-area-inset-bottom, 14px); right: 14px;
+      margin-bottom: 14px; pointer-events: none; display: flex; gap: 8px; align-items: center; }
+
+    /* ---- Pause modal ---- */
+    #pauseModal { display: none; position: fixed; inset: 0; z-index: 40;
+      background: rgba(6,18,31,0.82); backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px); align-items: center; justify-content: center; }
+    #pauseModal.active { display: flex; }
+    .pause-panel { display: flex; flex-direction: column; align-items: center; gap: 12px;
+      background: rgba(8,24,42,0.96); border: 1px solid rgba(43,212,255,0.18);
+      border-radius: 20px; padding: 30px 36px; min-width: min(300px, 82vw); }
+    .pause-panel h2 { font-size: 26px; font-weight: 800; letter-spacing: 5px;
+      color: #2bd4ff; margin-bottom: 4px; }
+    .pause-row { display: flex; gap: 10px; width: 100%; }
+    .pause-ctrl { flex: 1; padding: 10px 12px; border: 1px solid rgba(43,212,255,0.22);
+      border-radius: 12px; background: rgba(43,212,255,0.07); color: rgba(255,255,255,0.82);
+      font-size: 12px; font-weight: 700; cursor: pointer; letter-spacing: 0.5px;
+      text-align: center; font-family: inherit; }
+    .pause-ctrl:active { background: rgba(43,212,255,0.16); }
+    .pause-action { width: 100%; padding: 13px 20px; border: none; border-radius: 14px;
+      font-size: 16px; font-weight: 800; cursor: pointer; letter-spacing: 1px;
+      font-family: inherit; }
+    .pause-resume { background: #2bd47a; color: #06121f; }
+    .pause-resume:active { opacity: 0.85; }
+    .pause-quit { background: rgba(226,59,90,0.2); color: #ff6c86;
+      border: 1px solid rgba(226,59,90,0.35); }
+    .pause-quit:active { opacity: 0.8; }
+
+    /* ---- Info / controls modal ---- */
+    #infoModal { display: none; position: fixed; inset: 0; z-index: 40;
+      background: rgba(6,18,31,0.75); backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px); align-items: center; justify-content: center;
+      padding: 20px; }
+    #infoModal.active { display: flex; }
+    .info-panel { background: rgba(8,22,40,0.92); border: 1px solid rgba(43,212,255,0.14);
+      border-radius: 18px; padding: 26px 28px; max-width: min(460px, 100%);
+      width: 100%; position: relative; }
+    .info-panel h2 { font-size: 19px; font-weight: 800; letter-spacing: 4px;
+      color: #2bd4ff; margin-bottom: 18px; text-align: center; }
+    .info-section { margin-bottom: 14px; }
+    .info-section:last-child { margin-bottom: 0; }
+    .info-label { font-size: 10px; font-weight: 800; letter-spacing: 2px;
+      opacity: 0.4; margin-bottom: 7px; }
+    .info-section p { font-size: 13px; line-height: 1.75; opacity: 0.82; }
+    .info-key { display: inline-block; padding: 1px 6px; background: rgba(43,212,255,0.14);
+      border-radius: 4px; font-size: 12px; font-weight: 700; letter-spacing: 0; }
+    .info-close { position: absolute; top: 14px; right: 14px; width: 28px; height: 28px;
+      border: none; border-radius: 50%; background: rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.65); font-size: 15px; cursor: pointer; pointer-events: auto;
+      display: flex; align-items: center; justify-content: center; font-family: inherit; }
+    .info-close:active { opacity: 0.65; }
+    /* show/hide desktop vs mobile section based on touch support */
+    .info-desktop { display: block; }
+    .info-mobile  { display: none; }
+    body.touch-device .info-desktop { display: none; }
+    body.touch-device .info-mobile  { display: block; }
 
     /* ---- virtual joystick (touch) ---- */
     #joy { display: none; position: fixed; width: 120px; height: 120px; margin: -60px 0 0 -60px;
@@ -84,14 +151,85 @@
       <span class="team"><span class="score far" id="scoreFar">0</span><span class="dot far" id="dotFar"></span></span>
     </div>
     <div id="callout">0–0–2</div>
-    <div id="levelBadge">INTERMEDIATE</div>
     <div id="banner"></div>
     <div id="shotTag"></div>
     <button id="serveBtn">SERVE</button>
-    <button id="camBtn">CAM ▶</button>
+
+    <!-- top-right: difficulty badge + pause -->
+    <div class="btns-tr">
+      <div id="levelBadge">INTERMEDIATE</div>
+      <button id="pauseBtn" class="hud-btn">II PAUSE</button>
+    </div>
+
+    <!-- bottom-left: camera + mute -->
+    <div class="btns-bl">
+      <button id="camBtn" class="hud-btn">CAM ▶</button>
+      <button id="muteBtn" class="hud-btn">♪ OFF</button>
+    </div>
+
+    <!-- bottom-right: info -->
+    <div class="btns-br">
+      <button id="infoBtn" class="hud-btn">? CONTROLS</button>
+    </div>
   </div>
 
   <div id="joy"><div id="joyKnob"></div></div>
+
+  <!-- Pause modal -->
+  <div id="pauseModal">
+    <div class="pause-panel">
+      <h2>PAUSED</h2>
+      <div class="pause-row">
+        <button class="pause-ctrl" id="pauseMuteBtn">♪ OFF</button>
+        <button class="pause-ctrl" id="pauseGenreBtn">UPBEAT</button>
+      </div>
+      <button class="pause-action pause-resume" id="resumeBtn">RESUME</button>
+      <button class="pause-action pause-quit"   id="quitBtn">QUIT TO MENU</button>
+    </div>
+  </div>
+
+  <!-- Controls / instructions modal -->
+  <div id="infoModal">
+    <div class="info-panel">
+      <button class="info-close" id="infoCloseBtn">✕</button>
+      <h2>CONTROLS</h2>
+
+      <div class="info-section info-desktop">
+        <div class="info-label">DESKTOP</div>
+        <p>
+          <span class="info-key">W A S D</span> / <span class="info-key">↑ ← ↓ →</span> — move<br>
+          <span class="info-key">Mouse</span> — aim left / right<br>
+          <span class="info-key">Space</span> / left-click — drive (power)<br>
+          <span class="info-key">V</span> / right-click — drop / dink (touch)<br>
+          <span class="info-key">B</span> / shift-click — lob<br>
+          <span class="info-key">Enter</span> / <span class="info-key">Space</span> — serve<br>
+          <span class="info-key">C</span> — cycle camera angle
+        </p>
+      </div>
+
+      <div class="info-section info-mobile">
+        <div class="info-label">TOUCH</div>
+        <p>
+          <strong>Left thumb</strong> — virtual joystick to move<br>
+          <strong>Right thumb swipe</strong> — swing &amp; aim<br>
+          &nbsp;&nbsp;Hard / long swipe = <em>drive</em> (power)<br>
+          &nbsp;&nbsp;Short / gentle swipe = <em>drop / dink</em><br>
+          &nbsp;&nbsp;Flick upward = <em>lob</em><br>
+          Drag right thumb left/right to aim cross-court<br>
+          <strong>SERVE button</strong> — tap to serve
+        </p>
+      </div>
+
+      <div class="info-section">
+        <div class="info-label">SCORING</div>
+        <p>
+          Side-out doubles to 11, win by 2.<br>
+          Only the serving team scores.<br>
+          Kitchen (NVZ) — no volleys inside the line.
+        </p>
+      </div>
+    </div>
+  </div>
 
   <div id="menu">
     <h1>PICKLEBALL 3D</h1>
@@ -102,8 +240,8 @@
       <button data-diff="hard">ADVANCED</button>
     </div>
     <div class="hint">
-      <b>Desktop:</b> WASD / arrows move · mouse aims · Space = drive · V = drop/dink · B = lob · Enter / Space serves · C = camera<br/>
-      <b>Touch:</b> left thumb = move · right thumb = swing &amp; aim (hard swipe = power, soft = touch, flick up = lob)
+      <b>Desktop:</b> WASD move · mouse aim · Space drive · V drop · B lob · C camera<br/>
+      <b>Touch:</b> left thumb move · right thumb swing &amp; aim
     </div>
   </div>
 
