@@ -8,18 +8,114 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100%; overflow: hidden; background: #06121f;
-      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #fff;
+      font-family: "Avenir Next", "Segoe UI", "Trebuchet MS", sans-serif; color: #fff;
       -webkit-user-select: none; user-select: none; touch-action: none; }
     #game { display: block; position: fixed; inset: 0; }
 
     /* ---- Start menu ---- */
-    #menu { position: fixed; inset: 0; display: flex; flex-direction: column;
-      align-items: center; justify-content: center; gap: 22px; z-index: 30;
-      background: radial-gradient(circle at 50% 35%, #143052, #06121f 70%); }
-    #menu h1 { font-size: clamp(28px, 7vw, 54px); letter-spacing: 2px; font-weight: 800;
-      text-shadow: 0 2px 18px rgba(43,212,255,0.4); }
-    #menu p { opacity: 0.7; font-size: 14px; max-width: 320px; text-align: center; line-height: 1.5; }
-    .menu-ball { width: 52px; height: 52px; border-radius: 50%;
+    #menu {
+      --menu-bg: #081521;
+      --menu-surface: rgba(7, 16, 28, 0.8);
+      --menu-surface-strong: rgba(9, 22, 38, 0.92);
+      --menu-border: rgba(160, 224, 255, 0.12);
+      --menu-border-strong: rgba(118, 214, 255, 0.4);
+      --menu-text-soft: rgba(228, 242, 255, 0.72);
+      --menu-accent: #7ef0ff;
+      --menu-accent-2: #c9ff58;
+      --menu-shadow: 0 28px 80px rgba(0, 0, 0, 0.42);
+      --menu-radius-xl: 30px;
+      --menu-radius-lg: 22px;
+      --menu-radius-md: 16px;
+      --menu-fast: 0.18s;
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      display: block;
+      padding: max(20px, env(safe-area-inset-top, 0px)) 20px max(20px, env(safe-area-inset-bottom, 0px));
+      overflow-y: auto;
+      overflow-x: hidden;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-y;
+      background:
+        radial-gradient(circle at 18% 18%, rgba(72, 161, 255, 0.14), transparent 30%),
+        radial-gradient(circle at 82% 16%, rgba(126, 240, 255, 0.1), transparent 24%),
+        linear-gradient(145deg, #07111b 8%, #081521 54%, #0f2236 100%);
+    }
+    .menu-shell {
+      position: relative;
+      width: min(1040px, 100%);
+      min-height: min(640px, calc(100vh - 40px));
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      padding: 18px;
+      border: 1px solid var(--menu-border);
+      border-radius: 26px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.01)),
+        rgba(6, 14, 24, 0.88);
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      overflow: hidden;
+    }
+    .menu-shell::before,
+    .menu-shell::after {
+      content: "";
+      position: absolute;
+      inset: auto;
+      border-radius: 50%;
+      pointer-events: none;
+      filter: blur(8px);
+    }
+    .menu-shell::before {
+      width: 180px;
+      height: 180px;
+      top: -110px;
+      right: -60px;
+      background: radial-gradient(circle, rgba(126,240,255,0.08), transparent 68%);
+    }
+    .menu-shell::after {
+      width: 160px;
+      height: 160px;
+      left: -70px;
+      bottom: -120px;
+      background: radial-gradient(circle, rgba(201,255,88,0.05), transparent 70%);
+    }
+    .menu-hero,
+    .menu-panel {
+      position: relative;
+      z-index: 1;
+      animation: menuFadeUp 0.6s ease both;
+    }
+    .menu-panel { animation-delay: 0.08s; }
+    .menu-hero {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 2px 2px 0;
+    }
+    .menu-hero-copy { display: flex; flex-direction: column; gap: 10px; flex: 1; min-width: 0; }
+    #menu h1 {
+      font-family: "Avenir Next Condensed", "Arial Narrow", "Trebuchet MS", sans-serif;
+      font-size: clamp(28px, 5.2vw, 56px);
+      line-height: 1;
+      letter-spacing: 0.5px;
+      font-weight: 800;
+      text-transform: uppercase;
+      white-space: nowrap;
+      text-shadow: 0 6px 26px rgba(0,0,0,0.28);
+    }
+    #menu p {
+      max-width: 640px;
+      color: var(--menu-text-soft);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .menu-ball { width: 54px; height: 54px; border-radius: 50%;
       background:
         radial-gradient(circle at 50% 24%, rgba(0,0,0,.30) 2.4px, transparent 3.1px),
         radial-gradient(circle at 27% 42%, rgba(0,0,0,.30) 2.4px, transparent 3.1px),
@@ -35,40 +131,347 @@
       12% { transform: translateY(2px) scaleY(.88); }
       50% { transform: translateY(-26px) scaleY(1.04); }
     }
-    .diffs { display: flex; flex-direction: column; gap: 12px; width: min(280px, 80vw); }
-    .diffs button { padding: 14px 18px; border: none; border-radius: 12px; font-size: 17px;
-      font-weight: 700; color: #0a1420; cursor: pointer; transition: transform 0.1s; }
-    .diffs button:active { transform: scale(0.97); }
-    .diffs button { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-    .diffs button[data-diff="4.0"] { background: #2bd47a; }
-    .diffs button[data-diff="4.5"] { background: #ffb43c; }
-    .diffs button[data-diff="5.0"] { background: #e23b5a; color: #fff; }
-    .dupr-rating { font-size: 20px; font-weight: 800; line-height: 1.1; }
-    .dupr-label  { font-size: 11px; font-weight: 600; letter-spacing: 1.5px; opacity: 0.75; }
-    .hint { font-size: 12px; opacity: 0.55; max-width: 340px; text-align: center; line-height: 1.6; }
-    .menu-group { width: min(340px, 84vw); display: flex; flex-direction: column; gap: 10px; }
-    .menu-label { font-size: 11px; font-weight: 800; letter-spacing: 2px; opacity: 0.5; text-align: center; }
-    .menu-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
-    .menu-row label { display: flex; align-items: center; gap: 6px; font-size: 15px;
-      font-weight: 600; cursor: pointer; opacity: 0.85; }
-    .menu-row input[type="radio"] { accent-color: #2bd4ff; width: 15px; height: 15px; cursor: pointer; }
-    .menu-pills { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
-    .menu-pill { position: relative; }
-    .menu-pill input { position: absolute; opacity: 0; pointer-events: none; }
-    .menu-pill span {
-      display: inline-flex; align-items: center; justify-content: center; min-width: 98px;
-      padding: 10px 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.14);
-      background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.82);
-      font-size: 13px; font-weight: 700; letter-spacing: 0.8px;
-      transition: transform 0.12s, border-color 0.12s, background 0.12s, color 0.12s, opacity 0.12s;
+    #menuSummary {
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 1.4px;
+      color: rgba(218, 236, 244, 0.7);
+      text-transform: uppercase;
     }
-    .menu-pill input:checked + span {
-      background: rgba(43,212,255,0.18); border-color: rgba(43,212,255,0.48); color: #fff;
+    .menu-panel {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      padding: 16px;
+      border-radius: 20px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)),
+        rgba(7, 16, 28, 0.82);
+    }
+    .menu-group { display: flex; flex-direction: column; gap: 12px; }
+    .menu-group.group-full { grid-column: 1 / -1; }
+    .menu-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1.8px;
+      color: rgba(232, 244, 255, 0.52);
+      text-transform: uppercase;
+    }
+    .menu-label em {
+      font-style: normal;
+      font-size: 10px;
+      letter-spacing: 1.2px;
+      color: rgba(255,255,255,0.36);
+    }
+    .menu-subhint {
+      min-height: 16px;
+      font-size: 11px;
+      line-height: 1.45;
+      color: rgba(233, 244, 255, 0.48);
+    }
+    .menu-options-venue {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .menu-options-time,
+    .menu-options-palette,
+    .menu-options-diff {
+      display: grid;
+      gap: 10px;
+    }
+    .menu-options-time { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .menu-options-palette { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .menu-options-diff { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .menu-option {
+      position: relative;
+      display: block;
+      cursor: pointer;
+    }
+    .menu-option input {
+      position: absolute;
+      opacity: 0;
+      inset: 0;
+      pointer-events: none;
+    }
+    .menu-card,
+    .menu-seg,
+    .menu-swatch,
+    .menu-diff-card {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.03);
+      transition:
+        transform var(--menu-fast) ease,
+        border-color var(--menu-fast) ease,
+        box-shadow var(--menu-fast) ease,
+        background var(--menu-fast) ease,
+        opacity var(--menu-fast) ease;
+    }
+    .menu-card::after,
+    .menu-seg::after,
+    .menu-swatch::after,
+    .menu-diff-card::after {
+      content: "✓";
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #36d06f;
+      color: #07111b;
+      font-size: 13px;
+      font-weight: 900;
+      opacity: 0;
+      transform: scale(0.7);
+      transition: opacity var(--menu-fast) ease, transform var(--menu-fast) ease;
+      box-shadow: 0 6px 16px rgba(54,208,111,0.32);
+      z-index: 2;
+    }
+    .menu-card:hover,
+    .menu-seg:hover,
+    .menu-swatch:hover,
+    .menu-diff-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(126, 240, 255, 0.24);
+    }
+    .menu-option input:focus-visible + .menu-card,
+    .menu-option input:focus-visible + .menu-seg,
+    .menu-option input:focus-visible + .menu-swatch,
+    .menu-option input:focus-visible + .menu-diff-card {
+      outline: 2px solid rgba(126, 240, 255, 0.85);
+      outline-offset: 3px;
+    }
+    .menu-option input:checked + .menu-card,
+    .menu-option input:checked + .menu-seg,
+    .menu-option input:checked + .menu-swatch,
+    .menu-option input:checked + .menu-diff-card {
       transform: translateY(-1px);
+      border-color: rgba(54,208,111,0.72);
+      background: rgba(54,208,111,0.11);
+      box-shadow: 0 10px 22px rgba(0,0,0,0.16), inset 0 0 0 1px rgba(54,208,111,0.28);
     }
-    .menu-pill input:disabled + span { opacity: 0.35; }
-    .menu-group.is-hidden { display: none; }
-    .menu-subhint { font-size: 11px; line-height: 1.4; text-align: center; opacity: 0.5; min-height: 15px; }
+    .menu-option input:checked + .menu-card::after,
+    .menu-option input:checked + .menu-seg::after,
+    .menu-option input:checked + .menu-swatch::after,
+    .menu-option input:checked + .menu-diff-card::after {
+      opacity: 1;
+      transform: scale(1);
+    }
+    .menu-card {
+      min-height: 116px;
+      padding: 12px;
+      border-radius: 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .menu-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.32));
+    }
+    .menu-card > * { position: relative; z-index: 1; }
+    .venue-park {
+      background:
+        linear-gradient(180deg, rgba(20,48,82,0.05), rgba(6,12,18,0.42)),
+        linear-gradient(160deg, #123a25 8%, #204f2f 54%, #122032 100%);
+    }
+    .venue-indoor {
+      background:
+        linear-gradient(180deg, rgba(250,252,255,0.1), rgba(21,37,58,0.36)),
+        linear-gradient(155deg, #25486c 10%, #46698e 45%, #c5d7e8 100%);
+    }
+    .venue-tropical {
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.08), rgba(10,18,25,0.36)),
+        linear-gradient(155deg, #0b5363 5%, #2f8a59 48%, #d59b42 100%);
+    }
+    .menu-card-tag {
+      width: fit-content;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: rgba(6, 14, 24, 0.4);
+      border: 1px solid rgba(255,255,255,0.14);
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: rgba(245, 250, 255, 0.78);
+    }
+    .menu-card-title {
+      font-size: 16px;
+      font-weight: 800;
+      line-height: 1.1;
+    }
+    .menu-card-copy {
+      font-size: 10px;
+      line-height: 1.35;
+      color: rgba(239, 247, 255, 0.76);
+    }
+    .menu-seg {
+      min-height: 64px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 4px;
+    }
+    .menu-seg strong,
+    .menu-swatch strong,
+    .menu-diff-card strong {
+      display: block;
+      font-size: 14px;
+      font-weight: 800;
+      color: #fff;
+    }
+    .menu-seg span,
+    .menu-swatch span,
+    .menu-diff-card span {
+      display: block;
+      font-size: 10px;
+      line-height: 1.35;
+      color: rgba(232, 244, 255, 0.62);
+    }
+    .menu-option input:disabled + .menu-seg {
+      opacity: 0.36;
+      transform: none;
+      box-shadow: none;
+      cursor: default;
+    }
+    .menu-swatch {
+      min-height: 72px;
+      padding: 12px 12px 12px 56px;
+      border-radius: 14px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 4px;
+    }
+    .menu-swatch::before {
+      content: "";
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      width: 30px;
+      height: 30px;
+      border-radius: 10px;
+      transform: translateY(-50%);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.18);
+    }
+    .swatch-blue::before {
+      background: linear-gradient(155deg, #4caae0 10%, #1c4d8c 52%, #0c2139 100%);
+    }
+    .swatch-green::before {
+      background: linear-gradient(155deg, #94d48a 5%, #2c7a41 48%, #13261d 100%);
+    }
+    .menu-diff-card {
+      min-height: 106px;
+      padding: 12px;
+      border-radius: 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .menu-diff-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      opacity: 0.9;
+    }
+    .diff-40::before {
+      background: linear-gradient(180deg, rgba(43,212,122,0.18), rgba(43,212,122,0.04));
+    }
+    .diff-45::before {
+      background: linear-gradient(180deg, rgba(255,180,60,0.18), rgba(255,180,60,0.04));
+    }
+    .diff-50::before {
+      background: linear-gradient(180deg, rgba(226,59,90,0.18), rgba(226,59,90,0.04));
+    }
+    .menu-diff-card > * { position: relative; z-index: 1; }
+    .dupr-rating { font-size: 28px; font-weight: 800; line-height: 0.95; }
+    .dupr-label  { font-size: 11px; font-weight: 800; letter-spacing: 1.4px; text-transform: uppercase; }
+    .menu-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding-top: 2px;
+      grid-column: 1 / -1;
+    }
+    #startBtn {
+      width: 100%;
+      min-height: 54px;
+      border: none;
+      border-radius: 14px;
+      padding: 14px 20px;
+      background: linear-gradient(135deg, #baff52 0%, #7ef0ff 100%);
+      color: #05111c;
+      font-size: 16px;
+      font-weight: 900;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      cursor: pointer;
+      box-shadow: 0 18px 36px rgba(126, 240, 255, 0.16);
+      transition: transform var(--menu-fast) ease, box-shadow var(--menu-fast) ease, filter var(--menu-fast) ease;
+      font-family: inherit;
+    }
+    #startBtn:hover { transform: translateY(-2px); box-shadow: 0 20px 42px rgba(126, 240, 255, 0.22); }
+    #startBtn:active { transform: translateY(0) scale(0.985); }
+    .hint {
+      font-size: 11px;
+      line-height: 1.5;
+      color: rgba(228, 242, 255, 0.56);
+    }
+    .hint b { color: rgba(245, 250, 255, 0.84); }
+    @keyframes menuFadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @media (max-width: 980px) {
+      #menu { padding: max(16px, env(safe-area-inset-top, 0px)) 16px max(16px, env(safe-area-inset-bottom, 0px)); }
+      .menu-shell {
+        min-height: auto;
+        padding: 18px;
+      }
+      .menu-hero { align-items: flex-start; gap: 12px; padding: 0; }
+      .menu-panel { padding: 16px; }
+      .menu-options-venue { grid-template-columns: 1fr; }
+      .menu-options-diff { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+    @media (max-width: 640px) {
+      #menu {
+        padding: max(12px, env(safe-area-inset-top, 0px)) 12px max(12px, env(safe-area-inset-bottom, 0px));
+      }
+      .menu-shell {
+        min-height: auto;
+        border-radius: 20px;
+        padding: 16px;
+      }
+      #menu h1 { font-size: clamp(28px, 9vw, 38px); }
+      .menu-ball { display: none; }
+      .menu-panel { grid-template-columns: 1fr; }
+      .menu-options-time,
+      .menu-options-palette,
+      .menu-options-diff { grid-template-columns: 1fr; }
+      .menu-actions {
+        padding: 6px 0 0;
+        background: none;
+      }
+    }
 
     /* ---- HUD ---- */
     #hud { display: none; position: fixed; inset: 0; pointer-events: none; z-index: 20; }
@@ -290,40 +693,132 @@
   </div>
 
   <div id="menu">
-    <div class="menu-ball" aria-hidden="true"></div>
-    <h1>PICKLEBALL 3D</h1>
-    <p>Doubles vs AI — real rules, arcade feel. You + a CPU partner take on two CPUs.</p>
-    <div class="menu-group">
-      <div class="menu-label">VENUE</div>
-      <div class="menu-pills">
-        <label class="menu-pill"><input type="radio" name="venue" value="park" checked><span>Park</span></label>
-        <label class="menu-pill"><input type="radio" name="venue" value="indoor"><span>Indoor</span></label>
-        <label class="menu-pill"><input type="radio" name="venue" value="tropical"><span>Tropical</span></label>
-      </div>
-    </div>
-    <div class="menu-group">
-      <div class="menu-label">COURT COLORS</div>
-      <div class="menu-pills">
-        <label class="menu-pill"><input type="radio" name="palette" value="blue" checked><span>Blue</span></label>
-        <label class="menu-pill"><input type="radio" name="palette" value="green"><span>Green</span></label>
-      </div>
-    </div>
-    <div class="menu-group" id="todGroup">
-      <div class="menu-label">TIME OF DAY</div>
-      <div class="menu-row">
-        <label><input type="radio" name="tod" value="day" checked> Day</label>
-        <label><input type="radio" name="tod" value="night"> Night</label>
-      </div>
-      <div class="menu-subhint" id="todHint"></div>
-    </div>
-    <div class="diffs">
-      <button data-diff="4.0"><span class="dupr-rating">4.0</span><span class="dupr-label">INTERMEDIATE</span></button>
-      <button data-diff="4.5"><span class="dupr-rating">4.5</span><span class="dupr-label">ADVANCED</span></button>
-      <button data-diff="5.0"><span class="dupr-rating">5.0</span><span class="dupr-label">PRO</span></button>
-    </div>
-    <div class="hint">
-      <b>Desktop:</b> WASD move · mouse aim · Space drive · V drop · B lob · C camera<br/>
-      <b>Touch:</b> left thumb move · right thumb swing &amp; aim
+    <div class="menu-shell">
+      <section class="menu-hero">
+        <div class="menu-hero-copy">
+          <div class="menu-ball" aria-hidden="true"></div>
+          <h1>PICKLEBALL 3D</h1>
+          <p>Doubles vs AI with real pickleball rules and tuned arcade contact feel. Pick the setting, choose the level, and get into the match.</p>
+          <div id="menuSummary">Park · Day · Blue Court · DUPR 4.0</div>
+        </div>
+      </section>
+
+      <section class="menu-panel" aria-label="Match setup">
+        <div class="menu-group group-full">
+          <div class="menu-label">Venue <em>Choose the stage</em></div>
+          <div class="menu-options-venue">
+            <label class="menu-option">
+              <input type="radio" name="venue" value="park" checked>
+              <div class="menu-card venue-park">
+                <div class="menu-card-tag">Classic Outdoor</div>
+                <div class="menu-card-title">Park</div>
+                <div class="menu-card-copy">Cool shadows, familiar contrast, and the cleanest tournament feel.</div>
+              </div>
+            </label>
+            <label class="menu-option">
+              <input type="radio" name="venue" value="tropical">
+              <div class="menu-card venue-tropical">
+                <div class="menu-card-tag">Sunset Energy</div>
+                <div class="menu-card-title">Tropical</div>
+                <div class="menu-card-copy">Warmer scenery, brighter edges, and a more stylized atmosphere.</div>
+              </div>
+            </label>
+            <label class="menu-option">
+              <input type="radio" name="venue" value="indoor">
+              <div class="menu-card venue-indoor">
+                <div class="menu-card-tag">House Lights</div>
+                <div class="menu-card-title">Indoor</div>
+                <div class="menu-card-copy">Bright training-hall lighting with no time-of-day changes.</div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div class="menu-group" id="todGroup">
+          <div class="menu-label">Time of Day <em>Outdoor lighting only</em></div>
+          <div class="menu-options-time">
+            <label class="menu-option">
+              <input type="radio" name="tod" value="day" checked>
+              <div class="menu-seg">
+                <strong>Day Match</strong>
+                <span>High visibility and lighter sky tones.</span>
+              </div>
+            </label>
+            <label class="menu-option">
+              <input type="radio" name="tod" value="night">
+              <div class="menu-seg">
+                <strong>Night Match</strong>
+                <span>Glow-heavy court contrast and deeper atmosphere.</span>
+              </div>
+            </label>
+          </div>
+          <div class="menu-subhint" id="todHint"></div>
+        </div>
+
+        <div class="menu-group">
+          <div class="menu-label">Court Palette <em>Color direction</em></div>
+          <div class="menu-options-palette">
+            <label class="menu-option">
+              <input type="radio" name="palette" value="blue" checked>
+              <div class="menu-swatch swatch-blue">
+                <strong>Blue Championship</strong>
+                <span>Cool tournament contrast with brighter kitchen lanes.</span>
+              </div>
+            </label>
+            <label class="menu-option">
+              <input type="radio" name="palette" value="green">
+              <div class="menu-swatch swatch-green">
+                <strong>Green Club</strong>
+                <span>Softer club-court energy with warmer surroundings.</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div class="menu-group group-full">
+          <div class="menu-label">Difficulty <em>DUPR-style opponent level</em></div>
+          <div class="menu-options-diff">
+            <label class="menu-option">
+              <input type="radio" name="difficulty" value="4.0" checked>
+              <div class="menu-diff-card diff-40">
+                <div>
+                  <div class="dupr-rating">4.0</div>
+                  <div class="dupr-label">Intermediate</div>
+                </div>
+                <span>Longer reads, steadier rallies, and more room to shape shots.</span>
+              </div>
+            </label>
+            <label class="menu-option">
+              <input type="radio" name="difficulty" value="4.5">
+              <div class="menu-diff-card diff-45">
+                <div>
+                  <div class="dupr-rating">4.5</div>
+                  <div class="dupr-label">Advanced</div>
+                </div>
+                <span>Sharper movement, stronger placement, and more pressure in transition.</span>
+              </div>
+            </label>
+            <label class="menu-option">
+              <input type="radio" name="difficulty" value="5.0">
+              <div class="menu-diff-card diff-50">
+                <div>
+                  <div class="dupr-rating">5.0</div>
+                  <div class="dupr-label">Pro</div>
+                </div>
+                <span>Fast recognition, tighter windows, and punishing counterplay.</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div class="menu-actions">
+          <button id="startBtn" type="button">Start Match</button>
+          <div class="hint">
+            <b>Desktop:</b> WASD move · mouse aim · Space drive · V drop · B lob · C camera<br/>
+            <b>Touch:</b> left thumb move · right thumb swing &amp; aim
+          </div>
+        </div>
+      </section>
     </div>
   </div>
 

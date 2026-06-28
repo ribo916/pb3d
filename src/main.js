@@ -17,6 +17,27 @@ let last    = 0;
 let running = false;
 let paused  = false;
 
+const MENU_META = {
+  venue: {
+    park: { label: 'Park' },
+    indoor: { label: 'Indoor' },
+    tropical: { label: 'Tropical' }
+  },
+  palette: {
+    blue: { label: 'Blue Court' },
+    green: { label: 'Green Court' }
+  },
+  tod: {
+    day: { label: 'Day' },
+    night: { label: 'Night' }
+  },
+  difficulty: {
+    '4.0': { label: 'DUPR 4.0' },
+    '4.5': { label: 'DUPR 4.5' },
+    '5.0': { label: 'DUPR 5.0' }
+  }
+};
+
 function checkedValue(name, fallback) {
   return (document.querySelector('input[name="' + name + '"]:checked') || {}).value || fallback;
 }
@@ -26,7 +47,8 @@ function readMenuConfig() {
   return {
     venue: venue,
     courtPalette: checkedValue('palette', 'blue'),
-    timeOfDay: venue === 'indoor' ? 'day' : checkedValue('tod', 'day')
+    timeOfDay: venue === 'indoor' ? 'day' : checkedValue('tod', 'day'),
+    difficulty: checkedValue('difficulty', '4.0')
   };
 }
 
@@ -35,11 +57,26 @@ function syncTimeOfDayUI() {
   var todGroup = $('todGroup');
   var todHint = $('todHint');
   var disabled = cfg.venue === 'indoor';
-  todGroup.classList.toggle('is-hidden', disabled);
-  todHint.textContent = disabled ? 'Indoor uses bright house lights only.' : '';
+  if (disabled) {
+    var dayInput = document.querySelector('input[name="tod"][value="day"]');
+    if (dayInput) dayInput.checked = true;
+    cfg.timeOfDay = 'day';
+  }
+  todGroup.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+  todHint.textContent = disabled ? 'Indoor locks the match to bright house lights.' : 'Outdoor venues can switch between bright day and glow-heavy night lighting.';
   document.querySelectorAll('input[name="tod"]').forEach(function (el) {
     el.disabled = disabled;
   });
+  return cfg;
+}
+
+function syncMenuSummary() {
+  var cfg = syncTimeOfDayUI();
+  var venue = MENU_META.venue[cfg.venue] || MENU_META.venue.park;
+  var palette = MENU_META.palette[cfg.courtPalette] || MENU_META.palette.blue;
+  var tod = MENU_META.tod[cfg.timeOfDay] || MENU_META.tod.day;
+  var diff = MENU_META.difficulty[cfg.difficulty] || MENU_META.difficulty['4.0'];
+  $('menuSummary').textContent = venue.label + ' · ' + tod.label + ' · ' + palette.label + ' · ' + diff.label;
   return cfg;
 }
 
@@ -99,7 +136,7 @@ function quitToMenu() {
   paused  = false;
   $('pauseModal').classList.remove('active');
   $('hud').style.display = 'none';
-  $('menu').style.display = 'flex';
+  $('menu').style.display = 'block';
   // Leave the old renderer/context; the next Game() call takes over the canvas.
   game  = null;
   input = null;
@@ -148,22 +185,22 @@ function startMatch(difficulty, config) {
 }
 
 /* ---- difficulty buttons (also unlock audio on first gesture) ---- */
-document.querySelectorAll('[data-diff]').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    audio.unlock();
-    startMatch(btn.getAttribute('data-diff'), readMenuConfig());
-  });
+document.querySelectorAll('input[name="venue"], input[name="palette"], input[name="tod"], input[name="difficulty"]').forEach(function (el) {
+  el.addEventListener('change', syncMenuSummary);
 });
 
-document.querySelectorAll('input[name="venue"]').forEach(function (el) {
-  el.addEventListener('change', syncTimeOfDayUI);
+$('startBtn').addEventListener('click', function () {
+  audio.unlock();
+  var cfg = syncMenuSummary();
+  startMatch(cfg.difficulty, cfg);
 });
 
-syncTimeOfDayUI();
+syncMenuSummary();
 
 window.__pb3dMenu = {
   readConfig: readMenuConfig,
-  syncTimeOfDayUI: syncTimeOfDayUI
+  syncTimeOfDayUI: syncTimeOfDayUI,
+  syncMenuSummary: syncMenuSummary
 };
 
 /* ---- pause button ---- */

@@ -48,12 +48,12 @@ const menuCheck = await page.evaluate(() => {
   var venueIndoor = document.querySelector('input[name="venue"][value="indoor"]');
   var venuePark = document.querySelector('input[name="venue"][value="park"]');
   venueIndoor.checked = true;
-  var afterIndoor = api.syncTimeOfDayUI();
-  var hiddenIndoor = document.getElementById('todGroup').classList.contains('is-hidden');
+  var afterIndoor = api.syncMenuSummary();
+  var disabledIndoor = document.querySelector('input[name="tod"][value="night"]').disabled;
   venuePark.checked = true;
-  var afterPark = api.syncTimeOfDayUI();
-  var hiddenPark = document.getElementById('todGroup').classList.contains('is-hidden');
-  return { afterIndoor, afterPark, hiddenIndoor, hiddenPark };
+  var afterPark = api.syncMenuSummary();
+  var disabledPark = document.querySelector('input[name="tod"][value="night"]').disabled;
+  return { afterIndoor, afterPark, disabledIndoor, disabledPark };
 });
 
 function expect(cond, msg) {
@@ -61,12 +61,12 @@ function expect(cond, msg) {
 }
 
 expect(menuCheck.afterIndoor.timeOfDay === 'day', 'indoor config did not force daytime launch value');
-expect(menuCheck.hiddenIndoor === true, 'indoor selection did not hide time-of-day controls');
-expect(menuCheck.hiddenPark === false, 'park selection did not restore time-of-day controls');
+expect(menuCheck.disabledIndoor === true, 'indoor selection did not disable time-of-day controls');
+expect(menuCheck.disabledPark === false, 'park selection did not restore time-of-day controls');
 
 async function selectOption(name, value) {
   await page.check('input[name="' + name + '"][value="' + value + '"]', { force: true });
-  if (name === 'venue') await page.evaluate(() => window.__pb3dMenu.syncTimeOfDayUI());
+  if (name === 'venue') await page.evaluate(() => window.__pb3dMenu.syncMenuSummary());
 }
 
 async function captureMatch(cfg) {
@@ -75,7 +75,8 @@ async function captureMatch(cfg) {
   await selectOption('palette', cfg.palette);
   if (cfg.tod) await selectOption('tod', cfg.tod);
   await page.screenshot({ path: path.join(OUT, cfg.menuShot) });
-  await page.click('[data-diff="4.5"]');
+  await page.check('input[name="difficulty"][value="4.5"]', { force: true });
+  await page.click('#startBtn');
   await page.waitForTimeout(cfg.wait || 900);
   await page.screenshot({ path: path.join(OUT, cfg.courtShot) });
 }
@@ -91,7 +92,8 @@ await page.reload({ waitUntil: 'networkidle' });
 await selectOption('venue', 'park');
 await selectOption('palette', 'blue');
 await selectOption('tod', 'day');
-await page.click('[data-diff="4.5"]');
+await page.check('input[name="difficulty"][value="4.5"]', { force: true });
+await page.click('#startBtn');
 await page.waitForTimeout(900);
 
 // Drive the match: auto-serve whenever it's the human's serve and keep swinging,
