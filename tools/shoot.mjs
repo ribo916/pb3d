@@ -1,5 +1,5 @@
 /* Visual smoke test: serve a static file server, load the game in headless
- * Chromium, capture day + night menu/match frames, then verify a match flow.
+ * Chromium, capture venue/palette variants, then verify a match flow.
  * Run: node pb3d/tools/shoot.mjs   (uses the repo's playwright dep)
  * Output: pb3d/tools/shots/*.png
  */
@@ -43,19 +43,56 @@ page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 page.on('pageerror', (e) => errors.push(String(e)));
 
 await page.goto(base, { waitUntil: 'networkidle' });
-await page.screenshot({ path: path.join(OUT, 'menu-day.png') });
-// start an intermediate (4.5) match
-await page.click('[data-diff="4.5"]');
-await page.waitForTimeout(800);
-await page.screenshot({ path: path.join(OUT, 'court.png') });
+const menuCheck = await page.evaluate(() => {
+  var api = window.__pb3dMenu;
+  var venueIndoor = document.querySelector('input[name="venue"][value="indoor"]');
+  var venuePark = document.querySelector('input[name="venue"][value="park"]');
+  venueIndoor.checked = true;
+  var afterIndoor = api.syncTimeOfDayUI();
+  var hiddenIndoor = document.getElementById('todGroup').classList.contains('is-hidden');
+  venuePark.checked = true;
+  var afterPark = api.syncTimeOfDayUI();
+  var hiddenPark = document.getElementById('todGroup').classList.contains('is-hidden');
+  return { afterIndoor, afterPark, hiddenIndoor, hiddenPark };
+});
+
+function expect(cond, msg) {
+  if (!cond) throw new Error(msg);
+}
+
+expect(menuCheck.afterIndoor.timeOfDay === 'day', 'indoor config did not force daytime launch value');
+expect(menuCheck.hiddenIndoor === true, 'indoor selection did not hide time-of-day controls');
+expect(menuCheck.hiddenPark === false, 'park selection did not restore time-of-day controls');
+
+async function selectOption(name, value) {
+  await page.check('input[name="' + name + '"][value="' + value + '"]', { force: true });
+  if (name === 'venue') await page.evaluate(() => window.__pb3dMenu.syncTimeOfDayUI());
+}
+
+async function captureMatch(cfg) {
+  await page.reload({ waitUntil: 'networkidle' });
+  await selectOption('venue', cfg.venue);
+  await selectOption('palette', cfg.palette);
+  if (cfg.tod) await selectOption('tod', cfg.tod);
+  await page.screenshot({ path: path.join(OUT, cfg.menuShot) });
+  await page.click('[data-diff="4.5"]');
+  await page.waitForTimeout(cfg.wait || 900);
+  await page.screenshot({ path: path.join(OUT, cfg.courtShot) });
+}
+
+await captureMatch({ venue: 'park', palette: 'blue', tod: 'day', menuShot: 'menu-day.png', courtShot: 'court.png', wait: 850 });
+await captureMatch({ venue: 'park', palette: 'green', tod: 'night', menuShot: 'menu-park-green-night.png', courtShot: 'court-night.png', wait: 950 });
+await captureMatch({ venue: 'tropical', palette: 'blue', tod: 'day', menuShot: 'menu-tropical-day.png', courtShot: 'court-tropical-day.png', wait: 850 });
+await captureMatch({ venue: 'tropical', palette: 'green', tod: 'night', menuShot: 'menu-tropical-night.png', courtShot: 'court-tropical-night.png', wait: 950 });
+await captureMatch({ venue: 'indoor', palette: 'blue', menuShot: 'menu-indoor-blue.png', courtShot: 'court-indoor-blue.png', wait: 850 });
+await captureMatch({ venue: 'indoor', palette: 'green', menuShot: 'menu-indoor-green.png', courtShot: 'court-indoor-green.png', wait: 850 });
 
 await page.reload({ waitUntil: 'networkidle' });
-await page.click('input[name="tod"][value="night"]');
-await page.waitForTimeout(150);
-await page.screenshot({ path: path.join(OUT, 'menu-night.png') });
+await selectOption('venue', 'park');
+await selectOption('palette', 'blue');
+await selectOption('tod', 'day');
 await page.click('[data-diff="4.5"]');
 await page.waitForTimeout(900);
-await page.screenshot({ path: path.join(OUT, 'court-night.png') });
 
 // Drive the match: auto-serve whenever it's the human's serve and keep swinging,
 // for a few seconds, capturing mid-rally frames and tracking state transitions.

@@ -1,9 +1,7 @@
 /* ============================================================================
- * scene.js — Builds the 3D world: court, net, park surroundings (grass, trees,
- * fence), lighting, sky and the ball. Returns handles the game loop animates.
- * Ported from the original Picklelife js/scene.js (ESM Three). Night mode,
- * family/farm venue (dog/speaker/snack table/weeds/bales), and the damaged
- * court are intentionally dropped for the standalone.
+ * scene.js — Builds the 3D world: court, venue surroundings, lighting, sky and
+ * the ball. Venue, court palette and outdoor time-of-day are selected from the
+ * pre-match menu so visual variety stays centralized here.
  * ==========================================================================*/
 'use strict';
 
@@ -12,62 +10,143 @@ import { COURT } from './constants.js';
 
 const C = COURT;
 
-const TOD_PRESETS = {
-  day: {
-    bgColor: 0x6ab4e8, fogColor: 0x9ed0ec, fogNear: 70,  fogFar: 220,
-    skyTop:  0x1a6fa8, skyBot:   0x8ed4f0,
-    hemiSky: 0xb8deff, hemiGnd:  0x3d6a10, hemiInt: 0.9,
-    sunColor: 0xfff8e8, sunInt: 2.2, sunPos: [6, 20, 8],
-    fillColor: 0xddeeff, fillInt: 0.5,
-    court: '#1a4a8a', kitchen: '#4a9fd8',
-    apron: 0x162b10, surround: 0x0a2a1e,
-    ballEmissive: 0x3a9e00, ballEmissiveInt: 0.55,
-    ballGlow: 0x6cff14, ballGlowOpacity: 0.18,
-    trail: 0x66e000, trailOpacity: 0.5
+const COURT_PALETTES = {
+  blue: {
+    court: '#1a4a8a',
+    kitchen: '#4a9fd8',
+    surround: 0x0a2a1e,
+    indoorSurround: 0x24466f
   },
-  night: {
-    bgColor: 0x02050c, fogColor: 0x07111d, fogNear: 28,  fogFar: 105,
-    skyTop:  0x01040b, skyBot:   0x081a2f,
-    hemiSky: 0x11233a, hemiGnd:  0x030608, hemiInt: 0.16,
-    sunColor: 0xdde7ff, sunInt: 1.7, sunPos: [0, 21, 7],
-    fillColor: 0x8fb6ff, fillInt: 0.55,
-    court: '#2558ab', kitchen: '#5db6f2',
-    apron: 0x08110a, surround: 0x07161c,
-    ballEmissive: 0x56c400, ballEmissiveInt: 0.95,
-    ballGlow: 0x96ff46, ballGlowOpacity: 0.26,
-    trail: 0x8dff42, trailOpacity: 0.68
+  green: {
+    court: '#1d6a3a',
+    kitchen: '#6fbe78',
+    surround: 0x4a874f,
+    indoorSurround: 0x4a874f
   }
 };
 
+const OUTDOOR_TOD_PRESETS = {
+  day: {
+    bgColor: 0x6ab4e8, fogColor: 0x9ed0ec, fogNear: 70, fogFar: 220,
+    skyTop: 0x1a6fa8, skyBot: 0x8ed4f0,
+    hemiSky: 0xb8deff, hemiGnd: 0x3d6a10, hemiInt: 0.9,
+    sunColor: 0xfff8e8, sunInt: 2.2, sunPos: [6, 20, 8],
+    fillColor: 0xddeeff, fillInt: 0.5,
+    ballEmissive: 0x3a9e00, ballEmissiveInt: 0.55,
+    ballGlow: 0x6cff14, ballGlowOpacity: 0.18,
+    trail: 0x66e000, trailOpacity: 0.5,
+    lampSet: null
+  },
+  night: {
+    bgColor: 0x02050c, fogColor: 0x07111d, fogNear: 28, fogFar: 105,
+    skyTop: 0x01040b, skyBot: 0x081a2f,
+    hemiSky: 0x11233a, hemiGnd: 0x030608, hemiInt: 0.16,
+    sunColor: 0xdde7ff, sunInt: 1.7, sunPos: [0, 21, 7],
+    fillColor: 0x8fb6ff, fillInt: 0.55,
+    ballEmissive: 0x56c400, ballEmissiveInt: 0.95,
+    ballGlow: 0x96ff46, ballGlowOpacity: 0.26,
+    trail: 0x8dff42, trailOpacity: 0.68,
+    lampSet: 'outdoor'
+  }
+};
+
+const VENUE_PRESETS = {
+  park: {
+    outdoor: true,
+    apron: 0x162b10,
+    tod: {
+      day: {},
+      night: { apron: 0x08110a }
+    }
+  },
+  tropical: {
+    outdoor: true,
+    apron: 0x2f5f20,
+    tod: {
+      day: {
+        bgColor: 0x86d7f6, fogColor: 0xc6f0fb, skyTop: 0x1f9bd1, skyBot: 0xb8f4ff,
+        hemiSky: 0xd1efff, hemiGnd: 0x54722a, sunInt: 2.05, sunPos: [5, 19, 7],
+        fillColor: 0xf8f2da, fillInt: 0.42
+      },
+      night: {
+        bgColor: 0x030914, fogColor: 0x0a1623, skyTop: 0x041225, skyBot: 0x0b2741,
+        hemiSky: 0x173450, hemiGnd: 0x07110b, fillColor: 0xa6d2ff, fillInt: 0.6
+      }
+    }
+  },
+  indoor: {
+    outdoor: false,
+    bgColor: 0xd8e4ef, fogColor: 0xe6eef5, fogNear: 85, fogFar: 190,
+    hemiSky: 0xf3f8ff, hemiGnd: 0x9da8b1, hemiInt: 1.05,
+    fillColor: 0xeaf2fa, fillInt: 0.85,
+    fillPos: [-7, 10, -4],
+    ballEmissive: 0x429900, ballEmissiveInt: 0.42,
+    ballGlow: 0x7dff36, ballGlowOpacity: 0.12,
+    trail: 0x70e529, trailOpacity: 0.42,
+    apron: 0xcad2d8,
+    hallFloor: 0xa6b3bc,
+    wallLower: 0xd6dde4,
+    wallUpper: 0xf3f7fb,
+    steel: 0x7d8c98,
+    curtain: 0x2d4e73,
+    ceiling: 0xdfe6ed,
+    courtShadow: 0.22
+  }
+};
+
+function resolveOptions(opts) {
+  var venue = VENUE_PRESETS[opts && opts.venue] ? opts.venue : 'park';
+  var palette = COURT_PALETTES[opts && opts.courtPalette] ? opts.courtPalette : 'blue';
+  var tod = venue === 'indoor' ? 'day' : ((opts && opts.timeOfDay) === 'night' ? 'night' : 'day');
+  return { venue: venue, courtPalette: palette, timeOfDay: tod };
+}
+
+function resolvePreset(opts) {
+  var cfg = resolveOptions(opts);
+  var venue = VENUE_PRESETS[cfg.venue];
+  var palette = COURT_PALETTES[cfg.courtPalette];
+  if (!venue.outdoor) return Object.assign({ venueKey: cfg.venue }, venue, palette);
+  return Object.assign(
+    { venueKey: cfg.venue },
+    OUTDOOR_TOD_PRESETS[cfg.timeOfDay],
+    { apron: venue.apron },
+    venue.tod[cfg.timeOfDay] || {},
+    palette
+  );
+}
+
 function courtTexture(colors) {
-  var courtCol   = (colors && colors.court)   || '#1a4a8a';
-  var kitchenCol = (colors && colors.kitchen) || '#4a9fd8';
   var W = 1024, H = 1024;
-  var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  var cv = document.createElement('canvas');
+  cv.width = W;
+  cv.height = H;
   var g = cv.getContext('2d');
-  // map court meters to pixels
-  var mPerPxX = (2 * C.HALF_W) / W, mPerPxZ = (2 * C.HALF_L) / H;
+  var mPerPxX = (2 * C.HALF_W) / W;
+  var mPerPxZ = (2 * C.HALF_L) / H;
   function X(m) { return (m + C.HALF_W) / mPerPxX; }
   function Z(m) { return (m + C.HALF_L) / mPerPxZ; }
-  // playing surface
-  g.fillStyle = courtCol; g.fillRect(0, 0, W, H);
-  // non-volley zone (kitchen): lighter blue band (±7ft of net)
-  g.fillStyle = kitchenCol;
+
+  g.fillStyle = colors.court;
+  g.fillRect(0, 0, W, H);
+  g.fillStyle = colors.kitchen;
   g.fillRect(0, Z(-C.KITCHEN), W, Z(C.KITCHEN) - Z(-C.KITCHEN));
-  g.strokeStyle = '#f4f7fb'; g.lineWidth = 7; g.lineCap = 'square';
-  function line(x1, z1, x2, z2) { g.beginPath(); g.moveTo(X(x1), Z(z1)); g.lineTo(X(x2), Z(z2)); g.stroke(); }
-  // boundary
+  g.strokeStyle = '#f4f7fb';
+  g.lineWidth = 7;
+  g.lineCap = 'square';
+  function line(x1, z1, x2, z2) {
+    g.beginPath();
+    g.moveTo(X(x1), Z(z1));
+    g.lineTo(X(x2), Z(z2));
+    g.stroke();
+  }
   line(-C.HALF_W, -C.HALF_L, C.HALF_W, -C.HALF_L);
   line(-C.HALF_W, C.HALF_L, C.HALF_W, C.HALF_L);
   line(-C.HALF_W, -C.HALF_L, -C.HALF_W, C.HALF_L);
   line(C.HALF_W, -C.HALF_L, C.HALF_W, C.HALF_L);
-  // kitchen lines
   line(-C.HALF_W, -C.KITCHEN, C.HALF_W, -C.KITCHEN);
   line(-C.HALF_W, C.KITCHEN, C.HALF_W, C.KITCHEN);
-  // center service lines (baseline to kitchen, both halves)
   line(0, -C.HALF_L, 0, -C.KITCHEN);
   line(0, C.KITCHEN, 0, C.HALF_L);
-  // subtle texture noise
   for (var i = 0; i < 4000; i++) {
     g.fillStyle = 'rgba(255,255,255,' + (Math.random() * 0.03) + ')';
     g.fillRect(Math.random() * W, Math.random() * H, 2, 2);
@@ -80,51 +159,69 @@ function courtTexture(colors) {
 
 function netTexture() {
   var W = 512, H = 128;
-  var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  var cv = document.createElement('canvas');
+  cv.width = W;
+  cv.height = H;
   var g = cv.getContext('2d');
   g.clearRect(0, 0, W, H);
-  g.strokeStyle = 'rgba(20,24,30,0.55)'; g.lineWidth = 1.5;
-  for (var x = 0; x <= W; x += 10) { g.beginPath(); g.moveTo(x, 8); g.lineTo(x, H); g.stroke(); }
-  for (var y = 8; y <= H; y += 10) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
-  // white tape along top
-  g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, 9);
+  g.strokeStyle = 'rgba(20,24,30,0.55)';
+  g.lineWidth = 1.5;
+  for (var x = 0; x <= W; x += 10) {
+    g.beginPath();
+    g.moveTo(x, 8);
+    g.lineTo(x, H);
+    g.stroke();
+  }
+  for (var y = 8; y <= H; y += 10) {
+    g.beginPath();
+    g.moveTo(0, y);
+    g.lineTo(W, y);
+    g.stroke();
+  }
+  g.fillStyle = '#ffffff';
+  g.fillRect(0, 0, W, 9);
   var tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
 
-// Translucent chain-link panel texture (diamond mesh).
 function fenceTexture() {
   var W = 256, H = 96;
-  var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  var cv = document.createElement('canvas');
+  cv.width = W;
+  cv.height = H;
   var g = cv.getContext('2d');
   g.clearRect(0, 0, W, H);
-  g.strokeStyle = 'rgba(210,220,228,0.85)'; g.lineWidth = 1.5;
+  g.strokeStyle = 'rgba(210,220,228,0.85)';
+  g.lineWidth = 1.5;
   var s = 16;
   for (var d = -H; d < W; d += s) {
-    g.beginPath(); g.moveTo(d, 0); g.lineTo(d + H, H); g.stroke();
-    g.beginPath(); g.moveTo(d + H, 0); g.lineTo(d, H); g.stroke();
+    g.beginPath();
+    g.moveTo(d, 0);
+    g.lineTo(d + H, H);
+    g.stroke();
+    g.beginPath();
+    g.moveTo(d + H, 0);
+    g.lineTo(d, H);
+    g.stroke();
   }
   var tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
 
-// A simple low-poly tree: a tapered trunk plus a couple of rounded canopies.
-function makeTree(scale) {
+function makeTree(scale, greens) {
   var grp = new THREE.Group();
   var trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1 });
   var trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, 1.6, 7), trunkMat);
-  trunk.position.y = 0.8; // no castShadow: trees sit outside the shadow frustum
+  trunk.position.y = 0.8;
   grp.add(trunk);
-  // two greens so the foliage doesn't read as one flat blob
-  var greens = [0x3f8a3a, 0x4fa044];
   var blobs = [[0, 1.9, 0, 0.95], [0.45, 1.7, 0.2, 0.7], [-0.4, 1.75, -0.2, 0.65]];
   for (var i = 0; i < blobs.length; i++) {
     var b = blobs[i];
     var leaf = new THREE.Mesh(
       new THREE.SphereGeometry(b[3], 8, 6),
-      new THREE.MeshStandardMaterial({ color: greens[i % 2], roughness: 0.9, flatShading: true })
+      new THREE.MeshStandardMaterial({ color: greens[i % greens.length], roughness: 0.9, flatShading: true })
     );
     leaf.position.set(b[0], b[1], b[2]);
     grp.add(leaf);
@@ -133,14 +230,38 @@ function makeTree(scale) {
   return grp;
 }
 
-function addScenery(scene) {
-  var fx = C.HALF_W + 2.6, fz = C.HALF_L + 3.4, fh = 2.2;
+function makePalmTree(scale) {
+  var grp = new THREE.Group();
+  var trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.11, 0.19, 3.9, 8),
+    new THREE.MeshStandardMaterial({ color: 0x8c6036, roughness: 1 })
+  );
+  trunk.position.y = 1.95;
+  trunk.rotation.z = -0.08;
+  grp.add(trunk);
+
+  var leafMatA = new THREE.MeshStandardMaterial({ color: 0x4ea64c, roughness: 0.95, side: THREE.DoubleSide });
+  var leafMatB = new THREE.MeshStandardMaterial({ color: 0x7bcf5a, roughness: 0.95, side: THREE.DoubleSide });
+  for (var i = 0; i < 6; i++) {
+    var leaf = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 0.34, 1, 1), i % 2 ? leafMatA : leafMatB);
+    leaf.position.set(0, 3.9, 0);
+    leaf.rotation.x = -0.3 - (i % 2) * 0.1;
+    leaf.rotation.y = (Math.PI * 2 * i) / 6;
+    leaf.rotation.z = -0.32 + (i % 3) * 0.08;
+    grp.add(leaf);
+  }
+  grp.scale.setScalar(scale || 1);
+  return grp;
+}
+
+function addFence(scene) {
+  var fx = C.HALF_W + 2.6;
+  var fz = C.HALF_L + 3.4;
+  var fh = 2.2;
   var fenceMat = new THREE.MeshBasicMaterial({
-    map: fenceTexture(), transparent: true, opacity: 0.5,
-    side: THREE.DoubleSide, depthWrite: false
+    map: fenceTexture(), transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false
   });
   var railMat = new THREE.MeshStandardMaterial({ color: 0x9aa6ad, metalness: 0.5, roughness: 0.5 });
-  // Four fence sides: a mesh panel between a top + bottom rail, with posts.
   function side(cx, cz, len, horiz) {
     var grp = new THREE.Group();
     var panel = new THREE.Mesh(new THREE.PlaneGeometry(len, fh), fenceMat);
@@ -149,8 +270,11 @@ function addScenery(scene) {
     grp.add(panel);
     [0.06, fh - 0.02].forEach(function (ry) {
       var rail = new THREE.Mesh(
-        new THREE.BoxGeometry(horiz ? len : 0.05, 0.05, horiz ? 0.05 : len), railMat);
-      rail.position.y = ry; grp.add(rail);
+        new THREE.BoxGeometry(horiz ? len : 0.05, 0.05, horiz ? 0.05 : len),
+        railMat
+      );
+      rail.position.y = ry;
+      grp.add(rail);
     });
     var posts = Math.max(2, Math.round(len / 3));
     for (var i = 0; i <= posts; i++) {
@@ -162,22 +286,75 @@ function addScenery(scene) {
     grp.position.set(cx, 0, cz);
     scene.add(grp);
   }
-  side(0, fz, 2 * fx, true);   side(0, -fz, 2 * fx, true);
-  side(fx, 0, 2 * fz, false);  side(-fx, 0, 2 * fz, false);
+  side(0, fz, 2 * fx, true);
+  side(0, -fz, 2 * fx, true);
+  side(fx, 0, 2 * fz, false);
+  side(-fx, 0, 2 * fz, false);
+}
 
-  // Trees scattered around the park, outside the fence. Fixed layout.
-  var spots = [
-    [-fx - 3.5, fz + 2, 1.2], [fx + 4, fz + 1, 1.4], [-fx - 5, 0, 1.1],
-    [fx + 5.5, -2, 1.3], [-fx - 4, -fz - 2, 1.25], [fx + 3.5, -fz - 3, 1.0],
-    [-fx - 2, -fz - 5, 1.15], [fx + 2, fz + 5, 1.05], [0, fz + 6, 1.5],
-    [-2.5, -fz - 6, 1.35], [fx + 7, fz + 5, 1.2], [-fx - 7, fz + 4, 1.1]
-  ];
+function scatterTrees(scene, spots, greens) {
   for (var i = 0; i < spots.length; i++) {
-    var sp = spots[i], tree = makeTree(sp[2]);
+    var sp = spots[i];
+    var tree = makeTree(sp[2], greens);
     tree.position.set(sp[0], 0, sp[1]);
     tree.rotation.y = i * 1.7;
     scene.add(tree);
   }
+}
+
+function scatterPalms(scene, spots) {
+  for (var i = 0; i < spots.length; i++) {
+    var sp = spots[i];
+    var palm = makePalmTree(sp[2]);
+    palm.position.set(sp[0], 0, sp[1]);
+    palm.rotation.y = sp[3] || (i * 0.8);
+    scene.add(palm);
+  }
+}
+
+function addParkScenery(scene) {
+  addFence(scene);
+  scatterTrees(scene, [
+    [-C.HALF_W - 6.1, C.HALF_L + 5.4, 1.2], [C.HALF_W + 6.4, C.HALF_L + 4.4, 1.4],
+    [-C.HALF_W - 7.2, 0, 1.1], [C.HALF_W + 7.5, -2, 1.3],
+    [-C.HALF_W - 6.5, -C.HALF_L - 5.5, 1.25], [C.HALF_W + 5.9, -C.HALF_L - 6.2, 1.0],
+    [-2.8, -C.HALF_L - 8.4, 1.35], [0.6, C.HALF_L + 8.2, 1.5]
+  ], [0x3f8a3a, 0x4fa044]);
+}
+
+function addTropicalScenery(scene) {
+  var sandMat = new THREE.MeshStandardMaterial({ color: 0xd7c28a, roughness: 1 });
+  var sand = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), sandMat);
+  sand.rotation.x = -Math.PI / 2;
+  sand.position.y = -0.012;
+  sand.receiveShadow = true;
+  scene.add(sand);
+
+  var beachBand = new THREE.Mesh(
+    new THREE.PlaneGeometry(2 * C.HALF_W + 10, 2 * C.HALF_L + 10),
+    new THREE.MeshStandardMaterial({ color: 0xbea167, roughness: 0.98 })
+  );
+  beachBand.rotation.x = -Math.PI / 2;
+  beachBand.position.y = -0.003;
+  beachBand.receiveShadow = true;
+  scene.add(beachBand);
+
+  var water = new THREE.Mesh(
+    new THREE.PlaneGeometry(58, 16),
+    new THREE.MeshStandardMaterial({ color: 0x56b7d4, roughness: 0.2, metalness: 0.08 })
+  );
+  water.rotation.x = -Math.PI / 2;
+  water.position.set(0, -0.015, -C.HALF_L - 15);
+  scene.add(water);
+
+  scatterPalms(scene, [
+    [-C.HALF_W - 6.4, C.HALF_L + 5.1, 1.15, 0.5], [C.HALF_W + 6.8, C.HALF_L + 4.6, 1.35, -0.4],
+    [-C.HALF_W - 7.1, -1.3, 1.05, 0.9], [C.HALF_W + 7.5, -2.4, 1.22, -0.7],
+    [-C.HALF_W - 5.8, -C.HALF_L - 5.8, 1.18, 0.35], [C.HALF_W + 6.1, -C.HALF_L - 6.5, 1.08, -0.2]
+  ]);
+  scatterTrees(scene, [
+    [-1.2, C.HALF_L + 7.5, 1.45], [1.7, -C.HALF_L - 8.2, 1.35], [C.HALF_W + 4.5, C.HALF_L + 7.9, 0.95]
+  ], [0x2d7f39, 0x53b95e, 0x91d166]);
 }
 
 function addNightLights(scene) {
@@ -190,10 +367,10 @@ function addNightLights(scene) {
     color: 0xb8d7ff, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false
   });
   var spots = [
-    [-C.HALF_W - 2.8, 4.8,  C.HALF_L - 0.8],
-    [ C.HALF_W + 2.8, 4.8,  C.HALF_L - 0.8],
+    [-C.HALF_W - 2.8, 4.8, C.HALF_L - 0.8],
+    [C.HALF_W + 2.8, 4.8, C.HALF_L - 0.8],
     [-C.HALF_W - 2.8, 4.8, -C.HALF_L + 0.8],
-    [ C.HALF_W + 2.8, 4.8, -C.HALF_L + 0.8]
+    [C.HALF_W + 2.8, 4.8, -C.HALF_L + 0.8]
   ];
   for (var i = 0; i < spots.length; i++) {
     var sp = spots[i];
@@ -217,61 +394,130 @@ function addNightLights(scene) {
   return poles;
 }
 
-export function build(scene, tod) {
-  var p = TOD_PRESETS[tod] || TOD_PRESETS.day;
-  var isNight = tod === 'night';
-  var handles = { lights: {} };
+function addIndoorShell(scene, p) {
+  var floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(120, 120),
+    new THREE.MeshStandardMaterial({ color: p.hallFloor, roughness: 0.95 })
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = -0.012;
+  floor.receiveShadow = true;
+  scene.add(floor);
 
-  // --- Sky + fog ---
-  scene.background = new THREE.Color(p.bgColor);
-  scene.fog = new THREE.Fog(p.fogColor, p.fogNear, p.fogFar);
-  var skyGeo = new THREE.SphereGeometry(150, 32, 16);
-  var skyMat = new THREE.ShaderMaterial({
-    side: THREE.BackSide,
-    uniforms: { top: { value: new THREE.Color(p.skyTop) }, bot: { value: new THREE.Color(p.skyBot) } },
-    vertexShader: 'varying vec3 vP; void main(){ vP=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
-    fragmentShader: 'varying vec3 vP; uniform vec3 top; uniform vec3 bot; void main(){ float h=clamp(normalize(vP).y,0.0,1.0); gl_FragColor=vec4(mix(bot,top,h),1.0);}'
-  });
-  scene.add(new THREE.Mesh(skyGeo, skyMat));
+  var wallLowerMat = new THREE.MeshStandardMaterial({ color: p.wallLower, roughness: 0.95 });
+  var wallUpperMat = new THREE.MeshStandardMaterial({ color: p.wallUpper, roughness: 0.95 });
+  var steelMat = new THREE.MeshStandardMaterial({ color: p.steel, metalness: 0.5, roughness: 0.45 });
+  var curtainMat = new THREE.MeshStandardMaterial({ color: p.curtain, roughness: 0.95, side: THREE.DoubleSide });
 
-  // --- Ground apron (darker grassy park lawn; textured court sits on top) ---
+  function wall(width, height, x, z, rotY) {
+    var grp = new THREE.Group();
+    var lower = new THREE.Mesh(new THREE.PlaneGeometry(width, height * 0.45), wallLowerMat);
+    lower.position.y = height * 0.225;
+    grp.add(lower);
+    var upper = new THREE.Mesh(new THREE.PlaneGeometry(width, height * 0.55), wallUpperMat);
+    upper.position.y = height * 0.725;
+    grp.add(upper);
+    grp.position.set(x, 0, z);
+    grp.rotation.y = rotY || 0;
+    scene.add(grp);
+  }
+
+  wall(44, 12, 0, C.HALF_L + 13, Math.PI);
+  wall(44, 12, 0, -C.HALF_L - 13, 0);
+  wall(50, 12, C.HALF_W + 14, 0, -Math.PI / 2);
+  wall(50, 12, -C.HALF_W - 14, 0, Math.PI / 2);
+
+  var ceiling = new THREE.Mesh(
+    new THREE.PlaneGeometry(46, 48),
+    new THREE.MeshStandardMaterial({ color: p.ceiling, roughness: 0.92, side: THREE.DoubleSide })
+  );
+  ceiling.rotation.x = Math.PI / 2;
+  ceiling.position.y = 11.9;
+  scene.add(ceiling);
+
+  for (var i = -2; i <= 2; i++) {
+    var truss = new THREE.Group();
+    var beam = new THREE.Mesh(new THREE.BoxGeometry(42, 0.18, 0.18), steelMat);
+    beam.position.y = 10.8;
+    truss.add(beam);
+    var left = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.8, 0.16), steelMat);
+    left.position.set(-18, 9.9, 0);
+    truss.add(left);
+    var right = left.clone();
+    right.position.x = 18;
+    truss.add(right);
+    truss.position.z = i * 7.5;
+    scene.add(truss);
+  }
+
+  for (var j = -1; j <= 1; j += 2) {
+    var curtain = new THREE.Mesh(new THREE.PlaneGeometry(18, 6.8), curtainMat);
+    curtain.position.set(j * (C.HALF_W + 6.7), 4.2, 0);
+    curtain.rotation.y = -j * Math.PI / 2;
+    scene.add(curtain);
+  }
+
+  var stripes = [
+    [-C.HALF_W - 13.8, 0, Math.PI / 2],
+    [C.HALF_W + 13.8, 0, -Math.PI / 2]
+  ];
+  for (var k = 0; k < stripes.length; k++) {
+    var s = stripes[k];
+    var band = new THREE.Mesh(
+      new THREE.PlaneGeometry(50, 1.1),
+      new THREE.MeshStandardMaterial({ color: 0x8fb6d6, roughness: 0.95 })
+    );
+    band.position.set(s[0], 5.6, s[1]);
+    band.rotation.y = s[2];
+    scene.add(band);
+  }
+}
+
+function addOutdoorGround(scene, p) {
   var apron = new THREE.Mesh(
     new THREE.PlaneGeometry(120, 120),
     new THREE.MeshStandardMaterial({ color: p.apron, roughness: 1 })
   );
-  apron.rotation.x = -Math.PI / 2; apron.position.y = -0.01; apron.receiveShadow = true;
+  apron.rotation.x = -Math.PI / 2;
+  apron.position.y = -0.01;
+  apron.receiveShadow = true;
   scene.add(apron);
 
-  // surrounding court-margin band (darker teal-green)
   var surround = new THREE.Mesh(
     new THREE.PlaneGeometry(2 * C.HALF_W + 6, 2 * C.HALF_L + 6),
     new THREE.MeshStandardMaterial({ color: p.surround, roughness: 0.95 })
   );
-  surround.rotation.x = -Math.PI / 2; surround.position.y = 0.0; surround.receiveShadow = true;
+  surround.rotation.x = -Math.PI / 2;
+  surround.position.y = 0.0;
+  surround.receiveShadow = true;
   scene.add(surround);
+}
 
-  // --- Court surface ---
+function addCourt(scene, p) {
   var court = new THREE.Mesh(
     new THREE.PlaneGeometry(2 * C.HALF_W, 2 * C.HALF_L),
-    new THREE.MeshStandardMaterial({ map: courtTexture({ court: p.court, kitchen: p.kitchen }), roughness: 0.7, metalness: 0.05 })
+    new THREE.MeshStandardMaterial({ map: courtTexture(p), roughness: 0.7, metalness: 0.05 })
   );
-  court.rotation.x = -Math.PI / 2; court.position.y = 0.012; court.receiveShadow = true;
+  court.rotation.x = -Math.PI / 2;
+  court.position.y = 0.012;
+  court.receiveShadow = true;
   scene.add(court);
-  handles.court = court;
+  return court;
+}
 
-  // --- Net ---
+function addNet(scene) {
   var netGroup = new THREE.Group();
   var postMat = new THREE.MeshStandardMaterial({ color: 0x20242c, metalness: 0.6, roughness: 0.4 });
   [-1, 1].forEach(function (s) {
     var post = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, C.NET_H_POST + 0.08, 12), postMat);
-    post.position.set(s * C.POST_X, (C.NET_H_POST) / 2, 0); post.castShadow = true;
+    post.position.set(s * C.POST_X, C.NET_H_POST / 2, 0);
+    post.castShadow = true;
     netGroup.add(post);
   });
   var netMesh = new THREE.Mesh(
     new THREE.PlaneGeometry(2 * C.POST_X, C.NET_H_POST, 24, 4),
     new THREE.MeshStandardMaterial({ map: netTexture(), transparent: true, side: THREE.DoubleSide, depthWrite: false })
   );
-  // sag the net slightly in the middle
   var pos = netMesh.geometry.attributes.position;
   for (var i = 0; i < pos.count; i++) {
     var px = pos.getX(i);
@@ -282,102 +528,187 @@ export function build(scene, tod) {
   netMesh.position.set(0, C.NET_H_POST / 2, 0);
   netGroup.add(netMesh);
   scene.add(netGroup);
-  handles.net = netGroup;
+  return netGroup;
+}
 
-  // --- Park surroundings: a low chain-link fence + scattered trees. ---
-  addScenery(scene);
-  if (isNight) handles.lights.poles = addNightLights(scene);
+function addOutdoorSky(scene, p) {
+  scene.background = new THREE.Color(p.bgColor);
+  scene.fog = new THREE.Fog(p.fogColor, p.fogNear, p.fogFar);
+  var skyGeo = new THREE.SphereGeometry(150, 32, 16);
+  var skyMat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    uniforms: {
+      top: { value: new THREE.Color(p.skyTop) },
+      bot: { value: new THREE.Color(p.skyBot) }
+    },
+    vertexShader: 'varying vec3 vP; void main(){ vP=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
+    fragmentShader: 'varying vec3 vP; uniform vec3 top; uniform vec3 bot; void main(){ float h=clamp(normalize(vP).y,0.0,1.0); gl_FragColor=vec4(mix(bot,top,h),1.0);}'
+  });
+  scene.add(new THREE.Mesh(skyGeo, skyMat));
+}
 
-  // --- Lighting ---
+function addIndoorLighting(scene, handles, p) {
+  scene.background = new THREE.Color(p.bgColor);
+  scene.fog = new THREE.Fog(p.fogColor, p.fogNear, p.fogFar);
+
   var hemi = new THREE.HemisphereLight(p.hemiSky, p.hemiGnd, p.hemiInt);
   scene.add(hemi);
+
+  var key = new THREE.DirectionalLight(0xffffff, 1.15);
+  key.position.set(0, 16, 1.5);
+  key.castShadow = true;
+  key.shadow.mapSize.set(1024, 1024);
+  key.shadow.camera.near = 1;
+  key.shadow.camera.far = 48;
+  key.shadow.camera.left = -11;
+  key.shadow.camera.right = 11;
+  key.shadow.camera.top = 13;
+  key.shadow.camera.bottom = -13;
+  key.shadow.bias = -0.00035;
+  scene.add(key);
+  handles.lights.sun = key;
+
+  var fill = new THREE.DirectionalLight(p.fillColor, p.fillInt);
+  fill.position.set(p.fillPos[0], p.fillPos[1], p.fillPos[2]);
+  scene.add(fill);
+  handles.lights.fill = fill;
+
+  for (var i = -1; i <= 1; i++) {
+    var lamp = new THREE.RectAreaLight(0xf8fbff, 10, 12, 1.4);
+    lamp.position.set(0, 10.4, i * 6.5);
+    lamp.rotation.x = -Math.PI / 2;
+    scene.add(lamp);
+  }
+}
+
+function addOutdoorLighting(scene, handles, p) {
+  var hemi = new THREE.HemisphereLight(p.hemiSky, p.hemiGnd, p.hemiInt);
+  scene.add(hemi);
+
   var sun = new THREE.DirectionalLight(p.sunColor, p.sunInt);
   sun.position.set(p.sunPos[0], p.sunPos[1], p.sunPos[2]);
   sun.castShadow = true;
   sun.shadow.mapSize.set(1024, 1024);
-  sun.shadow.camera.near = 1; sun.shadow.camera.far = 50;
-  sun.shadow.camera.left = -10; sun.shadow.camera.right = 10;
-  sun.shadow.camera.top = 12; sun.shadow.camera.bottom = -12;
+  sun.shadow.camera.near = 1;
+  sun.shadow.camera.far = 50;
+  sun.shadow.camera.left = -10;
+  sun.shadow.camera.right = 10;
+  sun.shadow.camera.top = 12;
+  sun.shadow.camera.bottom = -12;
   sun.shadow.bias = -0.0004;
   scene.add(sun);
   handles.lights.sun = sun;
+
   var fill = new THREE.DirectionalLight(p.fillColor, p.fillInt);
   fill.position.set(-7, 10, -4);
   scene.add(fill);
   handles.lights.fill = fill;
-  if (isNight) {
-    var lampA = new THREE.SpotLight(0xe8f2ff, 3.0, 38, Math.PI / 5.2, 0.45, 1.1);
-    lampA.position.set(-6.5, 7.5, 11.5);
-    lampA.target.position.set(0, 0, 2.2);
-    lampA.castShadow = true;
-    lampA.shadow.mapSize.set(1024, 1024);
-    lampA.shadow.camera.near = 1;
-    lampA.shadow.camera.far = 28;
-    lampA.shadow.bias = -0.00045;
-    scene.add(lampA);
-    scene.add(lampA.target);
-    handles.lights.lampA = lampA;
 
-    var lampB = new THREE.SpotLight(0xd7e6ff, 2.4, 38, Math.PI / 5.0, 0.55, 1.15);
-    lampB.position.set(6.5, 7.2, 11.5);
-    lampB.target.position.set(0, 0, 1.5);
-    scene.add(lampB);
-    scene.add(lampB.target);
-    handles.lights.lampB = lampB;
-
-    var lampC = new THREE.SpotLight(0xcfe0ff, 2.0, 38, Math.PI / 5.0, 0.55, 1.2);
-    lampC.position.set(-6.2, 7.2, -11.5);
-    lampC.target.position.set(0, 0, -1.8);
-    scene.add(lampC);
-    scene.add(lampC.target);
-    handles.lights.lampC = lampC;
-
-    var lampD = new THREE.SpotLight(0xcfe0ff, 1.9, 38, Math.PI / 5.2, 0.55, 1.2);
-    lampD.position.set(6.2, 7.0, -11.5);
-    lampD.target.position.set(0, 0, -2.4);
-    scene.add(lampD);
-    scene.add(lampD.target);
-    handles.lights.lampD = lampD;
+  if (p.lampSet) {
+    handles.lights.poles = addNightLights(scene);
+    var lamps = [
+      { key: 'lampA', color: 0xe8f2ff, intensity: 3.0, pos: [-6.5, 7.5, 11.5], target: [0, 0, 2.2], angle: Math.PI / 5.2, pen: 0.45, decay: 1.1, shadow: true },
+      { key: 'lampB', color: 0xd7e6ff, intensity: 2.4, pos: [6.5, 7.2, 11.5], target: [0, 0, 1.5], angle: Math.PI / 5.0, pen: 0.55, decay: 1.15 },
+      { key: 'lampC', color: 0xcfe0ff, intensity: 2.0, pos: [-6.2, 7.2, -11.5], target: [0, 0, -1.8], angle: Math.PI / 5.0, pen: 0.55, decay: 1.2 },
+      { key: 'lampD', color: 0xcfe0ff, intensity: 1.9, pos: [6.2, 7.0, -11.5], target: [0, 0, -2.4], angle: Math.PI / 5.2, pen: 0.55, decay: 1.2 }
+    ];
+    lamps.forEach(function (cfg) {
+      var lamp = new THREE.SpotLight(cfg.color, cfg.intensity, 38, cfg.angle, cfg.pen, cfg.decay);
+      lamp.position.set(cfg.pos[0], cfg.pos[1], cfg.pos[2]);
+      lamp.target.position.set(cfg.target[0], cfg.target[1], cfg.target[2]);
+      if (cfg.shadow) {
+        lamp.castShadow = true;
+        lamp.shadow.mapSize.set(1024, 1024);
+        lamp.shadow.camera.near = 1;
+        lamp.shadow.camera.far = 28;
+        lamp.shadow.bias = -0.00045;
+      }
+      scene.add(lamp);
+      scene.add(lamp.target);
+      handles.lights[cfg.key] = lamp;
+    });
   }
+}
 
-  // --- Ball --- deep, saturated neon "optic green" (Vulcan-style).
+function addBall(scene, handles, p, shadowOpacity) {
   var ballMat = new THREE.MeshStandardMaterial({
-    color: 0x4fc800, roughness: 0.62, metalness: 0.0,
-    emissive: p.ballEmissive, emissiveIntensity: p.ballEmissiveInt
+    color: 0x4fc800,
+    roughness: 0.62,
+    metalness: 0.0,
+    emissive: p.ballEmissive,
+    emissiveIntensity: p.ballEmissiveInt
   });
   var ballMesh = new THREE.Mesh(new THREE.SphereGeometry(C.BALL_R * 1.5, 20, 16), ballMat);
   ballMesh.castShadow = true;
-  // tight, saturated green glow shell so the ball pops without a pale halo
+
   var glow = new THREE.Mesh(
     new THREE.SphereGeometry(C.BALL_R * 2.2, 16, 12),
     new THREE.MeshBasicMaterial({
-      color: p.ballGlow, transparent: true, opacity: p.ballGlowOpacity,
-      blending: THREE.AdditiveBlending, depthWrite: false
+      color: p.ballGlow,
+      transparent: true,
+      opacity: p.ballGlowOpacity,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
     })
   );
   ballMesh.add(glow);
   scene.add(ballMesh);
   handles.ballMesh = ballMesh;
 
-  // contact shadow blob under ball (fakes soft shadow on the move)
   var blob = new THREE.Mesh(
     new THREE.CircleGeometry(C.BALL_R * 2.2, 16),
-    new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 })
+    new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: shadowOpacity })
   );
-  blob.rotation.x = -Math.PI / 2; blob.position.y = 0.02;
+  blob.rotation.x = -Math.PI / 2;
+  blob.position.y = 0.02;
   scene.add(blob);
   handles.ballBlob = blob;
 
-  // ball trail (line that follows recent positions)
   var trailGeo = new THREE.BufferGeometry();
-  var TRAIL = 18;
-  trailGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(TRAIL * 3), 3));
+  var trailLen = 18;
+  trailGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(trailLen * 3), 3));
   var trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({
-    color: p.trail, transparent: true, opacity: p.trailOpacity
+    color: p.trail,
+    transparent: true,
+    opacity: p.trailOpacity
   }));
   trail.frustumCulled = false;
   scene.add(trail);
-  handles.trail = trail; handles.trailLen = TRAIL; handles.trailBuf = [];
+  handles.trail = trail;
+  handles.trailLen = trailLen;
+  handles.trailBuf = [];
+}
+
+export function build(scene, opts) {
+  var cfg = resolveOptions(opts);
+  var p = resolvePreset(cfg);
+  var handles = { lights: {}, venue: cfg.venue, courtPalette: cfg.courtPalette, timeOfDay: cfg.timeOfDay };
+
+  if (cfg.venue === 'indoor') {
+    addIndoorShell(scene, p);
+    addIndoorLighting(scene, handles, p);
+  } else {
+    addOutdoorSky(scene, p);
+    addOutdoorGround(scene, p);
+    if (cfg.venue === 'tropical') addTropicalScenery(scene);
+    else addParkScenery(scene);
+    addOutdoorLighting(scene, handles, p);
+  }
+
+  if (cfg.venue === 'indoor') {
+    var indoorSurround = new THREE.Mesh(
+      new THREE.PlaneGeometry(2 * C.HALF_W + 6, 2 * C.HALF_L + 6),
+      new THREE.MeshStandardMaterial({ color: p.indoorSurround || p.surround, roughness: 0.85 })
+    );
+    indoorSurround.rotation.x = -Math.PI / 2;
+    indoorSurround.position.y = 0;
+    indoorSurround.receiveShadow = true;
+    scene.add(indoorSurround);
+  }
+
+  handles.court = addCourt(scene, p);
+  handles.net = addNet(scene);
+  addBall(scene, handles, p, cfg.venue === 'indoor' ? p.courtShadow : 0.3);
 
   return handles;
 }

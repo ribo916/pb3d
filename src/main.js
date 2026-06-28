@@ -17,6 +17,32 @@ let last    = 0;
 let running = false;
 let paused  = false;
 
+function checkedValue(name, fallback) {
+  return (document.querySelector('input[name="' + name + '"]:checked') || {}).value || fallback;
+}
+
+function readMenuConfig() {
+  var venue = checkedValue('venue', 'park');
+  return {
+    venue: venue,
+    courtPalette: checkedValue('palette', 'blue'),
+    timeOfDay: venue === 'indoor' ? 'day' : checkedValue('tod', 'day')
+  };
+}
+
+function syncTimeOfDayUI() {
+  var cfg = readMenuConfig();
+  var todGroup = $('todGroup');
+  var todHint = $('todHint');
+  var disabled = cfg.venue === 'indoor';
+  todGroup.classList.toggle('is-hidden', disabled);
+  todHint.textContent = disabled ? 'Indoor uses bright house lights only.' : '';
+  document.querySelectorAll('input[name="tod"]').forEach(function (el) {
+    el.disabled = disabled;
+  });
+  return cfg;
+}
+
 // Mark touch-capable devices so CSS can swap the info-modal section.
 if (navigator.maxTouchPoints > 0 || 'ontouchstart' in window) {
   document.body.classList.add('touch-device');
@@ -81,7 +107,7 @@ function quitToMenu() {
 }
 
 /* ---- start match ---- */
-function startMatch(difficulty, timeOfDay) {
+function startMatch(difficulty, config) {
   $('menu').style.display = 'none';
 
   const hudRefs = {
@@ -92,7 +118,14 @@ function startMatch(difficulty, timeOfDay) {
     serveBtn:  $('serveBtn'),  camBtn:   $('camBtn')
   };
 
-  game  = new Game({ canvas: $('game'), difficulty, audio, timeOfDay });
+  game  = new Game({
+    canvas: $('game'),
+    difficulty: difficulty,
+    audio: audio,
+    venue: config.venue,
+    courtPalette: config.courtPalette,
+    timeOfDay: config.timeOfDay
+  });
   input = makeInput($('game'), $('joy'), $('joyKnob'));
   game.setInput(input);
 
@@ -118,10 +151,20 @@ function startMatch(difficulty, timeOfDay) {
 document.querySelectorAll('[data-diff]').forEach((btn) => {
   btn.addEventListener('click', () => {
     audio.unlock();
-    var tod = (document.querySelector('input[name="tod"]:checked') || {}).value || 'day';
-    startMatch(btn.getAttribute('data-diff'), tod);
+    startMatch(btn.getAttribute('data-diff'), readMenuConfig());
   });
 });
+
+document.querySelectorAll('input[name="venue"]').forEach(function (el) {
+  el.addEventListener('change', syncTimeOfDayUI);
+});
+
+syncTimeOfDayUI();
+
+window.__pb3dMenu = {
+  readConfig: readMenuConfig,
+  syncTimeOfDayUI: syncTimeOfDayUI
+};
 
 /* ---- pause button ---- */
 $('pauseBtn').addEventListener('click', (e) => { e.preventDefault(); if (running && !paused) pauseGame(); });
