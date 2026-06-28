@@ -4,7 +4,15 @@
       "Bash(node test/logic.test.mjs)",
       "Bash(node tools/shoot.mjs)",
       "Bash(npm install *)",
-      "Bash(node /Users/ribo/Dev/pb3d/tools/shoot_tod.mjs)"
+      "Bash(node /Users/ribo/Dev/pb3d/tools/shoot_tod.mjs)",
+      "Read(//Users/ribo/Dev/**)",
+      "Read(//Users/ribo/**)",
+      "Bash(find /Users/ribo/Dev/picklelife -name \"favicon*\" -o -name \"*.ico\" -o -name \"*.svg\" 2>/dev/null | head -20)",
+      "Read(//Users/ribo/Dev/picklelife/**)",
+      "Bash(cp /Users/ribo/Dev/picklelife/favicon.svg /Users/ribo/Dev/pb3d/favicon.svg)"
+    ],
+    "additionalDirectories": [
+      "/Users/ribo/Dev/picklelife"
     ]
   }
 }
