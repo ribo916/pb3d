@@ -1,5 +1,5 @@
 /* Visual smoke test: serve a static file server, load the game in headless
- * Chromium, start a match, and capture a court frame + a mid-rally frame.
+ * Chromium, capture day + night menu/match frames, then verify a match flow.
  * Run: node pb3d/tools/shoot.mjs   (uses the repo's playwright dep)
  * Output: pb3d/tools/shots/*.png
  */
@@ -43,10 +43,19 @@ page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 page.on('pageerror', (e) => errors.push(String(e)));
 
 await page.goto(base, { waitUntil: 'networkidle' });
+await page.screenshot({ path: path.join(OUT, 'menu-day.png') });
 // start an intermediate (4.5) match
 await page.click('[data-diff="4.5"]');
 await page.waitForTimeout(800);
 await page.screenshot({ path: path.join(OUT, 'court.png') });
+
+await page.reload({ waitUntil: 'networkidle' });
+await page.click('input[name="tod"][value="night"]');
+await page.waitForTimeout(150);
+await page.screenshot({ path: path.join(OUT, 'menu-night.png') });
+await page.click('[data-diff="4.5"]');
+await page.waitForTimeout(900);
+await page.screenshot({ path: path.join(OUT, 'court-night.png') });
 
 // Drive the match: auto-serve whenever it's the human's serve and keep swinging,
 // for a few seconds, capturing mid-rally frames and tracking state transitions.

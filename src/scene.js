@@ -20,22 +20,22 @@ const TOD_PRESETS = {
     sunColor: 0xfff8e8, sunInt: 2.2, sunPos: [6, 20, 8],
     fillColor: 0xddeeff, fillInt: 0.5,
     court: '#1a4a8a', kitchen: '#4a9fd8',
-  },
-  dusk: {
-    bgColor: 0x4a1808, fogColor: 0x6a2808, fogNear: 40,  fogFar: 130,
-    skyTop:  0x0d0520, skyBot:   0x8a3010,
-    hemiSky: 0xff7040, hemiGnd:  0x180808, hemiInt: 0.5,
-    sunColor: 0xff8030, sunInt: 1.0, sunPos: [14, 4, 4],
-    fillColor: 0x4060d0, fillInt: 0.25,
-    court: '#1a4a8a', kitchen: '#4a9fd8',
+    apron: 0x162b10, surround: 0x0a2a1e,
+    ballEmissive: 0x3a9e00, ballEmissiveInt: 0.55,
+    ballGlow: 0x6cff14, ballGlowOpacity: 0.18,
+    trail: 0x66e000, trailOpacity: 0.5
   },
   night: {
-    bgColor: 0x0a1628, fogColor: 0x0a1628, fogNear: 45,  fogFar: 150,
-    skyTop:  0x060d1a, skyBot:   0x122040,
-    hemiSky: 0x1a2a40, hemiGnd:  0x0c1408, hemiInt: 0.50,
-    sunColor: 0xffffff, sunInt: 0.75, sunPos: [6, 16, 8],
-    fillColor: 0xbcd0ff, fillInt: 0.20,
-    court: '#1a4a8a', kitchen: '#4a9fd8',
+    bgColor: 0x02050c, fogColor: 0x07111d, fogNear: 28,  fogFar: 105,
+    skyTop:  0x01040b, skyBot:   0x081a2f,
+    hemiSky: 0x11233a, hemiGnd:  0x030608, hemiInt: 0.16,
+    sunColor: 0xdde7ff, sunInt: 1.7, sunPos: [0, 21, 7],
+    fillColor: 0x8fb6ff, fillInt: 0.55,
+    court: '#2558ab', kitchen: '#5db6f2',
+    apron: 0x08110a, surround: 0x07161c,
+    ballEmissive: 0x56c400, ballEmissiveInt: 0.95,
+    ballGlow: 0x96ff46, ballGlowOpacity: 0.26,
+    trail: 0x8dff42, trailOpacity: 0.68
   }
 };
 
@@ -180,8 +180,46 @@ function addScenery(scene) {
   }
 }
 
+function addNightLights(scene) {
+  var poles = new THREE.Group();
+  var poleMat = new THREE.MeshStandardMaterial({ color: 0x5b6776, metalness: 0.7, roughness: 0.4 });
+  var lampMat = new THREE.MeshStandardMaterial({
+    color: 0xe8edf6, emissive: 0xcddfff, emissiveIntensity: 1.2, metalness: 0.15, roughness: 0.35
+  });
+  var glowMat = new THREE.MeshBasicMaterial({
+    color: 0xb8d7ff, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false
+  });
+  var spots = [
+    [-C.HALF_W - 2.8, 4.8,  C.HALF_L - 0.8],
+    [ C.HALF_W + 2.8, 4.8,  C.HALF_L - 0.8],
+    [-C.HALF_W - 2.8, 4.8, -C.HALF_L + 0.8],
+    [ C.HALF_W + 2.8, 4.8, -C.HALF_L + 0.8]
+  ];
+  for (var i = 0; i < spots.length; i++) {
+    var sp = spots[i];
+    var pole = new THREE.Group();
+    var mast = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, sp[1], 10), poleMat);
+    mast.position.y = sp[1] / 2;
+    pole.add(mast);
+    var arm = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.07, 0.07), poleMat);
+    arm.position.set(sp[0] < 0 ? 0.32 : -0.32, sp[1] - 0.18, 0);
+    pole.add(arm);
+    var head = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.16, 0.28), lampMat);
+    head.position.set(sp[0] < 0 ? 0.6 : -0.6, sp[1] - 0.2, 0);
+    pole.add(head);
+    var glow = new THREE.Mesh(new THREE.SphereGeometry(0.38, 12, 10), glowMat);
+    glow.position.set(sp[0] < 0 ? 0.6 : -0.6, sp[1] - 0.2, 0);
+    pole.add(glow);
+    pole.position.set(sp[0], 0, sp[2]);
+    poles.add(pole);
+  }
+  scene.add(poles);
+  return poles;
+}
+
 export function build(scene, tod) {
   var p = TOD_PRESETS[tod] || TOD_PRESETS.day;
+  var isNight = tod === 'night';
   var handles = { lights: {} };
 
   // --- Sky + fog ---
@@ -199,7 +237,7 @@ export function build(scene, tod) {
   // --- Ground apron (darker grassy park lawn; textured court sits on top) ---
   var apron = new THREE.Mesh(
     new THREE.PlaneGeometry(120, 120),
-    new THREE.MeshStandardMaterial({ color: 0x162b10, roughness: 1 })
+    new THREE.MeshStandardMaterial({ color: p.apron, roughness: 1 })
   );
   apron.rotation.x = -Math.PI / 2; apron.position.y = -0.01; apron.receiveShadow = true;
   scene.add(apron);
@@ -207,7 +245,7 @@ export function build(scene, tod) {
   // surrounding court-margin band (darker teal-green)
   var surround = new THREE.Mesh(
     new THREE.PlaneGeometry(2 * C.HALF_W + 6, 2 * C.HALF_L + 6),
-    new THREE.MeshStandardMaterial({ color: 0x0a2a1e, roughness: 0.95 })
+    new THREE.MeshStandardMaterial({ color: p.surround, roughness: 0.95 })
   );
   surround.rotation.x = -Math.PI / 2; surround.position.y = 0.0; surround.receiveShadow = true;
   scene.add(surround);
@@ -248,6 +286,7 @@ export function build(scene, tod) {
 
   // --- Park surroundings: a low chain-link fence + scattered trees. ---
   addScenery(scene);
+  if (isNight) handles.lights.poles = addNightLights(scene);
 
   // --- Lighting ---
   var hemi = new THREE.HemisphereLight(p.hemiSky, p.hemiGnd, p.hemiInt);
@@ -263,20 +302,58 @@ export function build(scene, tod) {
   scene.add(sun);
   handles.lights.sun = sun;
   var fill = new THREE.DirectionalLight(p.fillColor, p.fillInt);
-  fill.position.set(-6, 8, -6);
+  fill.position.set(-7, 10, -4);
   scene.add(fill);
+  handles.lights.fill = fill;
+  if (isNight) {
+    var lampA = new THREE.SpotLight(0xe8f2ff, 3.0, 38, Math.PI / 5.2, 0.45, 1.1);
+    lampA.position.set(-6.5, 7.5, 11.5);
+    lampA.target.position.set(0, 0, 2.2);
+    lampA.castShadow = true;
+    lampA.shadow.mapSize.set(1024, 1024);
+    lampA.shadow.camera.near = 1;
+    lampA.shadow.camera.far = 28;
+    lampA.shadow.bias = -0.00045;
+    scene.add(lampA);
+    scene.add(lampA.target);
+    handles.lights.lampA = lampA;
+
+    var lampB = new THREE.SpotLight(0xd7e6ff, 2.4, 38, Math.PI / 5.0, 0.55, 1.15);
+    lampB.position.set(6.5, 7.2, 11.5);
+    lampB.target.position.set(0, 0, 1.5);
+    scene.add(lampB);
+    scene.add(lampB.target);
+    handles.lights.lampB = lampB;
+
+    var lampC = new THREE.SpotLight(0xcfe0ff, 2.0, 38, Math.PI / 5.0, 0.55, 1.2);
+    lampC.position.set(-6.2, 7.2, -11.5);
+    lampC.target.position.set(0, 0, -1.8);
+    scene.add(lampC);
+    scene.add(lampC.target);
+    handles.lights.lampC = lampC;
+
+    var lampD = new THREE.SpotLight(0xcfe0ff, 1.9, 38, Math.PI / 5.2, 0.55, 1.2);
+    lampD.position.set(6.2, 7.0, -11.5);
+    lampD.target.position.set(0, 0, -2.4);
+    scene.add(lampD);
+    scene.add(lampD.target);
+    handles.lights.lampD = lampD;
+  }
 
   // --- Ball --- deep, saturated neon "optic green" (Vulcan-style).
   var ballMat = new THREE.MeshStandardMaterial({
     color: 0x4fc800, roughness: 0.62, metalness: 0.0,
-    emissive: 0x3a9e00, emissiveIntensity: 0.55
+    emissive: p.ballEmissive, emissiveIntensity: p.ballEmissiveInt
   });
   var ballMesh = new THREE.Mesh(new THREE.SphereGeometry(C.BALL_R * 1.5, 20, 16), ballMat);
   ballMesh.castShadow = true;
   // tight, saturated green glow shell so the ball pops without a pale halo
   var glow = new THREE.Mesh(
     new THREE.SphereGeometry(C.BALL_R * 2.2, 16, 12),
-    new THREE.MeshBasicMaterial({ color: 0x6cff14, transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false })
+    new THREE.MeshBasicMaterial({
+      color: p.ballGlow, transparent: true, opacity: p.ballGlowOpacity,
+      blending: THREE.AdditiveBlending, depthWrite: false
+    })
   );
   ballMesh.add(glow);
   scene.add(ballMesh);
@@ -295,7 +372,9 @@ export function build(scene, tod) {
   var trailGeo = new THREE.BufferGeometry();
   var TRAIL = 18;
   trailGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(TRAIL * 3), 3));
-  var trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({ color: 0x66e000, transparent: true, opacity: 0.5 }));
+  var trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({
+    color: p.trail, transparent: true, opacity: p.trailOpacity
+  }));
   trail.frustumCulled = false;
   scene.add(trail);
   handles.trail = trail; handles.trailLen = TRAIL; handles.trailBuf = [];
