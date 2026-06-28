@@ -1,7 +1,7 @@
 /* ============================================================================
  * audio.js — Web Audio API music sequencer + SFX.
  * makeAudio() -> { unlock, sfx, music }
- * Starts muted; call music.setMuted(false) to begin playback.
+ * Starts fully muted; call music.setMuted(false) / sfx.setMuted(false) to enable audio.
  * ==========================================================================*/
 'use strict';
 
@@ -9,7 +9,7 @@ export function makeAudio() {
   var AudioCtx = window.AudioContext || window.webkitAudioContext;
   var ac = null, master = null;
   var muted = true;
-  var sfxMuted = false;
+  var sfxMuted = true;
   var genreKey = 'upbeat';
   var seqTimer = null;
   var seqStep = 0;

@@ -33,6 +33,24 @@ function limb(rad, len, mat) {
 }
 function ease(t) { return t * t * (3 - 2 * t); } // smoothstep
 
+function heightScale(kind) {
+  if (kind === 'short') return 0.96;
+  if (kind === 'tall') return 1.14;
+  if (kind === 'tower') return 1.22;
+  return 1.0;
+}
+
+function buildScale(kind) {
+  if (kind === 'slim') return 0.9;
+  return 1.0;
+}
+
+function box(w, h, d, mat) {
+  var mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  mesh.castShadow = true;
+  return mesh;
+}
+
 export function makePlayer(opts) {
   opts = opts || {};
   var skin = new THREE.MeshStandardMaterial({ color: opts.skin || 0xf0c089, roughness: 0.7 });
@@ -40,15 +58,21 @@ export function makePlayer(opts) {
   var shorts = new THREE.MeshStandardMaterial({ color: opts.shorts || 0x16213e, roughness: 0.7 });
   var shoe = new THREE.MeshStandardMaterial({ color: opts.shoe || 0xffffff, roughness: 0.5 });
   var hair = new THREE.MeshStandardMaterial({ color: opts.hair || 0x3a2417, roughness: 0.9 });
-  var bodyW = 1.0;
+  var bodyW = buildScale(opts.build);
+  var limbW = 0.95 + (bodyW - 0.9) * 0.5;
+  var shoulderW = 0.96 + (bodyW - 0.9) * 0.4;
+  var hipW = 0.98 + (bodyW - 0.9) * 0.3;
+  var tall = heightScale(opts.height);
 
   var root3 = new THREE.Group();
+  root3.scale.y = tall;
+  root3.position.y = -0.285 * (1 - tall);
   var pelvis = pivot(); pelvis.position.y = 0.62; root3.add(pelvis);
 
   // upper body pivot (torso+head+arms) so the swing twist doesn't rotate legs
   var upper = pivot(); pelvis.add(upper);
 
-  var hips = sphere(0.18, shorts, 1.05 * bodyW, 0.7, 0.9); hips.position.y = 0.02; pelvis.add(hips);
+  var hips = sphere(0.18, shorts, 1.05 * hipW, 0.7, 0.9); hips.position.y = 0.02; pelvis.add(hips);
   var torso = sphere(0.21, jersey, bodyW, 1.15, 0.85);
   torso.position.y = 0.30; upper.add(torso);
 
@@ -58,9 +82,61 @@ export function makePlayer(opts) {
   neckCyl.position.y = 0.06; neckCyl.castShadow = true; neck.add(neckCyl);
   // head: smaller than the torso, slightly egg-shaped (taller than wide)
   var head = sphere(0.185, skin, 1.0, 1.08, 0.96); head.position.y = 0.25; neck.add(head);
-  // simple short hair cap
-  var capH = new THREE.Mesh(new THREE.SphereGeometry(0.192, 20, 16, 0, Math.PI * 2, 0, Math.PI * 0.62), hair);
-  capH.position.y = 0.27; capH.scale.set(1.0, 1.05, 1.0); capH.castShadow = true; neck.add(capH);
+  // Hair + headwear stay attached to the head group so the swing twist never
+  // shears them away from the face.
+  var hairStyle = opts.hairStyle || 'short';
+  var headwear = opts.headwear || 'none';
+  var shortHair = new THREE.Mesh(new THREE.SphereGeometry(0.192, 20, 16, 0, Math.PI * 2, 0, Math.PI * 0.62), hair);
+  shortHair.position.y = 0.27; shortHair.scale.set(1.0, 1.05, 1.0); shortHair.castShadow = true; neck.add(shortHair);
+  function hairPanel(x, y, z, w, h, d) {
+    var panel = box(w, h, d, hair);
+    panel.position.set(x, y, z);
+    neck.add(panel);
+    return panel;
+  }
+  if (hairStyle === 'short') {
+    hairPanel(-0.18, 0.205, 0.02, 0.035, 0.08, 0.10);
+    hairPanel(0.18, 0.205, 0.02, 0.035, 0.08, 0.10);
+  }
+  if (hairStyle === 'long' || hairStyle === 'ponytail') {
+    hairPanel(-0.19, 0.175, 0.01, 0.05, 0.20, 0.12);
+    hairPanel(0.19, 0.175, 0.01, 0.05, 0.20, 0.12);
+    var backHair = box(0.22, hairStyle === 'ponytail' ? 0.18 : 0.22, hairStyle === 'ponytail' ? 0.08 : 0.055, hair);
+    backHair.position.set(0, hairStyle === 'ponytail' ? 0.15 : 0.14, hairStyle === 'ponytail' ? -0.12 : -0.15);
+    neck.add(backHair);
+
+    if (hairStyle === 'ponytail') {
+      var tieMat = new THREE.MeshStandardMaterial({ color: opts.headband || opts.jersey || 0xffffff, roughness: 0.5 });
+      var tie = box(0.09, 0.028, 0.035, tieMat);
+      tie.position.set(0.02, 0.17, -0.185);
+      neck.add(tie);
+
+      var pony = sphere(0.075, hair, 0.62, 1.2, 0.62);
+      pony.position.set(0.035, 0.10, -0.205);
+      pony.castShadow = true; neck.add(pony);
+    }
+  }
+  if (headwear === 'cap') {
+    var capMat = new THREE.MeshStandardMaterial({ color: opts.headband || opts.jersey || 0xffffff, roughness: 0.55 });
+    var capCrown = new THREE.Mesh(new THREE.SphereGeometry(0.198, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.46), capMat);
+    capCrown.position.y = 0.325;
+    capCrown.scale.set(1.04, 0.72, 1.02);
+    capCrown.castShadow = true; neck.add(capCrown);
+
+    var brim = box(0.22, 0.026, 0.10, capMat);
+    brim.position.set(0, 0.245, 0.215);
+    brim.castShadow = true; neck.add(brim);
+  } else if (headwear === 'headband') {
+    var bandMat = new THREE.MeshStandardMaterial({ color: opts.headband || 0xffffff, roughness: 0.5 });
+    var frontBand = box(0.31, 0.028, 0.035, bandMat);
+    frontBand.position.set(0, 0.235, 0.165); neck.add(frontBand);
+    var leftBand = box(0.035, 0.028, 0.16, bandMat);
+    leftBand.position.set(-0.17, 0.235, 0.045); neck.add(leftBand);
+    var rightBand = box(0.035, 0.028, 0.16, bandMat);
+    rightBand.position.set(0.17, 0.235, 0.045); neck.add(rightBand);
+    var rearBand = box(0.28, 0.028, 0.035, bandMat);
+    rearBand.position.set(0, 0.235, -0.12); neck.add(rearBand);
+  }
 
   var eyeMat = new THREE.MeshStandardMaterial({ color: 0x20242c });
   [-0.062, 0.062].forEach(function (dx) {
@@ -71,15 +147,15 @@ export function makePlayer(opts) {
 
   function buildArm(side) {
     var shoulder = pivot();
-    shoulder.position.set(side * 0.20 * bodyW, 0.40, 0); upper.add(shoulder);
+    shoulder.position.set(side * 0.20 * shoulderW, 0.40, 0); upper.add(shoulder);
     // deltoid: a jersey-coloured shoulder cap that bridges torso -> arm so the
     // limb never looks detached when it swings out.
-    var deltoid = sphere(0.10, jersey); shoulder.add(deltoid);
-    var up = limb(0.07, 0.21, skin); shoulder.add(up);
+    var deltoid = sphere(0.096 * shoulderW, jersey); shoulder.add(deltoid);
+    var up = limb(0.07 * limbW, 0.21, skin); shoulder.add(up);
     var elbow = pivot(); elbow.position.y = -0.21; shoulder.add(elbow);
-    var elbowBall = sphere(0.063, skin); elbow.add(elbowBall); // covers the joint
-    var fore = limb(0.062, 0.19, skin); elbow.add(fore);
-    var hand = sphere(0.08, skin); hand.position.y = -0.19; elbow.add(hand);
+    var elbowBall = sphere(0.063 * limbW, skin); elbow.add(elbowBall); // covers the joint
+    var fore = limb(0.062 * limbW, 0.19, skin); elbow.add(fore);
+    var hand = sphere(0.078 * limbW, skin); hand.position.y = -0.19; elbow.add(hand);
     return { shoulder: shoulder, elbow: elbow, hand: hand };
   }
   // The model's face is on +z, so the anatomical RIGHT arm is on local -x.
@@ -106,10 +182,10 @@ export function makePlayer(opts) {
   var bladeRef = blade;
 
   function buildLeg(side) {
-    var hip = pivot(); hip.position.set(side * 0.11 * bodyW, -0.05, 0); pelvis.add(hip);
-    var thigh = limb(0.085, 0.26, skin); hip.add(thigh);
+    var hip = pivot(); hip.position.set(side * 0.11 * hipW, -0.05, 0); pelvis.add(hip);
+    var thigh = limb(0.083 * limbW, 0.26, skin); hip.add(thigh);
     var knee = pivot(); knee.position.y = -0.26; hip.add(knee);
-    var shin = limb(0.07, 0.26, skin); knee.add(shin);
+    var shin = limb(0.07 * limbW, 0.26, skin); knee.add(shin);
     var foot = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.07, 0.22), shoe);
     foot.position.set(0, -0.30, 0.05); foot.castShadow = true; knee.add(foot);
     var toe = sphere(0.05, shoe, 1.2, 0.7, 1); toe.position.set(0, -0.30, 0.15); knee.add(toe);

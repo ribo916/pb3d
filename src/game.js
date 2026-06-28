@@ -93,10 +93,26 @@ Game.prototype._initWorld = function () {
   // DOUBLES roster: near team = human (slot 0) + CPU partner (slot 1);
   // far team = two CPUs. Fixed team palettes so all four read apart.
   var palettes = {
-    nearYou:  { jersey: 0xff7a1f, shorts: 0x20283c, paddle: 0x2bd4ff, skin: 0xe0aa86, hair: 0x3a2417 },
-    nearMate: { jersey: 0x21bdb0, shorts: 0x20283c, paddle: 0xffa53c, skin: 0xcaa17a, hair: 0xf0d35a },
-    farA:     { jersey: 0xff3860, shorts: 0x3a1020, paddle: 0x36d399, skin: 0xc98b66, hair: 0x101010 },
-    farB:     { jersey: 0xff8aa6, shorts: 0x3a1020, paddle: 0x9be36a, skin: 0xb87c5a, hair: 0x2a2a2a }
+    nearYou: {
+      jersey: 0xff7a1f, shorts: 0x20283c, paddle: 0x2bd4ff, shoe: 0xf6f8ff,
+      skin: 0xe4bf9f, hair: 0x241814, height: 'tall', build: 'average',
+      hairStyle: 'short', headwear: 'headband', headband: 0x2bd4ff
+    },
+    nearMate: {
+      jersey: 0x21bdb0, shorts: 0x20283c, paddle: 0xffa53c, shoe: 0xf8fbff,
+      skin: 0xe8c3ab, hair: 0x5b3724, height: 'medium', build: 'average',
+      hairStyle: 'long', headwear: 'none'
+    },
+    farA: {
+      jersey: 0xf14668, shorts: 0x30111e, paddle: 0x36d399, shoe: 0xf9fbff,
+      skin: 0xf0cbb2, hair: 0xd5bb58, height: 'tower', build: 'slim',
+      hairStyle: 'short', headwear: 'cap', headband: 0xf4f5f6
+    },
+    farB: {
+      jersey: 0xff7aa8, shorts: 0x55233a, paddle: 0xc8ff65, shoe: 0xfffbff,
+      skin: 0xedc6b0, hair: 0x4a2b22, height: 'medium', build: 'average',
+      hairStyle: 'ponytail', headwear: 'none', headband: 0xffd166
+    }
   };
   this.youColor = palettes.nearYou.jersey;
 

@@ -81,12 +81,54 @@ async function captureMatch(cfg) {
   await page.screenshot({ path: path.join(OUT, cfg.courtShot) });
 }
 
+async function captureRosterCloseup(cfg) {
+  await page.reload({ waitUntil: 'networkidle' });
+  await selectOption('venue', cfg.venue);
+  await selectOption('palette', cfg.palette);
+  if (cfg.tod) await selectOption('tod', cfg.tod);
+  await page.check('input[name="difficulty"][value="4.5"]', { force: true });
+  await page.click('#startBtn');
+  await page.waitForTimeout(900);
+  await page.evaluate(() => {
+    var g = window.__game;
+    if (!g) return;
+    var hud = document.getElementById('hud');
+    if (hud) hud.style.display = 'none';
+    g.msgTimer = 0;
+    g.ball.live = false;
+    g.ball.pos.x = 0;
+    g.ball.pos.y = 0.9;
+    g.ball.pos.z = -7;
+    var poses = [
+      { x:  2.1, z: 4.8, yaw: Math.PI - 0.35 },
+      { x: -2.1, z: 4.2, yaw: Math.PI + 0.22 },
+      { x:  1.2, z: 1.8, yaw: -0.05 },
+      { x: -1.2, z: 1.5, yaw:  0.18 }
+    ];
+    g.players.forEach(function (pl, i) {
+      pl.pos.x = poses[i].x;
+      pl.pos.z = poses[i].z;
+      pl.vel.x = 0;
+      pl.vel.z = 0;
+    });
+    g._syncMeshes(0.016);
+    g.players.forEach(function (pl, i) {
+      pl.mesh.object.rotation.y = poses[i].yaw;
+    });
+    g.camera.position.set(-0.2, 2.7, 7.9);
+    g.camera.lookAt(0, 1.0, 2.9);
+    g.render();
+  });
+  await page.screenshot({ path: path.join(OUT, cfg.shot) });
+}
+
 await captureMatch({ venue: 'park', palette: 'blue', tod: 'day', menuShot: 'menu-day.png', courtShot: 'court.png', wait: 850 });
 await captureMatch({ venue: 'park', palette: 'green', tod: 'night', menuShot: 'menu-park-green-night.png', courtShot: 'court-night.png', wait: 950 });
 await captureMatch({ venue: 'tropical', palette: 'blue', tod: 'day', menuShot: 'menu-tropical-day.png', courtShot: 'court-tropical-day.png', wait: 850 });
 await captureMatch({ venue: 'tropical', palette: 'green', tod: 'night', menuShot: 'menu-tropical-night.png', courtShot: 'court-tropical-night.png', wait: 950 });
 await captureMatch({ venue: 'indoor', palette: 'blue', menuShot: 'menu-indoor-blue.png', courtShot: 'court-indoor-blue.png', wait: 850 });
 await captureMatch({ venue: 'indoor', palette: 'green', menuShot: 'menu-indoor-green.png', courtShot: 'court-indoor-green.png', wait: 850 });
+await captureRosterCloseup({ venue: 'park', palette: 'blue', tod: 'day', shot: 'roster-closeup.png' });
 
 await page.reload({ waitUntil: 'networkidle' });
 await selectOption('venue', 'park');
