@@ -40,11 +40,14 @@ function loop(now) {
 
 /* ---- audio UI helpers ---- */
 function updateAudioUI() {
-  var m = audio.music.isMuted();
-  var label = m ? '♪ OFF' : '♪ ON';
-  $('muteBtn').textContent = label;
-  $('pauseMuteBtn').textContent = label;
-  $('pauseGenreBtn').textContent = audio.music.getGenreLabel();
+  var musicMuted = audio.music.isMuted();
+  var sfxMuted   = audio.sfx.isMuted();
+  $('muteBtn').classList.toggle('muted', musicMuted);
+  $('sfxMuteBtn').textContent = sfxMuted ? '🔇' : '🔊';
+  var genreLabel = audio.music.getGenreLabel();
+  $('genreBtn').textContent    = genreLabel;
+  $('pauseMuteBtn').textContent  = musicMuted ? '♪ OFF' : '♪ ON';
+  $('pauseGenreBtn').textContent = genreLabel;
 }
 
 /* ---- pause / resume / quit ---- */
@@ -143,12 +146,23 @@ $('muteBtn').addEventListener('touchstart', (e) => { e.preventDefault(); toggleM
 $('pauseMuteBtn').addEventListener('click',      (e) => { e.preventDefault(); toggleMute(); });
 $('pauseMuteBtn').addEventListener('touchstart', (e) => { e.preventDefault(); toggleMute(); }, { passive: false });
 
-/* ---- genre cycle button (pause modal) ---- */
+/* ---- SFX mute button (HUD) ---- */
+function toggleSfxMute() {
+  audio.unlock();
+  audio.sfx.setMuted(!audio.sfx.isMuted());
+  updateAudioUI();
+}
+$('sfxMuteBtn').addEventListener('click',      (e) => { e.preventDefault(); toggleSfxMute(); });
+$('sfxMuteBtn').addEventListener('touchstart', (e) => { e.preventDefault(); toggleSfxMute(); }, { passive: false });
+
+/* ---- genre cycle button (HUD + pause modal) ---- */
 function cycleGenre() {
   audio.unlock();
   audio.music.cycleGenre();
   updateAudioUI();
 }
+$('genreBtn').addEventListener('click',      (e) => { e.preventDefault(); cycleGenre(); });
+$('genreBtn').addEventListener('touchstart', (e) => { e.preventDefault(); cycleGenre(); }, { passive: false });
 $('pauseGenreBtn').addEventListener('click',      (e) => { e.preventDefault(); cycleGenre(); });
 $('pauseGenreBtn').addEventListener('touchstart', (e) => { e.preventDefault(); cycleGenre(); }, { passive: false });
 

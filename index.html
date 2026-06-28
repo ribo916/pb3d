@@ -56,26 +56,39 @@
       box-shadow: 0 6px 20px rgba(43,212,255,0.45); }
     #serveBtn:active { transform: translateX(-50%) scale(0.96); }
 
-    /* ---- small HUD buttons ---- */
-    .hud-btn { pointer-events: auto; padding: 5px 10px; border: none; border-radius: 20px;
-      font-size: 11px; font-weight: 800; color: rgba(255,255,255,0.75);
-      background: rgba(8,18,30,0.55); cursor: pointer; letter-spacing: 0.5px;
-      backdrop-filter: blur(4px); white-space: nowrap; }
-    .hud-btn:active { opacity: 0.7; }
+    /* ---- circular HUD icon buttons ---- */
+    .hud-icon-btn { pointer-events: auto; width: 36px; height: 36px; border: none;
+      border-radius: 50%; font-size: 16px; line-height: 1;
+      display: flex; align-items: center; justify-content: center;
+      color: rgba(255,255,255,0.80); background: rgba(8,18,30,0.62);
+      backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+      cursor: pointer; transition: background 0.15s, opacity 0.15s; flex-shrink: 0; }
+    .hud-icon-btn:active { opacity: 0.65; }
+    .hud-icon-btn.muted { color: rgba(255,255,255,0.30); background: rgba(8,18,30,0.38); }
 
-    /* bottom-left cluster: CAM + MUTE */
-    .btns-bl { position: absolute; bottom: env(safe-area-inset-bottom, 14px); left: 14px;
-      margin-bottom: 14px; pointer-events: none; display: flex; gap: 8px; align-items: center; }
+    /* top-center icon row: CAM, PAUSE, INFO */
+    .btns-tc { position: absolute; top: env(safe-area-inset-top, 12px); left: 50%;
+      transform: translateX(-50%); margin-top: 96px;
+      pointer-events: none; display: flex; gap: 10px; align-items: center; }
 
-    /* top-right cluster: level badge + PAUSE */
+    /* top-right cluster: audio controls */
     .btns-tr { position: absolute; top: env(safe-area-inset-top, 12px); right: 14px;
       margin-top: 12px; pointer-events: none; display: flex; gap: 8px; align-items: center; }
+
+    /* bottom-left: difficulty badge */
+    .btns-bl { position: absolute; bottom: env(safe-area-inset-bottom, 14px); left: 14px;
+      margin-bottom: 14px; pointer-events: none; display: flex; gap: 8px; align-items: center; }
     #levelBadge { padding: 5px 11px; border-radius: 20px; font-size: 11px; font-weight: 800;
       color: #0a1420; letter-spacing: 0.5px; }
 
-    /* bottom-right: INFO */
-    .btns-br { position: absolute; bottom: env(safe-area-inset-bottom, 14px); right: 14px;
-      margin-bottom: 14px; pointer-events: none; display: flex; gap: 8px; align-items: center; }
+    /* pill text button (genre label) */
+    .hud-text-btn { pointer-events: auto; height: 36px; padding: 0 12px; border: none;
+      border-radius: 18px; font-size: 10px; font-weight: 800; letter-spacing: 0.5px;
+      color: rgba(255,255,255,0.80); background: rgba(8,18,30,0.62);
+      backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+      cursor: pointer; transition: background 0.15s, opacity 0.15s; white-space: nowrap;
+      font-family: inherit; }
+    .hud-text-btn:active { opacity: 0.65; }
 
     /* ---- Pause modal ---- */
     #pauseModal { display: none; position: fixed; inset: 0; z-index: 40;
@@ -160,21 +173,23 @@
     <div id="shotTag"></div>
     <button id="serveBtn">SERVE</button>
 
-    <!-- top-right: difficulty badge + pause -->
+    <!-- top-center: game controls as icons -->
+    <div class="btns-tc">
+      <button id="camBtn"   class="hud-icon-btn" title="Camera">📷</button>
+      <button id="pauseBtn" class="hud-icon-btn" title="Pause">⏸</button>
+      <button id="infoBtn"  class="hud-icon-btn" title="Controls">?</button>
+    </div>
+
+    <!-- top-right: audio controls -->
     <div class="btns-tr">
-      <div id="levelBadge">INTERMEDIATE</div>
-      <button id="pauseBtn" class="hud-btn">II PAUSE</button>
+      <button id="sfxMuteBtn" class="hud-icon-btn" title="Game Sounds">🔊</button>
+      <button id="muteBtn"    class="hud-icon-btn" title="Music">♪</button>
+      <button id="genreBtn"   class="hud-text-btn" title="Genre">UPBEAT</button>
     </div>
 
-    <!-- bottom-left: camera + mute -->
+    <!-- bottom-left: difficulty badge -->
     <div class="btns-bl">
-      <button id="camBtn" class="hud-btn">CAM ▶</button>
-      <button id="muteBtn" class="hud-btn">♪ OFF</button>
-    </div>
-
-    <!-- bottom-right: info -->
-    <div class="btns-br">
-      <button id="infoBtn" class="hud-btn">? CONTROLS</button>
+      <div id="levelBadge">INTERMEDIATE</div>
     </div>
   </div>
 

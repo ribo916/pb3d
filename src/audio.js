@@ -9,6 +9,7 @@ export function makeAudio() {
   var AudioCtx = window.AudioContext || window.webkitAudioContext;
   var ac = null, master = null;
   var muted = true;
+  var sfxMuted = false;
   var genreKey = 'upbeat';
   var seqTimer = null;
   var seqStep = 0;
@@ -95,12 +96,14 @@ export function makeAudio() {
   return {
     unlock: unlock,
     sfx: {
-      paddle: function() { if (ac) playNote(440,  'square',   0.05, 0.35); },
-      bounce: function() { if (ac) playNote(220,  'sine',     0.05, 0.22); },
-      net:    function() { if (ac) playNote(140,  'triangle', 0.09, 0.30); },
-      serve:  function() { if (ac) playNote(520,  'sine',     0.07, 0.30); },
-      point:  function() { if (ac) playNote(660,  'sine',     0.22, 0.40); },
-      fault:  function() { if (ac) playNote(180,  'sawtooth', 0.18, 0.30); },
+      paddle: function() { if (ac && !sfxMuted) playNote(440,  'square',   0.05, 0.35); },
+      bounce: function() { if (ac && !sfxMuted) playNote(220,  'sine',     0.05, 0.22); },
+      net:    function() { if (ac && !sfxMuted) playNote(140,  'triangle', 0.09, 0.30); },
+      serve:  function() { if (ac && !sfxMuted) playNote(520,  'sine',     0.07, 0.30); },
+      point:  function() { if (ac && !sfxMuted) playNote(660,  'sine',     0.22, 0.40); },
+      fault:  function() { if (ac && !sfxMuted) playNote(180,  'sawtooth', 0.18, 0.30); },
+      isMuted:  function() { return sfxMuted; },
+      setMuted: function(m) { sfxMuted = !!m; },
     },
     music: {
       isMuted:       function() { return muted; },
