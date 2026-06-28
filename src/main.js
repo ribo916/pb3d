@@ -24,8 +24,8 @@ const MENU_META = {
     tropical: { label: 'Tropical' }
   },
   palette: {
-    blue: { label: 'Blue Court' },
-    green: { label: 'Green Court' }
+    blue: { label: 'Blue' },
+    green: { label: 'Green' }
   },
   tod: {
     day: { label: 'Day' },
@@ -66,7 +66,7 @@ function syncTimeOfDayUI() {
     cfg.timeOfDay = 'day';
   }
   todGroup.setAttribute('aria-disabled', disabled ? 'true' : 'false');
-  todHint.textContent = disabled ? 'Indoor locks the match to bright house lights.' : 'Outdoor venues can switch between bright day and glow-heavy night lighting.';
+  todHint.textContent = disabled ? 'Indoor uses day lighting.' : '';
   document.querySelectorAll('input[name="tod"]').forEach(function (el) {
     el.disabled = disabled;
   });
