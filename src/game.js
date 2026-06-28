@@ -50,6 +50,7 @@ export function Game(opts) {
   this.timeOfDay = this.venue === 'indoor' ? 'day' : (opts.timeOfDay || 'day');
   this.partnerDiff = opts.partnerDiff || null;
   this.onMatchOver = opts.onMatchOver || null;
+  this.isMobile = !!opts.isMobile;
   this.state = STATE.MENU;
   this.excitement = 0;
   this.cameraShake = 0;
@@ -333,7 +334,9 @@ Game.prototype.update = function (dt) {
   }
 
   this._syncMeshes(dt);
-  updateCamera(this.camRig, this.ball, this.players[0].pos, this.camMode, this.cameraShake, dt);
+  updateCamera(this.camRig, this.ball, this.players[0].pos, this.camMode, this.cameraShake, dt, {
+    isMobile: this.isMobile
+  });
   this._updateHUD();
 };
 
@@ -630,7 +633,7 @@ Game.prototype._updateTrail = function () {
 
 /* ------------------------------- HUD ---------------------------------- */
 Game.prototype._cycleCamera = function () {
-  var names = ['BROADCAST', 'FOLLOW', 'SIDELINE', 'TOP-DOWN'];
+  var names = ['BROADCAST', 'FOLLOW', 'TOP-DOWN'];
   this.camMode = (this.camMode + 1) % names.length;
   this._message(names[this.camMode], 1.2);
   if (this.hud && this.hud.setCamMode) this.hud.setCamMode(this.camMode, names[this.camMode]);

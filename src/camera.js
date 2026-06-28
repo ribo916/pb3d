@@ -4,7 +4,7 @@
  * keeping the near player large and readable. Gentle follow toward the ball,
  * plus a short shake on points. Extracted from the original js/game.js camera.
  *
- * Supports four modes (0–3): Broadcast, Follow, Sideline, Top-Down.
+ * Supports three modes (0–2): Broadcast, Follow, Top-Down.
  * ==========================================================================*/
 'use strict';
 
@@ -27,26 +27,31 @@ export function makeCamera(aspect) {
  * rig      — object from makeCamera()
  * ball     — physics ball { pos }
  * humanPos — human player pos { x, z }
- * mode     — 0 broadcast | 1 follow | 2 sideline | 3 topdown
+ * mode     — 0 broadcast | 1 follow | 2 topdown
  * shake    — current shake magnitude (decayed by game loop)
- * dt       — delta time in seconds */
-export function updateCamera(rig, ball, humanPos, mode, shake, dt) {
+ * dt       — delta time in seconds
+ * opts     — { isMobile } */
+export function updateCamera(rig, ball, humanPos, mode, shake, dt, opts) {
   var bx = ball.pos.x, bz = ball.pos.z;
   var desired, look, posLerp, lookLerp;
+  var isMobile = !!(opts && opts.isMobile);
+  var targetFov = CAMERA.FOV;
 
   if (mode === 1) {
     // Follow: camera trails behind/above the human player
-    desired = new THREE.Vector3(humanPos.x, CAMERA.FOLLOW.Y, humanPos.z + CAMERA.FOLLOW.Z_OFFSET);
+    var followY = CAMERA.FOLLOW.Y;
+    var zOffset = CAMERA.FOLLOW.Z_OFFSET;
+    if (isMobile) {
+      var pullT = 1 - ((humanPos.z - CAMERA.FOLLOW.MOBILE_PULLBACK_END_Z) /
+        (CAMERA.FOLLOW.MOBILE_PULLBACK_START_Z - CAMERA.FOLLOW.MOBILE_PULLBACK_END_Z || 1));
+      pullT = clamp(pullT, 0, 1);
+      zOffset += CAMERA.FOLLOW.MOBILE_PULLBACK_Z * pullT;
+      followY += CAMERA.FOLLOW.MOBILE_PULLBACK_Y * pullT;
+    }
+    desired = new THREE.Vector3(humanPos.x, followY, humanPos.z + zOffset);
     look    = new THREE.Vector3(bx * 0.3, 0.9, bz * 0.2);
     posLerp = lookLerp = CAMERA.FOLLOW.LERP;
   } else if (mode === 2) {
-    // Sideline: fixed low TV angle, subtle ball tracking
-    var sl = CAMERA.SIDELINE;
-    desired = new THREE.Vector3(sl.POS.x, sl.POS.y, sl.POS.z);
-    look    = new THREE.Vector3(sl.LOOK.x + bx * 0.04, sl.LOOK.y, sl.LOOK.z + bz * 0.08);
-    posLerp = CAMERA.FOLLOW_POS_LERP;
-    lookLerp = CAMERA.FOLLOW_LOOK_LERP;
-  } else if (mode === 3) {
     // Top-Down: aerial view, very soft ball tracking
     var td = CAMERA.TOPDOWN;
     desired = new THREE.Vector3(td.POS.x, td.POS.y, td.POS.z);
@@ -64,6 +69,8 @@ export function updateCamera(rig, ball, humanPos, mode, shake, dt) {
 
   rig.camPos.lerp(desired, Math.min(1, dt * posLerp));
   rig.camTarget.lerp(look, Math.min(1, dt * lookLerp));
+  rig.cam.fov += (targetFov - rig.cam.fov) * Math.min(1, dt * 5.0);
+  rig.cam.updateProjectionMatrix();
   rig.cam.position.copy(rig.camPos);
   if (shake > 0) {
     rig.cam.position.x += (Math.random() - 0.5) * shake;

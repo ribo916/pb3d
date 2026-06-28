@@ -52,10 +52,14 @@ export const CAMERA = {
   FOLLOW_X_SCALE: 0.18,
   FOLLOW_X_RANGE: 1.3,
   // Mode 1 — Follow: tight behind/above the human player
-  FOLLOW: { Y: 2.8, Z_OFFSET: 3.2, LERP: 4.5 },
-  // Mode 2 — Sideline: low TV angle from the right side of the court
-  SIDELINE: { POS: { x: 5.8, y: 2.4, z: 3.0 }, LOOK: { x: 0, y: 0.9, z: 0 } },
-  // Mode 3 — Top-Down: aerial overview
+  FOLLOW: {
+    Y: 2.8, Z_OFFSET: 3.2, LERP: 4.5,
+    MOBILE_PULLBACK_START_Z: 4.3,
+    MOBILE_PULLBACK_END_Z: 2.0,
+    MOBILE_PULLBACK_Z: 1.0,
+    MOBILE_PULLBACK_Y: 0.35
+  },
+  // Mode 2 — Top-Down: aerial overview
   TOPDOWN: { POS: { x: 0, y: 16, z: 3.0 }, LOOK: { x: 0, y: 0, z: 0 } }
 };
 

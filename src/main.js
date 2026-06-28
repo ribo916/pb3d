@@ -38,6 +38,8 @@ const MENU_META = {
   }
 };
 
+const IS_TOUCH_DEVICE = navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
+
 function checkedValue(name, fallback) {
   return (document.querySelector('input[name="' + name + '"]:checked') || {}).value || fallback;
 }
@@ -81,7 +83,7 @@ function syncMenuSummary() {
 }
 
 // Mark touch-capable devices so CSS can swap the info-modal section.
-if (navigator.maxTouchPoints > 0 || 'ontouchstart' in window) {
+if (IS_TOUCH_DEVICE) {
   document.body.classList.add('touch-device');
 }
 
@@ -159,6 +161,7 @@ function startMatch(difficulty, config) {
     canvas: $('game'),
     difficulty: difficulty,
     audio: audio,
+    isMobile: IS_TOUCH_DEVICE,
     venue: config.venue,
     courtPalette: config.courtPalette,
     timeOfDay: config.timeOfDay
