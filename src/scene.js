@@ -12,7 +12,36 @@ import { COURT } from './constants.js';
 
 const C = COURT;
 
-function courtTexture() {
+const TOD_PRESETS = {
+  day: {
+    bgColor: 0x6ab4e8, fogColor: 0x9ed0ec, fogNear: 70,  fogFar: 220,
+    skyTop:  0x1a6fa8, skyBot:   0x8ed4f0,
+    hemiSky: 0xb8deff, hemiGnd:  0x3d6a10, hemiInt: 0.9,
+    sunColor: 0xfff8e8, sunInt: 2.2, sunPos: [6, 20, 8],
+    fillColor: 0xddeeff, fillInt: 0.5,
+    court: '#1a4a8a', kitchen: '#4a9fd8',
+  },
+  dusk: {
+    bgColor: 0x4a1808, fogColor: 0x6a2808, fogNear: 40,  fogFar: 130,
+    skyTop:  0x0d0520, skyBot:   0x8a3010,
+    hemiSky: 0xff7040, hemiGnd:  0x180808, hemiInt: 0.5,
+    sunColor: 0xff8030, sunInt: 1.0, sunPos: [14, 4, 4],
+    fillColor: 0x4060d0, fillInt: 0.25,
+    court: '#1a4a8a', kitchen: '#4a9fd8',
+  },
+  night: {
+    bgColor: 0x0a1628, fogColor: 0x0a1628, fogNear: 45,  fogFar: 150,
+    skyTop:  0x060d1a, skyBot:   0x122040,
+    hemiSky: 0x1a2a40, hemiGnd:  0x0c1408, hemiInt: 0.50,
+    sunColor: 0xffffff, sunInt: 0.75, sunPos: [6, 16, 8],
+    fillColor: 0xbcd0ff, fillInt: 0.20,
+    court: '#1a4a8a', kitchen: '#4a9fd8',
+  }
+};
+
+function courtTexture(colors) {
+  var courtCol   = (colors && colors.court)   || '#1a4a8a';
+  var kitchenCol = (colors && colors.kitchen) || '#4a9fd8';
   var W = 1024, H = 1024;
   var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   var g = cv.getContext('2d');
@@ -20,10 +49,10 @@ function courtTexture() {
   var mPerPxX = (2 * C.HALF_W) / W, mPerPxZ = (2 * C.HALF_L) / H;
   function X(m) { return (m + C.HALF_W) / mPerPxX; }
   function Z(m) { return (m + C.HALF_L) / mPerPxZ; }
-  // playing surface: deep navy
-  g.fillStyle = '#06182f'; g.fillRect(0, 0, W, H);
-  // non-volley zone (kitchen): a muted mid-blue band (±7ft of net)
-  g.fillStyle = '#1f5e96';
+  // playing surface
+  g.fillStyle = courtCol; g.fillRect(0, 0, W, H);
+  // non-volley zone (kitchen): lighter blue band (±7ft of net)
+  g.fillStyle = kitchenCol;
   g.fillRect(0, Z(-C.KITCHEN), W, Z(C.KITCHEN) - Z(-C.KITCHEN));
   g.strokeStyle = '#f4f7fb'; g.lineWidth = 7; g.lineCap = 'square';
   function line(x1, z1, x2, z2) { g.beginPath(); g.moveTo(X(x1), Z(z1)); g.lineTo(X(x2), Z(z2)); g.stroke(); }
@@ -151,16 +180,17 @@ function addScenery(scene) {
   }
 }
 
-export function build(scene) {
+export function build(scene, tod) {
+  var p = TOD_PRESETS[tod] || TOD_PRESETS.day;
   var handles = { lights: {} };
 
   // --- Sky + fog ---
-  scene.background = new THREE.Color(0x0a1628);
-  scene.fog = new THREE.Fog(0x0a1628, 45, 150);
+  scene.background = new THREE.Color(p.bgColor);
+  scene.fog = new THREE.Fog(p.fogColor, p.fogNear, p.fogFar);
   var skyGeo = new THREE.SphereGeometry(150, 32, 16);
   var skyMat = new THREE.ShaderMaterial({
     side: THREE.BackSide,
-    uniforms: { top: { value: new THREE.Color(0x060d1a) }, bot: { value: new THREE.Color(0x122040) } },
+    uniforms: { top: { value: new THREE.Color(p.skyTop) }, bot: { value: new THREE.Color(p.skyBot) } },
     vertexShader: 'varying vec3 vP; void main(){ vP=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
     fragmentShader: 'varying vec3 vP; uniform vec3 top; uniform vec3 bot; void main(){ float h=clamp(normalize(vP).y,0.0,1.0); gl_FragColor=vec4(mix(bot,top,h),1.0);}'
   });
@@ -185,7 +215,7 @@ export function build(scene) {
   // --- Court surface ---
   var court = new THREE.Mesh(
     new THREE.PlaneGeometry(2 * C.HALF_W, 2 * C.HALF_L),
-    new THREE.MeshStandardMaterial({ map: courtTexture(), roughness: 0.7, metalness: 0.05 })
+    new THREE.MeshStandardMaterial({ map: courtTexture({ court: p.court, kitchen: p.kitchen }), roughness: 0.7, metalness: 0.05 })
   );
   court.rotation.x = -Math.PI / 2; court.position.y = 0.012; court.receiveShadow = true;
   scene.add(court);
@@ -220,10 +250,10 @@ export function build(scene) {
   addScenery(scene);
 
   // --- Lighting ---
-  var hemi = new THREE.HemisphereLight(0x1a2a40, 0x0c1408, 0.50);
+  var hemi = new THREE.HemisphereLight(p.hemiSky, p.hemiGnd, p.hemiInt);
   scene.add(hemi);
-  var sun = new THREE.DirectionalLight(0xffffff, 0.75);
-  sun.position.set(6, 16, 8);
+  var sun = new THREE.DirectionalLight(p.sunColor, p.sunInt);
+  sun.position.set(p.sunPos[0], p.sunPos[1], p.sunPos[2]);
   sun.castShadow = true;
   sun.shadow.mapSize.set(1024, 1024);
   sun.shadow.camera.near = 1; sun.shadow.camera.far = 50;
@@ -232,7 +262,7 @@ export function build(scene) {
   sun.shadow.bias = -0.0004;
   scene.add(sun);
   handles.lights.sun = sun;
-  var fill = new THREE.DirectionalLight(0xbcd0ff, 0.20);
+  var fill = new THREE.DirectionalLight(p.fillColor, p.fillInt);
   fill.position.set(-6, 8, -6);
   scene.add(fill);
 

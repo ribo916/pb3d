@@ -26,6 +26,10 @@
     .diffs button[data-diff="normal"] { background: #ffb43c; }
     .diffs button[data-diff="hard"]   { background: #e23b5a; color: #fff; }
     .hint { font-size: 12px; opacity: 0.55; max-width: 340px; text-align: center; line-height: 1.6; }
+    .tod { display: flex; gap: 20px; }
+    .tod label { display: flex; align-items: center; gap: 6px; font-size: 15px;
+      font-weight: 600; cursor: pointer; opacity: 0.85; }
+    .tod input[type="radio"] { accent-color: #2bd4ff; width: 15px; height: 15px; cursor: pointer; }
 
     /* ---- HUD ---- */
     #hud { display: none; position: fixed; inset: 0; pointer-events: none; z-index: 20; }
@@ -234,6 +238,11 @@
   <div id="menu">
     <h1>PICKLEBALL 3D</h1>
     <p>Doubles vs AI — real rules, arcade feel. You + a CPU partner take on two CPUs.</p>
+    <div class="tod">
+      <label><input type="radio" name="tod" value="day" checked> Day</label>
+      <label><input type="radio" name="tod" value="dusk"> Dusk</label>
+      <label><input type="radio" name="tod" value="night"> Night</label>
+    </div>
     <div class="diffs">
       <button data-diff="easy">BEGINNER</button>
       <button data-diff="normal">INTERMEDIATE</button>

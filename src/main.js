@@ -78,7 +78,7 @@ function quitToMenu() {
 }
 
 /* ---- start match ---- */
-function startMatch(difficulty) {
+function startMatch(difficulty, timeOfDay) {
   $('menu').style.display = 'none';
 
   const hudRefs = {
@@ -89,7 +89,7 @@ function startMatch(difficulty) {
     serveBtn:  $('serveBtn'),  camBtn:   $('camBtn')
   };
 
-  game  = new Game({ canvas: $('game'), difficulty, audio });
+  game  = new Game({ canvas: $('game'), difficulty, audio, timeOfDay });
   input = makeInput($('game'), $('joy'), $('joyKnob'));
   game.setInput(input);
 
@@ -115,7 +115,8 @@ function startMatch(difficulty) {
 document.querySelectorAll('[data-diff]').forEach((btn) => {
   btn.addEventListener('click', () => {
     audio.unlock();
-    startMatch(btn.getAttribute('data-diff'));
+    var tod = (document.querySelector('input[name="tod"]:checked') || {}).value || 'day';
+    startMatch(btn.getAttribute('data-diff'), tod);
   });
 });
 

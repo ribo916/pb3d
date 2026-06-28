@@ -3,7 +3,8 @@
     "allow": [
       "Bash(node test/logic.test.mjs)",
       "Bash(node tools/shoot.mjs)",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(node /Users/ribo/Dev/pb3d/tools/shoot_tod.mjs)"
     ]
   }
 }

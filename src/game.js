@@ -45,6 +45,7 @@ export function Game(opts) {
   this.audio = opts.audio || null;
   this.difficulty = normalizeDifficulty(opts.difficulty);
   this.levelMeta = DIFFICULTY_META[this.difficulty] || DIFFICULTY_META.normal;
+  this.timeOfDay = opts.timeOfDay || 'day';
   this.partnerDiff = opts.partnerDiff || null;
   this.onMatchOver = opts.onMatchOver || null;
   this.state = STATE.MENU;
@@ -79,7 +80,7 @@ Game.prototype._aspect = function () {
 };
 
 Game.prototype._initWorld = function () {
-  this.world = Scene.build(this.scene);
+  this.world = Scene.build(this.scene, this.timeOfDay);
   this.ball = Physics.makeBall();
 
   // DOUBLES roster: near team = human (slot 0) + CPU partner (slot 1);
