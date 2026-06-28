@@ -30,7 +30,7 @@ function startMatch(difficulty) {
     scoreNear: $('scoreNear'), scoreFar: $('scoreFar'),
     dotNear: $('dotNear'), dotFar: $('dotFar'),
     callout: $('callout'), banner: $('banner'), shotTag: $('shotTag'),
-    levelBadge: $('levelBadge'), serveBtn: $('serveBtn')
+    levelBadge: $('levelBadge'), serveBtn: $('serveBtn'), camBtn: $('camBtn')
   };
 
   game = new Game({ canvas: $('game'), difficulty });
@@ -39,8 +39,13 @@ function startMatch(difficulty) {
   input = makeInput($('game'), $('joy'), $('joyKnob'));
   game.setInput(input);
 
+  const camNames = ['BROADCAST', 'FOLLOW', 'SIDELINE', 'TOP-DOWN'];
   const hud = makeHUD(hudRefs, () => { input.state.serveQueued = true; });
   game.hud = hud;
+
+  // CAM button cycles modes (touch-accessible; desktop uses C key)
+  hudRefs.camBtn.addEventListener('click', (e) => { e.preventDefault(); input.state.camCycleQueued = true; });
+  hudRefs.camBtn.addEventListener('touchstart', (e) => { e.preventDefault(); input.state.camCycleQueued = true; }, { passive: false });
 
   $('hud').style.display = 'block';
   game.start();

@@ -53,6 +53,11 @@
       font-weight: 800; color: #0a1420; background: #2bd4ff; cursor: pointer;
       box-shadow: 0 6px 20px rgba(43,212,255,0.45); }
     #serveBtn:active { transform: translateX(-50%) scale(0.96); }
+    #camBtn { position: absolute; bottom: env(safe-area-inset-bottom, 14px); left: 14px; margin-bottom: 14px;
+      pointer-events: auto; padding: 5px 10px; border: none; border-radius: 20px; font-size: 11px;
+      font-weight: 800; color: rgba(255,255,255,0.75); background: rgba(8,18,30,0.55);
+      cursor: pointer; letter-spacing: 0.5px; backdrop-filter: blur(4px); }
+    #camBtn:active { opacity: 0.7; }
 
     /* ---- virtual joystick (touch) ---- */
     #joy { display: none; position: fixed; width: 120px; height: 120px; margin: -60px 0 0 -60px;
@@ -83,6 +88,7 @@
     <div id="banner"></div>
     <div id="shotTag"></div>
     <button id="serveBtn">SERVE</button>
+    <button id="camBtn">CAM ▶</button>
   </div>
 
   <div id="joy"><div id="joyKnob"></div></div>
@@ -96,7 +102,7 @@
       <button data-diff="hard">ADVANCED</button>
     </div>
     <div class="hint">
-      <b>Desktop:</b> WASD / arrows move · mouse aims · Space = drive · V = drop/dink · B = lob · Enter / Space serves<br/>
+      <b>Desktop:</b> WASD / arrows move · mouse aims · Space = drive · V = drop/dink · B = lob · Enter / Space serves · C = camera<br/>
       <b>Touch:</b> left thumb = move · right thumb = swing &amp; aim (hard swipe = power, soft = touch, flick up = lob)
     </div>
   </div>

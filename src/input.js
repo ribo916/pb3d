@@ -21,7 +21,8 @@ export function makeInput(el, joyEl, joyKnob) {
     swingShot: null,         // null | 'lob'       (explicit shot override)
     serveQueued: false,
     usingJoystick: false,
-    joystickReleased: false
+    joystickReleased: false,
+    camCycleQueued: false    // one-shot: cycle camera mode
   };
   var keys = {};
   var joy = { active: false, id: null, ox: 0, oy: 0, x: 0, y: 0, rect: null, knobQueued: false, knobX: 0, knobY: 0 };
@@ -35,6 +36,7 @@ export function makeInput(el, joyEl, joyKnob) {
     else if (e.code === 'KeyV') { queueSwing(fhbh, 'touch'); e.preventDefault(); }
     else if (e.code === 'KeyB') { queueSwing(fhbh, 'touch', 'lob'); e.preventDefault(); }
     if (e.code === 'Enter') state.serveQueued = true;
+    if (e.code === 'KeyC') { state.camCycleQueued = true; e.preventDefault(); }
   });
   window.addEventListener('keyup', function (e) { keys[e.code] = false; });
 
@@ -185,6 +187,10 @@ export function makeInput(el, joyEl, joyKnob) {
     if (state.serveQueued) { state.serveQueued = false; return true; }
     return false;
   }
+  function consumeCamCycle() {
+    if (state.camCycleQueued) { state.camCycleQueued = false; return true; }
+    return false;
+  }
 
-  return { state: state, poll: poll, consumeSwing: consumeSwing, consumeServe: consumeServe };
+  return { state: state, poll: poll, consumeSwing: consumeSwing, consumeServe: consumeServe, consumeCamCycle: consumeCamCycle };
 }

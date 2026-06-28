@@ -49,6 +49,7 @@ export function Game(opts) {
   this.state = STATE.MENU;
   this.excitement = 0;
   this.cameraShake = 0;
+  this.camMode = 0;
   this.msgTimer = 0;
   this.serveDelay = 0;
   this.pointPause = 0;
@@ -295,6 +296,8 @@ Game.prototype.update = function (dt) {
   var inp = this.input ? this.input.poll() : null;
   if (this.swingWindow > 0) this.swingWindow -= dt;
 
+  if (this.input && this.input.consumeCamCycle()) this._cycleCamera();
+
   this._updateHuman(dt, inp);
   this._updateCPUs(dt);
 
@@ -320,7 +323,7 @@ Game.prototype.update = function (dt) {
   }
 
   this._syncMeshes(dt);
-  updateCamera(this.camRig, this.ball, this.cameraShake, dt);
+  updateCamera(this.camRig, this.ball, this.players[0].pos, this.camMode, this.cameraShake, dt);
   this._updateHUD();
 };
 
@@ -612,6 +615,13 @@ Game.prototype._updateTrail = function () {
 };
 
 /* ------------------------------- HUD ---------------------------------- */
+Game.prototype._cycleCamera = function () {
+  var names = ['BROADCAST', 'FOLLOW', 'SIDELINE', 'TOP-DOWN'];
+  this.camMode = (this.camMode + 1) % names.length;
+  this._message(names[this.camMode], 1.2);
+  if (this.hud && this.hud.setCamMode) this.hud.setCamMode(this.camMode, names[this.camMode]);
+};
+
 Game.prototype._message = function (text, time) {
   this._msg = text; this.msgTimer = time || 1.5;
 };

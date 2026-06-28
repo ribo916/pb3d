@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node test/logic.test.mjs)",
+      "Bash(node tools/shoot.mjs)",
+      "Bash(npm install *)"
+    ]
+  }
+}

@@ -3,6 +3,8 @@
  * that frames both teams + the full court on landscape AND portrait while
  * keeping the near player large and readable. Gentle follow toward the ball,
  * plus a short shake on points. Extracted from the original js/game.js camera.
+ *
+ * Supports four modes (0–3): Broadcast, Follow, Sideline, Top-Down.
  * ==========================================================================*/
 'use strict';
 
@@ -21,17 +23,47 @@ export function makeCamera(aspect) {
   };
 }
 
-/* Update camera follow + shake. `rig` is the object returned by makeCamera(),
- * `ball` is the physics ball, `shake` the current shake magnitude (decayed by
- * the game loop). */
-export function updateCamera(rig, ball, shake, dt) {
-  var bx = ball.pos.x;
-  var followX = clamp(bx * CAMERA.FOLLOW_X_SCALE, -CAMERA.FOLLOW_X_RANGE, CAMERA.FOLLOW_X_RANGE);
-  // gentle follow; base pose matches makeCamera and keeps framing margin
-  var desired = new THREE.Vector3(followX, CAMERA.POS.y, CAMERA.POS.z);
-  var look = new THREE.Vector3(bx * CAMERA.FOLLOW_X_SCALE, CAMERA.LOOK.y, CAMERA.LOOK.z + ball.pos.z * 0.06);
-  rig.camPos.lerp(desired, Math.min(1, dt * CAMERA.FOLLOW_POS_LERP));
-  rig.camTarget.lerp(look, Math.min(1, dt * CAMERA.FOLLOW_LOOK_LERP));
+/* Update camera follow + shake.
+ * rig      — object from makeCamera()
+ * ball     — physics ball { pos }
+ * humanPos — human player pos { x, z }
+ * mode     — 0 broadcast | 1 follow | 2 sideline | 3 topdown
+ * shake    — current shake magnitude (decayed by game loop)
+ * dt       — delta time in seconds */
+export function updateCamera(rig, ball, humanPos, mode, shake, dt) {
+  var bx = ball.pos.x, bz = ball.pos.z;
+  var desired, look, posLerp, lookLerp;
+
+  if (mode === 1) {
+    // Follow: camera trails behind/above the human player
+    desired = new THREE.Vector3(humanPos.x, CAMERA.FOLLOW.Y, humanPos.z + CAMERA.FOLLOW.Z_OFFSET);
+    look    = new THREE.Vector3(bx * 0.3, 0.9, bz * 0.2);
+    posLerp = lookLerp = CAMERA.FOLLOW.LERP;
+  } else if (mode === 2) {
+    // Sideline: fixed low TV angle, subtle ball tracking
+    var sl = CAMERA.SIDELINE;
+    desired = new THREE.Vector3(sl.POS.x, sl.POS.y, sl.POS.z);
+    look    = new THREE.Vector3(sl.LOOK.x + bx * 0.04, sl.LOOK.y, sl.LOOK.z + bz * 0.08);
+    posLerp = CAMERA.FOLLOW_POS_LERP;
+    lookLerp = CAMERA.FOLLOW_LOOK_LERP;
+  } else if (mode === 3) {
+    // Top-Down: aerial view, very soft ball tracking
+    var td = CAMERA.TOPDOWN;
+    desired = new THREE.Vector3(td.POS.x, td.POS.y, td.POS.z);
+    look    = new THREE.Vector3(td.LOOK.x + bx * 0.1, td.LOOK.y, td.LOOK.z + bz * 0.05);
+    posLerp = CAMERA.FOLLOW_POS_LERP;
+    lookLerp = CAMERA.FOLLOW_LOOK_LERP;
+  } else {
+    // Broadcast (default): horizontal ball tracking, gentle depth follow
+    var followX = clamp(bx * CAMERA.FOLLOW_X_SCALE, -CAMERA.FOLLOW_X_RANGE, CAMERA.FOLLOW_X_RANGE);
+    desired = new THREE.Vector3(followX, CAMERA.POS.y, CAMERA.POS.z);
+    look    = new THREE.Vector3(bx * CAMERA.FOLLOW_X_SCALE, CAMERA.LOOK.y, CAMERA.LOOK.z + bz * 0.06);
+    posLerp = CAMERA.FOLLOW_POS_LERP;
+    lookLerp = CAMERA.FOLLOW_LOOK_LERP;
+  }
+
+  rig.camPos.lerp(desired, Math.min(1, dt * posLerp));
+  rig.camTarget.lerp(look, Math.min(1, dt * lookLerp));
   rig.cam.position.copy(rig.camPos);
   if (shake > 0) {
     rig.cam.position.x += (Math.random() - 0.5) * shake;
