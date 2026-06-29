@@ -12,7 +12,7 @@
  * ==========================================================================*/
 'use strict';
 
-import { FT } from './constants.js';
+import { FT, STABILITY, POWER_CAP } from './constants.js';
 
 // margin = net-clearance buffer (m). launch() is ballistic (no drag), but real
 // flight has drag that pulls slow/soft shots down short — so soft shots carry a
@@ -91,4 +91,55 @@ export function resolve(absZ, ballY, intent, kitchen, halfL) {
   var zone = zoneOf(absZ, kitchen, halfL);
   var type = classify(zone, intent, ballY > 0.95);
   return { type: type, sp: params(type, kitchen, halfL) };
+}
+
+/* ============================================================
+ * Stability Index helpers
+ * ============================================================*/
+
+/* Map raw stability [0,1] + difficulty to a quality tier.
+ * Returns 'clean' | 'float' | 'popup'. */
+export function stabilityQuality(stability) {
+  // stability is already 0-1 from game._computeStability (sweet-spot applied there).
+  if (stability <= STABILITY.POPUP_THRESHOLD) return 'popup';
+  if (stability <= STABILITY.FLOAT_THRESHOLD) return 'float';
+  return 'clean';
+}
+
+/* Scale a base apex by shot quality. */
+export function apexForQuality(baseApex, quality) {
+  if (quality === 'popup') return baseApex * STABILITY.POPUP_APEX_MULT;
+  if (quality === 'float') return baseApex * STABILITY.FLOAT_APEX_MULT;
+  return baseApex;
+}
+
+/* ============================================================
+ * Power cap helpers
+ * ============================================================*/
+
+/* Given incoming ball height, return the maximum allowed intent string.
+ * 'touch'  — ball is at or below net height → forced soft shot
+ * 'power'  — normal range
+ * 'smash'  — ball is high enough to smash */
+export function maxIntent(ballY) {
+  if (ballY <= POWER_CAP.NET_H) return 'touch';
+  if (ballY >= POWER_CAP.SMASH_H) return 'smash';
+  return 'power';
+}
+
+/* ============================================================
+ * Dink battle target
+ * ============================================================*/
+
+/* Return P2 for a Dink Battle (both teams at kitchen, ball below net height).
+ * Default: cross-court diagonal kitchen corner.
+ * If the player is pulled severely (|playerX - ballX| > 1.5m): return a
+ * straight-ahead neutral dink to avoid giving away more position. */
+export function dinkBattleTarget(playerPos, ballPos, fwd, KITCHEN, HALF_W) {
+  if (KITCHEN == null) KITCHEN = 7 * FT;
+  if (HALF_W == null) HALF_W = 10 * FT;
+  var pulled = Math.abs(playerPos.x - ballPos.x) > 1.5;
+  var targetX = pulled ? 0 : -Math.sign(playerPos.x || 1) * HALF_W * 0.70;
+  var targetZ = -fwd * (KITCHEN * 0.85);
+  return { x: targetX, z: targetZ };
 }

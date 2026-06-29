@@ -16,7 +16,7 @@ import * as Scene from './scene.js';
 import { makePlayer } from './players.js';
 import { makeCamera, updateCamera } from './camera.js';
 import { clamp, dist2D } from './utils.js';
-import { HIT } from './constants.js';
+import { HIT, PHYS, STABILITY, POWER_CAP, SPECIALTY } from './constants.js';
 
 const C = Physics.COURT;
 Rules.setGeometry(C.KITCHEN, C.HALF_W);
@@ -264,8 +264,11 @@ Game.prototype._doServe = function () {
   var targetZ = -fwd * (C.HALF_L * 0.74);
   var target = Physics.vec(targetX + (Math.random() - 0.5) * 0.4, 0, targetZ);
   var serveSpin = Physics.vec(2.0, 0, 0);
-  var v = Physics.launch(p0, target, 2.5, null, serveSpin);
-  this.ball.pos = p0; this.ball.vel = v; this.ball.spin = serveSpin; this.ball.live = true;
+  var serveApex = 2.5;
+  var P1serve = Physics.computeP1(p0, target, serveApex, null);
+  var T = Physics.splineFlightTime(p0, target, P1serve.y);
+  this.ball.spline = { P0: p0, P1: P1serve, P2: target, duration: T, elapsed: 0 };
+  this.ball.spin = serveSpin; this.ball.live = true; this.ball.pos = Physics.clone(p0);
   Rules.onPaddleHit(this.match, this.match.server, { volley: false });
   srvEntry.mesh.swing('serve');
   if (this.audio) this.audio.sfx.serve();
@@ -374,19 +377,50 @@ Game.prototype._tickServe = function (dt) {
 
 Game.prototype._tickRally = function (dt) {
   this.lastHitCooldown = Math.max(0, this.lastHitCooldown - dt);
-  // sub-step physics for stability
   var steps = 4, h = dt / steps;
   for (var s = 0; s < steps; s++) {
-    var evs = Physics.step(this.ball, h);
-    for (var i = 0; i < evs.length; i++) this._handleBallEvent(evs[i]);
+    if (this.ball.spline) {
+      this._stepSpline(h);
+    } else {
+      var evs = Physics.step(this.ball, h);
+      for (var i = 0; i < evs.length; i++) this._handleBallEvent(evs[i]);
+    }
     if (this.state !== STATE.RALLY) return;
   }
-  // contact check (whichever team's responsible player can reach the ball)
   this._checkContacts(dt);
-  // safety: ball wandered far away
   if (Math.abs(this.ball.pos.z) > C.HALF_L + 8 || Math.abs(this.ball.pos.x) > 12) {
     var r = Rules.onOut(this.match);
     if (r.point !== undefined) this._endPoint(r);
+  }
+};
+
+// Advance the active spline by h seconds. Fires a bounce/floor-out event when
+// the ball reaches its landing point (t >= 1 or y <= BALL_R).
+Game.prototype._stepSpline = function (h) {
+  var sp = this.ball.spline;
+  sp.elapsed += h;
+  var t = Math.min(1, sp.elapsed / (sp.duration || 1));
+  var pt = Physics.bezierPoint(sp.P0, sp.P1, sp.P2, t);
+  var vt = Physics.bezierVel(sp.P0, sp.P1, sp.P2, t, sp.duration);
+  this.ball.pos.x = pt.x; this.ball.pos.y = pt.y; this.ball.pos.z = pt.z;
+  this.ball.vel.x = vt.x; this.ball.vel.y = vt.y; this.ball.vel.z = vt.z;
+
+  if (t >= 1 || pt.y <= Physics.COURT.BALL_R) {
+    // Transition back to physics-step for post-bounce roll-out.
+    this.ball.spline = null;
+    this.ball.pos.y = Math.max(Physics.COURT.BALL_R, this.ball.pos.y);
+    // Apply bounce: flip vy, apply restitution + friction.
+    if (this.ball.vel.y < 0) this.ball.vel.y = -this.ball.vel.y * PHYS.RESTITUTION;
+    this.ball.vel.x *= PHYS.FRICTION;
+    this.ball.vel.z *= PHYS.FRICTION;
+    var side = this.ball.pos.z >= 0 ? 1 : -1;
+    var inBounds = Math.abs(this.ball.pos.x) <= C.HALF_W + C.BALL_R &&
+                   Math.abs(this.ball.pos.z) <= C.HALF_L + C.BALL_R;
+    this.ball.lastBounceSide = side;
+    this._handleBallEvent({
+      type: inBounds ? 'bounce' : 'floor-out',
+      side: side, x: this.ball.pos.x, z: this.ball.pos.z, inBounds: inBounds
+    });
   }
 };
 
@@ -512,17 +546,77 @@ Game.prototype._checkContacts = function (dt) {
 
 // Resolve the AIMED shot for a human-controlled player from the held directional
 // input ("momentum aim"): move.x steers left/right, -move.z steers depth.
-Game.prototype._aimTarget = function (p) {
+// intentOverride optionally forces a specific intent (e.g. 'touch' for power cap).
+Game.prototype._aimTarget = function (p, intentOverride) {
   var pos = p.pos, fwd = (p.team === 'near') ? 1 : -1;
   var move = (this.input && this.input.state.move) ? this.input.state.move : { x: 0, z: 0 };
   var aim = clamp((this.swingAim || 0) + (move.x || 0), -1, 1);
-  var intent = (this.swingShot === 'lob') ? 'lob' : (this.swingPower || 'power');
+  var intent = intentOverride || ((this.swingShot === 'lob') ? 'lob' : (this.swingPower || 'power'));
   var sr = Shots.resolve(Math.abs(pos.z), this.ball.pos.y, intent, C.KITCHEN, C.HALF_L);
   var landZ = Shots.aimDepth(sr.sp.landZ, -(move.z || 0), C.KITCHEN, C.HALF_L);
   return { aim: aim, x: aim * C.HALF_W * 0.92, z: -fwd * landZ, type: sr.type, sp: sr.sp };
 };
 
+// True when all four players are within kitchen zone (|z| < KITCHEN + 0.5).
+Game.prototype._allPlayersAtKitchen = function () {
+  for (var i = 0; i < this.players.length; i++) {
+    if (Math.abs(this.players[i].pos.z) >= C.KITCHEN + 0.5) return false;
+  }
+  return true;
+};
+
+// Compute the Stability Index [0,1] for player p at contact time.
+// High = standing still near ball; low = stretched + sprinting.
+Game.prototype._computeStability = function (p) {
+  var sweet = (STABILITY.SWEET_SPOT[this.difficulty] || STABILITY.SWEET_SPOT.normal);
+  var dx = this.ball.pos.x - p.pos.x, dz = this.ball.pos.z - p.pos.z;
+  var dist = Math.sqrt(dx * dx + dz * dz);
+  var distFactor = Math.max(0, 1 - dist / sweet);
+  var speed = Math.sqrt(p.vel.x * p.vel.x + p.vel.z * p.vel.z);
+  var velFactor = Math.max(0, 1 - (speed / HIT.HUMAN_SPEED) * STABILITY.VEL_WEIGHT);
+  return distFactor * velFactor;
+};
+
+// Return the player on the opposing team who is furthest from the net.
+Game.prototype._deeperOpponent = function (hitterTeam) {
+  var oppTeam = hitterTeam === 'near' ? 'far' : 'near';
+  var a = this._player(oppTeam, 0), b = this._player(oppTeam, 1);
+  return (Math.abs(a.pos.z) >= Math.abs(b.pos.z)) ? a : b;
+};
+
+// True if player p is outside the sideline far enough for an ATP shot (Pro only).
+Game.prototype._isAtpPosition = function (p) {
+  return Math.abs(p.pos.x) > C.HALF_W + SPECIALTY.ATP_X_MARGIN;
+};
+
+// True if player p is outside the sideline AND within kitchen depth for an Erne.
+Game.prototype._isErnePosition = function (p) {
+  return Math.abs(p.pos.x) > C.HALF_W + SPECIALTY.ERNE_X_MARGIN &&
+         Math.abs(p.pos.z) < SPECIALTY.ERNE_Z_MAX;
+};
+
+// Spline-based shot executor: snaps ball to contact point, builds the Bezier arc.
+// isAtp = true bypasses the net-plane apex (ATP arc goes around the post).
+Game.prototype._executeSplineShot = function (P2x, P2z, apex, margin, spinVec, isAtp) {
+  var p0 = Physics.vec(this.ball.pos.x, Math.max(0.5, this.ball.pos.y), this.ball.pos.z);
+  var p2 = Physics.vec(P2x, 0, P2z);
+  var P1;
+  if (isAtp) {
+    // ATP: P1 placed very low (below net height) so the arc curves around the post.
+    P1 = { x: (p0.x + p2.x) * 0.5, y: 0.4, z: p0.z * 0.5 };
+  } else {
+    P1 = Physics.computeP1(p0, p2, apex, margin);
+  }
+  var T = Physics.splineFlightTime(p0, p2, P1.y);
+  this.ball.spline = { P0: p0, P1: P1, P2: p2, duration: T, elapsed: 0 };
+  this.ball.spin = spinVec;
+  this.ball.live = true;
+  this.ball.pos = Physics.clone(p0); // snap
+  this.lastHitCooldown = HIT.COOLDOWN_RALLY;
+};
+
 // Shared ball-launch tail: snaps ball to contact point (unless fault), applies vel/spin.
+// Kept for reference; no longer called by the hit path (splines replaced it).
 Game.prototype._executeHit = function (targetX, targetZ, apex, margin, spinVec, fault) {
   var p0 = Physics.vec(this.ball.pos.x, Math.max(0.5, this.ball.pos.y), this.ball.pos.z);
   // A deliberate fault bypasses the net-clearance solver so it actually misses.
@@ -537,44 +631,166 @@ Game.prototype._executeHit = function (targetX, targetZ, apex, margin, spinVec, 
   this.lastHitCooldown = HIT.COOLDOWN_RALLY;
 };
 
-// Human paddle strike. Aim from input + early/late timing.
+// Human paddle strike. Aim from input + stability index + height-based power cap.
 Game.prototype._hit = function (p, swingType) {
   var pos = p.pos, fwd = (p.team === 'near') ? 1 : -1;
   var rally = this.match.rally;
+
+  // Erne bypasses the kitchen volley rule (player has jumped outside the kitchen).
+  var isErne = this.difficulty === 'hard' && this._isErnePosition(p);
   var volley = rally ? (rally.bouncesSinceHit < 1) : false;
-  var inKitchen = Math.abs(pos.z) < C.KITCHEN;
+  var inKitchen = isErne ? false : (Math.abs(pos.z) < C.KITCHEN);
   var res = Rules.onPaddleHit(this.match, p.team, { volley: volley, inKitchen: inKitchen });
   this.cameraShake = Math.max(this.cameraShake, 0.08);
   p.mesh.swing(swingType || 'fh');
   if (this.audio) this.audio.sfx.paddle();
   if (rallyOver(res)) { this._endPoint(res); return; }
-  // Aimed shot from the held directional input (momentum aim).
+
+  // ATP — flat around-the-post arc, only at Pro level.
+  if (this.difficulty === 'hard' && this._isAtpPosition(p)) {
+    var atpSign = pos.x > 0 ? 1 : -1;
+    var atpX = atpSign * C.HALF_W * 0.85;
+    var atpZ = -fwd * (C.HALF_L * 0.55);
+    var atpSpin = Physics.vec(0, atpSign * 2.0, 0);
+    this._flashShot('atp');
+    this._executeSplineShot(atpX, atpZ, 0.75, 0, atpSpin, true);
+    return;
+  }
+
+  // Erne — smash downward from outside the sideline near the kitchen.
+  if (isErne) {
+    var erneX = clamp(this.ball.pos.x, -C.HALF_W * 0.7, C.HALF_W * 0.7);
+    var erneZ = -fwd * (C.HALF_L * 0.35);
+    var erneSpin = Physics.vec(3.5 * -fwd, 0, 0);
+    this._flashShot('erne');
+    this._executeSplineShot(erneX, erneZ, 0.95, 0.05, erneSpin, false);
+    return;
+  }
+
+  // Stability index → shot quality → apex modifier.
+  var stabilityIdx = this._computeStability(p);
+  var quality = Shots.stabilityQuality(stabilityIdx);
+
+  // Power cap: ball height limits the allowed intent.
+  var maxI = Shots.maxIntent(this.ball.pos.y);
+
+  // Read the aimed target from directional input.
   var at = this._aimTarget(p);
-  var timing = clamp((this.ball.pos.z - pos.z) * 0.25 * fwd, -0.6, 0.6); // + = early
+
+  // Override intent when power cap applies.
+  if (maxI === 'touch' && at.type !== 'dink' && at.type !== 'drop') {
+    // Force a dink when ball is at or below net height.
+    at = this._aimTarget(p, 'touch');
+  }
+
+  // Dink battle: everyone at kitchen + ball below net height → cross-court dink.
+  var allAtKitchen = this._allPlayersAtKitchen();
+  if (allAtKitchen && this.ball.pos.y <= POWER_CAP.NET_H) {
+    var dbTarget = Shots.dinkBattleTarget(pos, this.ball.pos, fwd, C.KITCHEN, C.HALF_W);
+    var dbApex = Shots.apexForQuality(Shots.params('dink', C.KITCHEN, C.HALF_L).apex, quality);
+    var dbSpin = Physics.vec(-1.0 * -fwd, 0, 0);
+    this._flashShot('dink');
+    this._executeSplineShot(dbTarget.x, dbTarget.z, dbApex, 0.16, dbSpin, false);
+    return;
+  }
+
+  // Default aim: if stick is near-neutral, steer toward the deeper opponent.
+  var timing = clamp((this.ball.pos.z - pos.z) * 0.25 * fwd, -0.6, 0.6);
   var blend = clamp(at.aim + (Math.abs(at.aim) < 0.2 ? timing : 0), -1, 1);
   var targetX = blend * C.HALF_W * 0.92;
+  if (Math.abs(blend) < 0.15) {
+    var deeper = this._deeperOpponent(p.team);
+    var awaySign = deeper.pos.x >= 0 ? -1 : 1;
+    targetX = clamp(deeper.pos.x + awaySign * 0.6, -C.HALF_W * 0.92, C.HALF_W * 0.92);
+  }
+
+  var apex = Shots.apexForQuality(at.sp.apex, quality);
+  var spinVec = Physics.vec((at.sp.spinX + (swingType === 'bh' ? -1.5 : 0)) * -fwd,
+                             blend * 1.5 + at.sp.spinY, 0);
   this._flashShot(at.type);
-  // Spin: topspin(+)/backspin(-) relative to travel; flipped by -fwd so Magnus curves correctly.
-  var spinVec = Physics.vec((at.sp.spinX + (swingType === 'bh' ? -1.5 : 0)) * -fwd, blend * 1.5 + at.sp.spinY, 0);
-  this._executeHit(targetX, at.z, at.sp.apex, at.sp.margin, spinVec, false);
+  this._executeSplineShot(targetX, at.z, apex, at.sp.margin, spinVec, false);
+  this._checkPoach(p.team);
 };
 
-// CPU paddle strike. Shot chosen by AI; target mirrored for a near-team hitter.
+// CPU paddle strike. Shot chosen by AI using spline execution + stability.
 Game.prototype._cpuHit = function (p) {
   var pos = p.pos, fwd = (p.team === 'near') ? 1 : -1;
   var rally = this.match.rally;
   var volley = rally ? (rally.bouncesSinceHit < 1) : false;
   var inKitchen = Math.abs(pos.z) < C.KITCHEN;
-  // a smart CPU won't volley illegally in the kitchen — step back behind the line
   if (volley && inKitchen) { pos.z = fwd * (C.KITCHEN + 0.3); inKitchen = false; }
   var res = Rules.onPaddleHit(this.match, p.team, { volley: volley, inKitchen: inKitchen });
   p.mesh.swing(Math.random() < 0.3 ? 'bh' : 'fh');
   if (this.audio) this.audio.sfx.paddle();
   if (rallyOver(res)) { this._endPoint(res); return; }
-  var shot = AI.chooseShot(p.ai, this.ball, this.match, false);
-  var tgtZ = (p.team === 'near') ? -shot.target.z : shot.target.z; // mirror for near hitter
+
+  // Build opponents object for deeper-target strategy (opposing near team).
+  var oppTeam = p.team === 'far' ? 'near' : 'far';
+  var opponents = {
+    a: this._player(oppTeam, 0),
+    b: this._player(oppTeam, 1)
+  };
+
+  var shot = AI.chooseShot(p.ai, this.ball, this.match, false, opponents, pos);
+
+  // Deliberate fault: use legacy velocity-based path so faults still miss properly.
+  if (shot.fault) {
+    var tgtZf = (p.team === 'near') ? -shot.target.z : shot.target.z;
+    var spinVecF = Physics.vec(shot.spin.x * -fwd, shot.spin.y, shot.spin.z);
+    this._executeHit(shot.target.x, tgtZf, shot.apex, shot.margin, spinVecF, shot.fault);
+    return;
+  }
+
+  var tgtZ = (p.team === 'near') ? -shot.target.z : shot.target.z;
+  var isAtp = shot.type === 'atp';
+
+  // CPU stability → apex modifier.
+  var stabilityIdx = this._computeStability(p);
+  var quality = Shots.stabilityQuality(stabilityIdx);
+  var apex = Shots.apexForQuality(shot.apex, quality);
+
   var spinVec = Physics.vec(shot.spin.x * -fwd, shot.spin.y, shot.spin.z);
-  this._executeHit(shot.target.x, tgtZ, shot.apex, shot.margin, spinVec, shot.fault);
+  this._executeSplineShot(shot.target.x, tgtZ, apex, shot.margin, spinVec, isAtp);
+
+  // Poach check: can the net partner intercept this shot?
+  this._checkPoach(p.team);
+};
+
+// Poach check — called after a spline shot is fired toward `hitterTeam`'s
+// opponents. Checks if the net-partner on the receiving team can intercept.
+// If so, deflects the ball mid-spline toward open court on the hitter's side.
+Game.prototype._checkPoach = function (hitterTeam) {
+  if (!this.ball.spline) return;
+  var sp = this.ball.spline;
+  var receivingTeam = hitterTeam === 'near' ? 'far' : 'near';
+  // The partner is whichever player on the receiving team is NOT responsible.
+  var responsibleSlot = this._responsibleSlot(receivingTeam, sp.P2.x);
+  var partnerSlot = 1 - responsibleSlot;
+  var partner = this._player(receivingTeam, partnerSlot);
+  if (!partner || !partner.ai) return; // human partner: no auto-poach
+
+  if (!AI.checkPoach(partner.ai, sp.P0, sp.P1, sp.P2, partner.pos)) return;
+
+  // Poach: swing the partner and redirect the ball toward open court.
+  partner.mesh.swing('fh');
+  if (this.audio) this.audio.sfx.paddle();
+
+  // New landing target: away from where the hitter aimed, on the hitter's side.
+  var openX = -sp.P2.x * 0.7 + (Math.random() - 0.5) * 0.6;
+  var openZ = (hitterTeam === 'near' ? 1 : -1) * (C.HALF_L * 0.72);
+  var fwd = (receivingTeam === 'near') ? 1 : -1;
+  var newP2 = Physics.vec(openX, 0, openZ);
+  var newP1 = Physics.computeP1(partner.pos.x !== undefined
+    ? Physics.vec(partner.pos.x, 1.1, partner.pos.z) : sp.P1,
+    newP2, 1.4, 0.18);
+  var newT = Physics.splineFlightTime(
+    Physics.vec(partner.pos.x, 1.1, partner.pos.z), newP2, newP1.y);
+  this.ball.spline = {
+    P0: Physics.vec(partner.pos.x, 1.1, partner.pos.z),
+    P1: newP1, P2: newP2, duration: newT, elapsed: 0
+  };
+  this.ball.pos = Physics.clone(this.ball.spline.P0);
+  this.lastHitCooldown = HIT.COOLDOWN_RALLY;
 };
 
 /* ----------------------------- rendering ------------------------------ */

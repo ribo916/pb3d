@@ -5,7 +5,7 @@
  * ==========================================================================*/
 'use strict';
 
-import { FT, COURT, PHYS } from './constants.js';
+import { FT, COURT, PHYS, STABILITY } from './constants.js';
 
 export { FT, COURT };
 export const GRAVITY = PHYS.GRAVITY;
@@ -38,8 +38,60 @@ export function makeBall() {
     vel: vec(0, 0, 0),
     spin: vec(0, 0, 0), // angular-ish; only magnitude/dir matters for curve
     live: false,
-    lastBounceSide: 0   // +1 near, -1 far, 0 none
+    lastBounceSide: 0,  // +1 near, -1 far, 0 none
+    spline: null        // {P0,P1,P2,duration,elapsed} while in spline-driven flight
   };
+}
+
+/* ============================================================
+ * Spline (Quadratic Bezier) helpers — used by the spline-driven
+ * trajectory system. Pure math; no THREE dependency.
+ * ============================================================*/
+
+/* Evaluate a quadratic Bezier at parameter t ∈ [0,1].
+ * B(t) = (1-t)^2·P0 + 2(1-t)t·P1 + t^2·P2 */
+export function bezierPoint(P0, P1, P2, t) {
+  var s = 1 - t;
+  return {
+    x: s * s * P0.x + 2 * s * t * P1.x + t * t * P2.x,
+    y: s * s * P0.y + 2 * s * t * P1.y + t * t * P2.y,
+    z: s * s * P0.z + 2 * s * t * P1.z + t * t * P2.z
+  };
+}
+
+/* First derivative of the Bezier (tangent direction × 2).
+ * Divide by flightTime T to get velocity in m/s. */
+export function bezierVel(P0, P1, P2, t, T) {
+  var s = 1 - t;
+  var scale = T > 0 ? 2 / T : 0;
+  return {
+    x: (s * (P1.x - P0.x) + t * (P2.x - P1.x)) * scale,
+    y: (s * (P1.y - P0.y) + t * (P2.y - P1.y)) * scale,
+    z: (s * (P1.z - P0.z) + t * (P2.z - P1.z)) * scale
+  };
+}
+
+/* Estimate total flight time for a spline shot.
+ * Reuses the same up+down time formula as solveShot so timing is consistent. */
+export function splineFlightTime(P0, P2, apexY) {
+  apexY = Math.max(apexY, P0.y + 0.4);
+  var g = GRAVITY;
+  var vy = Math.sqrt(2 * g * (apexY - P0.y));
+  var tUp = vy / g;
+  var tDown = Math.sqrt(2 * Math.max(0.01, apexY - COURT.BALL_R) / g);
+  return tUp + tDown;
+}
+
+/* Compute the Bezier apex control point P1.
+ * P1.z = 0 (net plane midpoint in z), ensuring the curve crosses the net.
+ * P1.x = lerp(P0.x, P2.x, 0.5) so the arc stays lateral-central.
+ * P1.y = max(netHeightAt(P1.x) + margin, apexY).
+ * margin defaults to 0.12 if null/undefined. */
+export function computeP1(P0, P2, apexY, margin) {
+  margin = (margin == null) ? 0.12 : margin;
+  var mx = (P0.x + P2.x) * 0.5;
+  var my = Math.max(netHeightAt(mx) + margin, apexY);
+  return { x: mx, y: my, z: 0 };
 }
 
 /* Integrate the ball one timestep. Returns a list of discrete events

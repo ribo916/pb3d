@@ -3,6 +3,9 @@
 > This is the primary context file for AI coding agents. Both **Claude Code** and
 > **OpenAI Codex** read this file. See `CLAUDE.md` for Claude-specific additions.
 > Read this before starting any task.
+>
+> **Gameplay mechanics, tuning surfaces, and system design →
+> [`GAMEPLAY.md`](GAMEPLAY.md).** Read it before touching any gameplay code.
 
 ---
 

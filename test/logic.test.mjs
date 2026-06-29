@@ -7,6 +7,7 @@ import * as Shots from '../src/shots.js';
 import * as Rules from '../src/rules.js';
 import * as AI from '../src/ai.js';
 import { buildMusicCatalog, sanitizeMusicState } from '../src/audio.js';
+import { STABILITY, POWER_CAP, SPECIALTY } from '../src/constants.js';
 
 const C = Physics.COURT;
 let passed = 0;
@@ -177,6 +178,128 @@ test('AI chooseShot serve aims diagonally into a service box', () => {
   const shot = AI.chooseShot(ai, ball, m, true);
   assert.ok(shot.target.z > 0, 'far serve aims toward the near (+z) side');
   assert.equal(shot.type, 'serve');
+});
+
+/* ----------------------- spline / bezier helpers ----------------------- */
+test('bezierPoint returns P0 at t=0 and P2 at t=1', () => {
+  const P0 = { x: 0, y: 0.8, z: 5 };
+  const P1 = { x: 0, y: 2.0, z: 0 };
+  const P2 = { x: 1, y: 0,   z: -4 };
+  const at0 = Physics.bezierPoint(P0, P1, P2, 0);
+  const at1 = Physics.bezierPoint(P0, P1, P2, 1);
+  assert.ok(Math.abs(at0.x - P0.x) < 1e-9 && Math.abs(at0.z - P0.z) < 1e-9, 't=0 is P0');
+  assert.ok(Math.abs(at1.x - P2.x) < 1e-9 && Math.abs(at1.z - P2.z) < 1e-9, 't=1 is P2');
+});
+
+test('bezierPoint midpoint satisfies the quadratic formula (0.25·P0 + 0.5·P1 + 0.25·P2)', () => {
+  const P0 = { x: -2, y: 0, z: 2 };
+  const P1 = { x:  0, y: 4, z: 0 };
+  const P2 = { x:  2, y: 0, z: -2 };
+  // Expected: 0.25*(-2,0,2) + 0.5*(0,4,0) + 0.25*(2,0,-2) = (0, 2, 0)
+  const expected = { x: 0, y: 2, z: 0 };
+  const mid = Physics.bezierPoint(P0, P1, P2, 0.5);
+  assert.ok(Math.abs(mid.x - expected.x) < 1e-9, 'midpoint.x correct');
+  assert.ok(Math.abs(mid.y - expected.y) < 1e-9, 'midpoint.y correct');
+  assert.ok(Math.abs(mid.z - expected.z) < 1e-9, 'midpoint.z correct');
+});
+
+test('computeP1 returns y >= net height + margin', () => {
+  const P0 = Physics.vec(0, 0.8, C.HALF_L * 0.7);
+  const P2 = Physics.vec(1, 0, -C.HALF_L * 0.7);
+  const apexY = 1.3;
+  const margin = 0.22;
+  const P1 = Physics.computeP1(P0, P2, apexY, margin);
+  const minNetH = Physics.netHeightAt(P1.x) + margin;
+  assert.ok(P1.y >= minNetH - 1e-9, 'P1.y clears the net by at least margin');
+  assert.ok(Math.abs(P1.z) < 1e-9, 'P1.z is at the net plane (z=0)');
+});
+
+test('splineFlightTime is positive and roughly physical', () => {
+  const P0 = Physics.vec(0, 0.8, 5);
+  const P2 = Physics.vec(0, 0, -4);
+  const T = Physics.splineFlightTime(P0, P2, 1.5);
+  assert.ok(T > 0.2 && T < 4.0, 'flight time is physically plausible (0.2s–4s)');
+});
+
+test('makeBall includes a null spline field', () => {
+  const b = Physics.makeBall();
+  assert.ok('spline' in b, 'spline property present');
+  assert.equal(b.spline, null);
+});
+
+/* ---------------------- stability / quality helpers -------------------- */
+test('stabilityQuality returns correct tier at boundary values', () => {
+  assert.equal(Shots.stabilityQuality(0.05), 'popup',
+    'stability << POPUP_THRESHOLD → popup');
+  assert.equal(Shots.stabilityQuality(STABILITY.POPUP_THRESHOLD + 0.01), 'float',
+    'just above popup threshold → float');
+  assert.equal(Shots.stabilityQuality(STABILITY.FLOAT_THRESHOLD + 0.01), 'clean',
+    'above float threshold → clean');
+});
+
+test('apexForQuality scales monotonically: clean < float < popup', () => {
+  const base = 1.4;
+  const clean = Shots.apexForQuality(base, 'clean');
+  const flt   = Shots.apexForQuality(base, 'float');
+  const popup = Shots.apexForQuality(base, 'popup');
+  assert.ok(clean <= flt, 'float apex >= clean apex');
+  assert.ok(flt < popup, 'popup apex > float apex');
+});
+
+/* ----------------------- power cap helpers ----------------------------- */
+test('maxIntent returns touch for ball at floor, smash above SMASH_H', () => {
+  assert.equal(Shots.maxIntent(0.1), 'touch',
+    'floor-level ball → forced touch');
+  assert.equal(Shots.maxIntent(POWER_CAP.NET_H - 0.01), 'touch',
+    'just below net height → touch');
+  assert.equal(Shots.maxIntent(POWER_CAP.NET_H + 0.1), 'power',
+    'above net → normal power');
+  assert.equal(Shots.maxIntent(POWER_CAP.SMASH_H + 0.1), 'smash',
+    'high ball → smash');
+});
+
+/* ----------------------- AI poach helpers ------------------------------ */
+test('checkPoach returns false for easy difficulty', () => {
+  const ai = AI.makeAI('easy');
+  const P0 = Physics.vec(0, 0.8, -5);
+  const P1 = Physics.vec(0, 2.0, 0);
+  const P2 = Physics.vec(0, 0, 5);
+  assert.equal(AI.checkPoach(ai, P0, P1, P2, { x: 0, z: 2 }), false);
+});
+
+test('checkPoach returns true for Pro when partner is directly in path', () => {
+  const ai = AI.makeAI('hard');
+  const P0 = Physics.vec(0, 0.8, -4);
+  const P1 = Physics.vec(0, 2.0, 0);
+  const P2 = Physics.vec(0, 0, 4);  // straight shot through centre
+  // Partner standing right on the trajectory
+  const partnerPos = { x: 0, z: 2 };
+  assert.equal(AI.checkPoach(ai, P0, P1, P2, partnerPos), true);
+});
+
+test('checkPoach returns false for Pro when partner is far from path', () => {
+  const ai = AI.makeAI('hard');
+  const P0 = Physics.vec(0, 0.8, -4);
+  const P1 = Physics.vec(0, 2.0, 0);
+  const P2 = Physics.vec(0, 0, 4);
+  // Partner far to the side — well outside POACH_PRO_REACH
+  const partnerPos = { x: C.HALF_W, z: 2 };
+  assert.equal(AI.checkPoach(ai, P0, P1, P2, partnerPos), false);
+});
+
+/* -------------------- AI predict spline fast-path --------------------- */
+test('AI predict uses spline endpoint when ball.spline is set', () => {
+  const ball = Physics.makeBall();
+  ball.live = true;
+  ball.spline = {
+    P0: Physics.vec(0, 1, 3),
+    P1: Physics.vec(0, 2, 0),
+    P2: Physics.vec(1.5, 0, -4.2),
+    duration: 1.0, elapsed: 0.3
+  };
+  const pred = AI.predict(ball);
+  assert.ok(Math.abs(pred.x - 1.5) < 1e-9 && Math.abs(pred.z - -4.2) < 1e-9,
+    'predict returns P2 directly when spline is active');
 });
 
 /* ---------------------------- audio helpers ---------------------------- */

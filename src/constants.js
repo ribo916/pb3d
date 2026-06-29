@@ -72,3 +72,30 @@ export const HIT = {
   COOLDOWN_RALLY: 0.12,
   HUMAN_SPEED: 5.2
 };
+
+// Stability Index tuning — controls hit quality based on player position + velocity at contact.
+// Sweet-spot radius (m) scales with DUPR: low DUPR = tight zone, Pro = generous buffer.
+export const STABILITY = {
+  SWEET_SPOT: { family: 1.2, easy: 0.7, normal: 1.0, hard: 1.4 },
+  VEL_WEIGHT: 0.45,      // fraction of max speed that zeroes out stability
+  FLOAT_THRESHOLD: 0.45, // stability below this → float arc (high P1, overshooting P2)
+  POPUP_THRESHOLD: 0.18, // stability below this → pop-up arc (spiked P1)
+  FLOAT_APEX_MULT: 1.65, // apex multiplier for float
+  POPUP_APEX_MULT: 2.6   // apex multiplier for pop-up
+};
+
+// Power cap — incoming ball height limits how hard the hitter can return it.
+export const POWER_CAP = {
+  NET_H: 0.86,           // same as COURT.NET_H_CENTER; ball at/below this → forced soft
+  BELOW_DEPTH_FRAC: 0.4, // max landing depth (fraction of HALF_L) for a below-net ball
+  SMASH_H: 1.5           // ball at/above this height enables overhead smash intent
+};
+
+// Specialty shot triggers and poach windows.
+export const SPECIALTY = {
+  ATP_X_MARGIN: 0.35,        // player must be this far outside sideline for ATP
+  ERNE_X_MARGIN: 0.25,       // player must be this far outside sideline for Erne
+  ERNE_Z_MAX: 2.7,           // Erne only within this z-distance of the net (kitchen zone)
+  POACH_NORMAL_X_HALF: 0.85, // ±x bounding box for DUPR 4.5 poach intercept
+  POACH_PRO_REACH: 1.9       // physical reach sphere radius (m) for Pro poach check
+};

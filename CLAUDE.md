@@ -4,6 +4,9 @@
 > It covers: what this is, tech stack, commands, directory structure, architecture,
 > the gameplay contract, conventions, music asset workflow, how to extend (venues, skinning,
 > singles), and testing. Both Claude Code and OpenAI Codex use that file.
+>
+> **Gameplay mechanics, tuning constants, shot system, AI, and specialty shots →
+> [`GAMEPLAY.md`](GAMEPLAY.md).** Read before touching any gameplay code.
 
 ---
 

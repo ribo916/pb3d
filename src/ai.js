@@ -4,8 +4,9 @@
  * ==========================================================================*/
 'use strict';
 
-import { COURT, GRAVITY } from './physics.js';
+import { COURT, GRAVITY, bezierPoint } from './physics.js';
 import * as Shots from './shots.js';
+import { SPECIALTY, POWER_CAP } from './constants.js';
 
 const C = COURT;
 
@@ -36,9 +37,17 @@ export function makeAI(level) {
 
 // Predict where the ball will cross the AI's reachable plane (its side).
 // Returns predicted {x, z} landing/intercept on the far side, or null.
+// If ball.spline is set, samples the Bezier directly (exact and fast).
 export function predict(ball) {
   if (!ball.live) return null;
-  // crude forward simulation using physics-free ballistic estimate
+
+  // Fast path: ball is on a spline — evaluate endpoint directly.
+  if (ball.spline) {
+    var sp = ball.spline;
+    return { x: sp.P2.x, z: sp.P2.z };
+  }
+
+  // Fallback: crude ballistic integration (no drag/Magnus).
   var p = { x: ball.pos.x, y: ball.pos.y, z: ball.pos.z };
   var v = { x: ball.vel.x, y: ball.vel.y, z: ball.vel.z };
   var g = GRAVITY, dt = 1 / 60, steps = 0;
@@ -48,11 +57,37 @@ export function predict(ball) {
     if (p.y <= C.BALL_R && v.y < 0) {
       return { x: p.x, z: p.z };
     }
-    // if it reaches deep far court plane, intercept there
     if (p.z < -C.HALF_L + 0.5 && v.z < 0) return { x: p.x, z: p.z };
     steps++;
   }
   return { x: p.x, z: p.z };
+}
+
+/* Check whether the net-partner on the given team should poach a shot whose
+ * spline is described by P0/P1/P2. Difficulty-scaled per the spec:
+ *   easy  (4.0): never poaches.
+ *   normal(4.5): poaches if P2 lands within a narrow lateral bounding box.
+ *   hard  (5.0 / Pro): physical check — samples curve for closest approach.
+ * Returns true when the partner should intercept. */
+export function checkPoach(ai, P0, P1, P2, partnerPos) {
+  var level = ai.level;
+  if (level === 'easy' || level === 'family') return false;
+
+  if (level === 'normal') {
+    // Narrow lateral bounding box: poach only if P2 lands near the partner's x.
+    return Math.abs(P2.x - partnerPos.x) < SPECIALTY.POACH_NORMAL_X_HALF;
+  }
+
+  // hard (Pro): check if any point on the Bezier passes within reach radius.
+  var reach = SPECIALTY.POACH_PRO_REACH;
+  var STEPS = 12; // sample resolution
+  for (var i = 0; i <= STEPS; i++) {
+    var t = i / STEPS;
+    var pt = bezierPoint(P0, P1, P2, t);
+    var dx = pt.x - partnerPos.x, dz = pt.z - partnerPos.z;
+    if (Math.sqrt(dx * dx + dz * dz) < reach) return true;
+  }
+  return false;
 }
 
 /* Decide where the AI should move this frame.
@@ -89,10 +124,13 @@ export function chooseMovement(ai, ball, rally) {
 }
 
 /* Choose a shot when the AI strikes the ball. Returns
- * { target:{x,z}, apex, spin:{x,y,z} } to feed physics.solveShot + extra spin.
- * isServe = the AI is serving.
+ * { target:{x,z}, apex, spin:{x,y,z} } to feed the spline shot system.
+ * isServe  = the AI is serving.
+ * opponents = optional {a:{pos,vel}, b:{pos,vel}} positions of the two near-side
+ *             players — used to target the deeper one's feet.
+ * hitterPos = optional {x,z} of the AI hitter — used for Erne/ATP detection.
  */
-export function chooseShot(ai, ball, match, isServe) {
+export function chooseShot(ai, ball, match, isServe, opponents, hitterPos) {
   var cfg = ai.cfg;
   var nearBaseZ = C.HALF_L - 0.5;
   var aim, apex, spin = { x: 0, y: 0, z: 0 }, type = 'drive', margin;
@@ -120,6 +158,23 @@ export function chooseShot(ai, ball, match, isServe) {
     aim = { x: targetXSign * (C.HALF_W * 0.5), z: (C.HALF_L * 0.75) };
     apex = 2.4; spin.x = 2.0; type = 'serve'; // light topspin
   } else {
+    // Pro Erne/ATP — check hitter position before normal shot logic.
+    if (cfg.smart >= 0.92 && hitterPos) {
+      var hx = Math.abs(hitterPos.x), hz = Math.abs(hitterPos.z);
+      if (hx > C.HALF_W + SPECIALTY.ERNE_X_MARGIN && hz < SPECIALTY.ERNE_Z_MAX) {
+        // Erne: smash downward from outside the kitchen sideline.
+        var erneTargetX = rand(-C.HALF_W * 0.6, C.HALF_W * 0.6);
+        return { target: { x: erneTargetX, z: C.HALF_L * 0.35 },
+          apex: 0.95, spin: { x: 3.5, y: 0, z: 0 }, type: 'erne', margin: 0.05 };
+      }
+      if (hx > C.HALF_W + SPECIALTY.ATP_X_MARGIN) {
+        // ATP: flat around-the-post shot — P1 will be placed below net by game.js.
+        var atpSign = hitterPos.x > 0 ? 1 : -1;
+        return { target: { x: atpSign * C.HALF_W * 0.85, z: C.HALF_L * 0.55 },
+          apex: 0.75, spin: { x: 0, y: atpSign * 2.0, z: 0 }, type: 'atp', margin: 0 };
+      }
+    }
+
     // SKILL-SCALED shot selection. Intent (power vs touch) is chosen from the
     // hitter's court zone, the ball height, and difficulty: beginners (low
     // smart) bang power from everywhere; advanced players drop from the back,
@@ -129,7 +184,11 @@ export function chooseShot(ai, ball, match, isServe) {
     var zone = Shots.zoneOf(absZ, C.KITCHEN, C.HALF_L);
     var ballHigh = ball.pos.y > 0.95;
     var intent;
-    if (Math.random() < 0.06 * smart) {
+
+    // Power cap: ball at or below net height forces a soft shot.
+    if (ball.pos.y <= POWER_CAP.NET_H) {
+      intent = 'touch';
+    } else if (Math.random() < 0.06 * smart) {
       intent = 'lob';                                   // occasional change-up
     } else if (zone === 'kitchen') {
       if (ballHigh && Math.random() < smart) intent = 'power';        // attack high ball -> speedup
@@ -141,15 +200,27 @@ export function chooseShot(ai, ball, match, isServe) {
     }
     var sr = Shots.resolve(absZ, ball.pos.y, intent, C.KITCHEN, C.HALF_L);
     type = sr.type; var sp = sr.sp;
+
+    // Deeper-opponent targeting: default aim toward the opponent who is further
+    // from the net, aimed laterally away from their body.
     var aimX;
-    if (type === 'drive' || type === 'lob') {
-      aimX = (Math.random() < 0.5 ? -1 : 1) * C.HALF_W * 0.78; // to a corner
-    } else if (type === 'speedup') {
-      aimX = rand(-C.HALF_W * 0.4, C.HALF_W * 0.4);           // at the body / middle
+    if (opponents && (type === 'drive' || type === 'speedup' || type === 'drop')) {
+      var deeper = (Math.abs(opponents.a.pos.z) >= Math.abs(opponents.b.pos.z))
+        ? opponents.a : opponents.b;
+      var awaySign = (deeper.pos.x >= 0) ? -1 : 1; // aim away from their body
+      aimX = deeper.pos.x + awaySign * 0.6;
+      aimX = Math.max(-C.HALF_W * 0.88, Math.min(C.HALF_W * 0.88, aimX));
+      aim = { x: aimX, z: sp.landZ };
     } else {
-      aimX = rand(-C.HALF_W * 0.7, C.HALF_W * 0.7);           // drop / dink
+      if (type === 'drive' || type === 'lob') {
+        aimX = (Math.random() < 0.5 ? -1 : 1) * C.HALF_W * 0.78; // to a corner
+      } else if (type === 'speedup') {
+        aimX = rand(-C.HALF_W * 0.4, C.HALF_W * 0.4);           // at the body / middle
+      } else {
+        aimX = rand(-C.HALF_W * 0.7, C.HALF_W * 0.7);           // drop / dink
+      }
+      aim = { x: aimX, z: sp.landZ };
     }
-    aim = { x: aimX, z: sp.landZ };
     apex = sp.apex; spin.x = sp.spinX; spin.y = sp.spinY; margin = sp.margin;
   }
 
