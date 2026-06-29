@@ -185,8 +185,36 @@ export function chooseShot(ai, ball, match, isServe, opponents, hitterPos) {
     var ballHigh = ball.pos.y > 0.95;
     var intent;
 
+    // Overhead smash: ball is high — return a low-apex shot that dives steeply
+    // downward. Skill-gated so Pro attacks almost every pop-up.
+    if (ball.pos.y >= 1.3 && Math.random() < smart) {
+      var smashDepth = C.HALF_L * 0.75;
+      var smashAimX = rand(-C.HALF_W * 0.72, C.HALF_W * 0.72);
+      if (opponents) {
+        var sdf = (Math.abs(opponents.a.pos.z) >= Math.abs(opponents.b.pos.z))
+          ? opponents.a : opponents.b;
+        smashDepth = Math.max(C.KITCHEN * 1.5, Math.min(C.HALF_L * 0.92, Math.abs(sdf.pos.z)));
+        var sSign = (sdf.pos.x >= 0) ? -1 : 1;
+        smashAimX = Math.max(-C.HALF_W * 0.88, Math.min(C.HALF_W * 0.88,
+          sdf.pos.x + sSign * 0.6));
+      }
+      return {
+        target: { x: smashAimX, z: smashDepth },
+        apex: POWER_CAP.NET_H + 0.06,  // just clears net → steep downward angle
+        spin: { x: 5.0 + smart * 2.0, y: 0, z: 0 },
+        type: 'speedup', margin: 0.06, isSmash: true
+      };
+    }
+
+    // Return of serve (2nd paddle contact): always drive deep regardless of ball
+    // height — no pro drops the return. rally.phase is already 'open' here
+    // (advanced by onPaddleHit before chooseShot is called), so key off shots===2.
+    // This must come before the power-cap check so it isn't overridden.
+    var isReturn = match && match.rally && match.rally.shots === 2;
+    if (isReturn) {
+      intent = 'power';
     // Power cap: ball at or below net height forces a soft shot.
-    if (ball.pos.y <= POWER_CAP.NET_H) {
+    } else if (ball.pos.y <= POWER_CAP.NET_H) {
       intent = 'touch';
     } else if (Math.random() < 0.06 * smart) {
       intent = 'lob';                                   // occasional change-up
@@ -194,8 +222,8 @@ export function chooseShot(ai, ball, match, isServe, opponents, hitterPos) {
       if (ballHigh && Math.random() < smart) intent = 'power';        // attack high ball -> speedup
       else intent = (Math.random() < Math.max(0, smart - 0.3) * 1.2) ? 'touch' : 'power'; // dink vs pop
     } else {
-      // deep / transition: third-shot-drop tendency rises sharply with skill.
-      var dropChance = Math.max(0, smart - 0.45) * 1.1;  // easy~0, normal~0.27, hard~0.52
+      // Third shot and beyond: drop tendency rises with skill (third-shot-drop strategy).
+      var dropChance = Math.max(0, smart - 0.45) * 1.1;
       intent = (Math.random() < dropChance) ? 'touch' : 'power';
     }
     var sr = Shots.resolve(absZ, ball.pos.y, intent, C.KITCHEN, C.HALF_L);
@@ -211,10 +239,10 @@ export function chooseShot(ai, ball, match, isServe, opponents, hitterPos) {
       aimX = deeper.pos.x + awaySign * 0.6;
       aimX = Math.max(-C.HALF_W * 0.88, Math.min(C.HALF_W * 0.88, aimX));
       if (type === 'drive' || type === 'speedup') {
-        // Aim at wherever their feet actually are on the court (not a fixed depth),
-        // so a low ball arrives at their feet regardless of their court position.
+        // Aim at wherever their feet actually are on the court.
+        // Minimum depth is mid-transition so drives never plop into the kitchen.
         var feetDepth = Math.abs(deeper.pos.z);
-        feetDepth = Math.max(C.HALF_L * 0.35, Math.min(C.HALF_L * 0.92, feetDepth));
+        feetDepth = Math.max(C.KITCHEN * 1.5, Math.min(C.HALF_L * 0.92, feetDepth));
         aim = { x: aimX, z: feetDepth };
       } else {
         aim = { x: aimX, z: sp.landZ }; // drop: always target kitchen depth

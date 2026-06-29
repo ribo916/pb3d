@@ -512,7 +512,13 @@ Game.prototype._moveCPU = function (p, dt) {
   // Only the player whose LANE the ball is heading into goes for it.
   var incoming = this.ball.live && (this.ball.vel.z * fwd > 0);
   var pred = incoming ? AI.predict(this.ball) : null;
-  if (pred && p.slot === this._responsibleSlot(team, pred.x)) { tx = pred.x; tz = pred.z; }
+  if (pred && p.slot === this._responsibleSlot(team, pred.x)) {
+    // Pop-up arc (high apex): stay near kitchen to intercept overhead rather than
+    // retreating all the way to the baseline landing point.
+    var isPopup = this.ball.spline && this.ball.spline.P1.y >= 2.0;
+    if (!isPopup) { tx = pred.x; tz = pred.z; }
+    // If popup: keep the default advance target so they can volley it overhead.
+  }
 
   var spd = p.ai.cfg.speed;
   this._stepToward(p.pos, p.vel, tx, tz, spd, dt);
@@ -543,6 +549,15 @@ Game.prototype._checkContacts = function (dt) {
     this._hit(p, this.swingType);
     this.swingUsed = true;
   } else {
+    // If the ball is still rising and will reach smash height, wait for it.
+    // This lets the CPU attack overhead instead of scooping it at ankle level.
+    if (this.ball.vel.y > 0 && this.ball.pos.y < POWER_CAP.SMASH_H) {
+      var peakY = this.ball.pos.y + (this.ball.vel.y * this.ball.vel.y) / (2 * PHYS.GRAVITY);
+      if (peakY >= POWER_CAP.SMASH_H) {
+        p.aiSwingTimer = 0;
+        return;
+      }
+    }
     p.aiSwingTimer += dt;
     if (p.aiSwingTimer < p.ai.cfg.react) return;       // reaction delay
     p.aiSwingTimer = 0;
@@ -750,9 +765,10 @@ Game.prototype._cpuHit = function (p) {
   var tgtZ = (p.team === 'near') ? -shot.target.z : shot.target.z;
   var isAtp = shot.type === 'atp';
 
-  // CPU stability → apex modifier.
+  // CPU stability → apex modifier. Smashes are committed overheads — skip quality
+  // degradation so a sprinting CPU doesn't turn a smash into a lob.
   var stabilityIdx = this._computeStability(p);
-  var quality = Shots.stabilityQuality(stabilityIdx);
+  var quality = shot.isSmash ? 'clean' : Shots.stabilityQuality(stabilityIdx);
   var apex = Shots.apexForQuality(shot.apex, quality);
 
   var spinVec = Physics.vec(shot.spin.x * -fwd, shot.spin.y, shot.spin.z);

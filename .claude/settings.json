@@ -16,7 +16,11 @@
       "Bash(magick apple-touch-icon.png -print \"Size: %wx%h, Colors: %k\\\\n\" /dev/null)",
       "Bash(magick -size 180x180 xc:black favicon.svg -resize 160x160 -gravity center -composite apple-touch-icon.png)",
       "Bash(node -)",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Skill(run)",
+      "Skill(run:*)",
+      "Bash(node /private/tmp/claude-501/-Users-ribo-Dev-pb3d/aaf265a0-85c4-4423-a995-b2b306794adb/scratchpad/test-3shots.mjs)",
+      "Bash(node /Users/ribo/Dev/pb3d/tools/test-3shots.mjs)"
     ],
     "additionalDirectories": [
       "/Users/ribo/Dev/picklelife"
