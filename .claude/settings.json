@@ -15,7 +15,8 @@
       "Bash(magick apple-touch-icon.svg -resize 180x180 apple-touch-icon.png)",
       "Bash(magick apple-touch-icon.png -print \"Size: %wx%h, Colors: %k\\\\n\" /dev/null)",
       "Bash(magick -size 180x180 xc:black favicon.svg -resize 160x160 -gravity center -composite apple-touch-icon.png)",
-      "Bash(node -)"
+      "Bash(node -)",
+      "Bash(node -e ' *)"
     ],
     "additionalDirectories": [
       "/Users/ribo/Dev/picklelife"

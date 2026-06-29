@@ -54,7 +54,8 @@ export function Game(opts) {
   this.state = STATE.MENU;
   this.excitement = 0;
   this.cameraShake = 0;
-  this.camMode = 0;
+  var CAM_MAP = { broadcast: 0, follow: 1, topdown: 2 };
+  this.camMode = CAM_MAP[opts.cameraMode] !== undefined ? CAM_MAP[opts.cameraMode] : 1;
   this.msgTimer = 0;
   this.serveDelay = 0;
   this.pointPause = 0;

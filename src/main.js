@@ -51,7 +51,8 @@ function readMenuConfig() {
     courtPalette: checkedValue('palette', 'blue'),
     timeOfDay: venue === 'indoor' ? 'day' : checkedValue('tod', 'day'),
     difficulty: checkedValue('difficulty', '4.0'),
-    musicStart: checkedValue('musicStart', 'muted')
+    musicStart: checkedValue('musicStart', 'muted'),
+    cameraMode: checkedValue('cameraMode', 'follow')
   };
 }
 
@@ -79,7 +80,9 @@ function syncMenuSummary() {
   var palette = MENU_META.palette[cfg.courtPalette] || MENU_META.palette.blue;
   var tod = MENU_META.tod[cfg.timeOfDay] || MENU_META.tod.day;
   var diff = MENU_META.difficulty[cfg.difficulty] || MENU_META.difficulty['4.0'];
-  $('menuSummary').textContent = venue.label + ' · ' + tod.label + ' · ' + palette.label + ' · ' + diff.label;
+  var camLabels = { follow: 'Follow', broadcast: 'Broadcast', topdown: 'Top-Down' };
+  var cam = camLabels[cfg.cameraMode] || 'Follow';
+  $('menuSummary').textContent = venue.label + ' · ' + tod.label + ' · ' + palette.label + ' · ' + cam + ' · ' + diff.label;
   return cfg;
 }
 
@@ -198,7 +201,7 @@ function quitToMenu() {
   closeMusicModal();
   $('pauseModal').classList.remove('active');
   $('hud').style.display = 'none';
-  $('menu').style.display = 'block';
+  $('menu').style.display = '';
   game = null;
   input = null;
   last = 0;
@@ -223,7 +226,8 @@ function startMatch(difficulty, config) {
     isMobile: IS_TOUCH_DEVICE,
     venue: config.venue,
     courtPalette: config.courtPalette,
-    timeOfDay: config.timeOfDay
+    timeOfDay: config.timeOfDay,
+    cameraMode: config.cameraMode
   });
   input = makeInput($('game'), $('joy'), $('joyKnob'));
   game.setInput(input);
@@ -247,7 +251,7 @@ function startMatch(difficulty, config) {
   requestAnimationFrame(loop);
 }
 
-document.querySelectorAll('input[name="venue"], input[name="palette"], input[name="tod"], input[name="difficulty"]').forEach(function (el) {
+document.querySelectorAll('input[name="venue"], input[name="palette"], input[name="tod"], input[name="difficulty"], input[name="cameraMode"]').forEach(function (el) {
   el.addEventListener('change', syncMenuSummary);
 });
 document.querySelectorAll('input[name="musicStart"]').forEach(function (el) {
