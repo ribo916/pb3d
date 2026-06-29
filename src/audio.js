@@ -67,7 +67,9 @@ export function makeAudio() {
     });
   });
 
-  var musicState = sanitizeMusicState(loadStoredState(), catalog);
+  var _raw = loadStoredState();
+  var musicState = sanitizeMusicState(_raw, catalog);
+  if (_raw && typeof _raw.sfxMuted === 'boolean') sfxMuted = _raw.sfxMuted;
   var audioEl = new Audio();
   audioEl.loop = true;
   audioEl.preload = 'none';
@@ -103,7 +105,8 @@ export function makeAudio() {
         genreKey: musicState.genreKey,
         trackKey: musicState.trackKey,
         muted: musicState.muted,
-        volume: musicState.volume
+        volume: musicState.volume,
+        sfxMuted: sfxMuted
       }));
     } catch (err) {
       /* ignore persistence failures */
@@ -293,7 +296,7 @@ export function makeAudio() {
       point:  function () { if (ac && !sfxMuted) playNote(660,  'sine',     0.22, 0.40); },
       fault:  function () { if (ac && !sfxMuted) playNote(180,  'sawtooth', 0.18, 0.30); },
       isMuted:  function () { return sfxMuted; },
-      setMuted: function (muted) { sfxMuted = !!muted; }
+      setMuted: function (muted) { sfxMuted = !!muted; persistState(); }
     },
     music: {
       play: function () { return playCurrent(); },

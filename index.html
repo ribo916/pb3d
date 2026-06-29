@@ -844,7 +844,6 @@
     <!-- top-right: audio controls -->
     <div class="btns-tr">
       <button id="sfxMuteBtn" class="hud-icon-btn" title="Game Sounds">🔊</button>
-      <button id="muteBtn"    class="hud-icon-btn" title="Music">♪</button>
       <button id="genreBtn"   class="hud-text-btn" title="Music Picker"><small>MUSIC</small><span>KPOP</span></button>
     </div>
 
@@ -861,7 +860,6 @@
     <div class="pause-panel">
       <h2>PAUSED</h2>
       <div class="pause-row">
-        <button class="pause-ctrl" id="pauseMuteBtn">♪ OFF</button>
         <button class="pause-ctrl" id="pauseGenreBtn">OPEN MUSIC</button>
       </div>
       <button class="pause-action pause-resume" id="resumeBtn">RESUME</button>
@@ -1053,6 +1051,26 @@
               <div class="menu-seg">
                 <strong>Start With Music</strong>
                 <span>Begin the match with the selected track already live.</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div class="menu-group">
+          <div class="menu-label">Game Sounds <em>SFX during play</em></div>
+          <div class="menu-options-time menu-options-audio">
+            <label class="menu-option">
+              <input type="radio" name="sfxStart" value="on" checked>
+              <div class="menu-seg">
+                <strong>Sounds On</strong>
+                <span>Paddle, bounce, and point sounds are active.</span>
+              </div>
+            </label>
+            <label class="menu-option">
+              <input type="radio" name="sfxStart" value="off">
+              <div class="menu-seg">
+                <strong>Sounds Off</strong>
+                <span>Play in silence — no SFX during the match.</span>
               </div>
             </label>
           </div>
