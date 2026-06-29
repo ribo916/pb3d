@@ -134,15 +134,21 @@ injected via `setGeometry()` so the module stays dependency-free.
 
 **`ai.js`** — opponent brain. `LEVELS` (family/easy/normal/hard) tune speed,
 reaction, error scatter, "smart" shot selection, aggression, and unforced-error
-rate. `predict()` forward-sims the ball; `chooseMovement()` does the kitchen race;
-`chooseShot()` picks intent by zone/height/skill and scatters aim by difficulty.
+rate. `predict()` forward-sims the ball; `chooseShot()` picks intent by
+zone/height/skill and scatters aim by difficulty. Priority order in `chooseShot`:
+smash (high ball) → return-of-serve (shots=2, always power) → 3rd-shot drop
+(shots=3, skill-scaled high probability) → power cap → normal intent selection.
 
 **`game.js`** — the orchestrator. Owns the `STATE` machine
 (`MENU/SERVE/RALLY/POINT/OVER`), the doubles roster, sub-stepped physics, the
 **hit model** (a swing opens a ~0.3s timing window; the hit fires when the ball
 enters the strike zone during the window), momentum aiming (`_aimTarget`), the
 aim-marker ring, doubles lane responsibility / movement, and HUD wiring. The hit
-tail `_executeHit` snaps the ball to the contact point and calls `launch()`.
+tail `_executeSplineShot` snaps the ball to the contact point and builds the
+Bezier arc. Smash overrides apply in both `_hit()` (human) and `_cpuHit()` (CPU)
+before the normal shot-selection path, producing a steep low-apex arc when the
+ball is at or above `POWER_CAP.SMASH_H`. The serving team's CPU holds at the
+baseline until `rally.shots >= 3` before advancing to the kitchen.
 
 **`audio.js`** — Web Audio paddle/bounce/net/serve/point/fault SFX plus a
 track-based `HTMLAudioElement` music player. Music tracks are loaded from the
@@ -176,6 +182,10 @@ behind the near baseline that gently follows the ball and shakes on points.
 - After visual changes, regenerate and view screenshots before claiming done.
 - After changing music assets, run `npm run music:sync` so `music/catalog.js`
   matches the folders on disk.
+- **The 4-shot pattern is a first-class design constraint.** Serve deep → return
+  deep → serving team drops → kitchen battle. Any change to shot selection, AI
+  movement, or bounce physics should be evaluated against whether it preserves or
+  breaks this rhythm. See the "4-Shot Pattern" section in `GAMEPLAY.md`.
 
 ## Music Asset Workflow
 

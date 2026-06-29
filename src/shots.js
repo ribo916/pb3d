@@ -19,7 +19,7 @@ import { FT, STABILITY, POWER_CAP } from './constants.js';
 // GENEROUS margin to avoid clipping the tape. apex is also lifted a touch.
 const PROFILES = {
   drive:   { apex: 1.3, depthFrac: 0.82, spinX:  4.0, spinY: 0, margin: 0.22 },
-  drop:    { apex: 2.1, absZ: null,      spinX: -2.0, spinY: 0, margin: 0.22 },
+  drop:    { apex: 1.75, absZ: null,     spinX: -2.0, spinY: 0, margin: 0.22 },
   dink:    { apex: 1.4, absZ: null,      spinX: -1.0, spinY: 0, margin: 0.16 },
   lob:     { apex: 4.2, depthFrac: 0.85, spinX: -1.0, spinY: 0, margin: 0.30 },
   speedup: { apex: 1.3, depthFrac: 0.50, spinX:  4.0, spinY: 0, margin: 0.18 }

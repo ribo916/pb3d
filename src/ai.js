@@ -211,8 +211,15 @@ export function chooseShot(ai, ball, match, isServe, opponents, hitterPos) {
     // (advanced by onPaddleHit before chooseShot is called), so key off shots===2.
     // This must come before the power-cap check so it isn't overridden.
     var isReturn = match && match.rally && match.rally.shots === 2;
+    // Third shot (serving team's first open-play hit): strongly prefer a drop.
+    // Shots alternate so shots===3 is always the serving team hitting again.
+    var isThirdShot = match && match.rally && match.rally.shots === 3;
     if (isReturn) {
       intent = 'power';
+    } else if (isThirdShot && zone !== 'kitchen') {
+      // smart=0.40 (easy): ~37.5%; smart=0.70 (normal): ~75%; smart=0.92 (hard): ~97.5%
+      var thirdShotDrop = Math.max(0, smart - 0.1) * 1.25;
+      intent = (Math.random() < thirdShotDrop) ? 'touch' : 'power';
     // Power cap: ball at or below net height forces a soft shot.
     } else if (ball.pos.y <= POWER_CAP.NET_H) {
       intent = 'touch';

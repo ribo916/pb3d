@@ -505,8 +505,14 @@ Game.prototype._moveCPU = function (p, dt) {
   var lane = this._laneSign(p);                    // ±1: this player's side of center
   var laneX = lane * (C.HALF_W * 0.55);
   // Kitchen race: once the rally is open, skilled players work up to the line.
+  // Serving team stays at baseline until they've hit shot 3 (their first open-play
+  // shot); the returning team's partner already starts at the kitchen in formation.
   var backZ = C.HALF_L - 0.9, upZ = C.KITCHEN + 0.3;
-  var advance = (rally && rally.phase === 'open') ? clamp(p.ai.cfg.smart * 1.6 - 0.2, 0, 1) : 0;
+  var isServingTeam = (team === this.match.server);
+  var shotsCompleted = (rally && rally.shots) || 0;
+  var advanceAllowed = (rally && rally.phase === 'open') &&
+    (!isServingTeam || shotsCompleted >= 3);
+  var advance = advanceAllowed ? clamp(p.ai.cfg.smart * 1.6 - 0.2, 0, 1) : 0;
   var tx = laneX, tz = fwd * (backZ + (upZ - backZ) * advance);
 
   // Only the player whose LANE the ball is heading into goes for it.
@@ -723,6 +729,15 @@ Game.prototype._hit = function (p, swingType) {
     var deeper = this._deeperOpponent(p.team);
     var awaySign = deeper.pos.x >= 0 ? -1 : 1;
     targetX = clamp(deeper.pos.x + awaySign * 0.6, -C.HALF_W * 0.92, C.HALF_W * 0.92);
+  }
+
+  // Smash: ball at or above smash height — steep overhead arc matching the AI path.
+  if (maxI === 'smash') {
+    var smashSpin = Physics.vec(7.0 * -fwd, blend * 1.5, 0);
+    this._flashShot('speedup');
+    this._executeSplineShot(targetX, at.z, POWER_CAP.NET_H + 0.06, 0.06, smashSpin, false);
+    this._checkPoach(p.team);
+    return;
   }
 
   var apex = Shots.apexForQuality(at.sp.apex, quality);
