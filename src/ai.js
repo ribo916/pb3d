@@ -210,7 +210,15 @@ export function chooseShot(ai, ball, match, isServe, opponents, hitterPos) {
       var awaySign = (deeper.pos.x >= 0) ? -1 : 1; // aim away from their body
       aimX = deeper.pos.x + awaySign * 0.6;
       aimX = Math.max(-C.HALF_W * 0.88, Math.min(C.HALF_W * 0.88, aimX));
-      aim = { x: aimX, z: sp.landZ };
+      if (type === 'drive' || type === 'speedup') {
+        // Aim at wherever their feet actually are on the court (not a fixed depth),
+        // so a low ball arrives at their feet regardless of their court position.
+        var feetDepth = Math.abs(deeper.pos.z);
+        feetDepth = Math.max(C.HALF_L * 0.35, Math.min(C.HALF_L * 0.92, feetDepth));
+        aim = { x: aimX, z: feetDepth };
+      } else {
+        aim = { x: aimX, z: sp.landZ }; // drop: always target kitchen depth
+      }
     } else {
       if (type === 'drive' || type === 'lob') {
         aimX = (Math.random() < 0.5 ? -1 : 1) * C.HALF_W * 0.78; // to a corner

@@ -408,10 +408,15 @@ Game.prototype._stepSpline = function (h) {
 
   if (t >= 1 || pt.y <= Physics.COURT.BALL_R) {
     // Transition back to physics-step for post-bounce roll-out.
+    // The Bezier tangent vy at t=1 is geometrically weaker than real physics
+    // (it's 2/T*(P2.y-P1.y) ≈ 4.3 m/s vs the correct ~7.5 m/s for a drop).
+    // Derive the landing speed from the apex height so the first bounce is
+    // physically correct; subsequent bounces are handled by Physics.step().
+    var apexY = sp.P1.y;
     this.ball.spline = null;
     this.ball.pos.y = Math.max(Physics.COURT.BALL_R, this.ball.pos.y);
-    // Apply bounce: flip vy, apply restitution + friction.
-    if (this.ball.vel.y < 0) this.ball.vel.y = -this.ball.vel.y * PHYS.RESTITUTION;
+    var correctVy = Math.sqrt(2 * PHYS.GRAVITY * Math.max(0.01, apexY - Physics.COURT.BALL_R));
+    this.ball.vel.y = correctVy * PHYS.RESTITUTION;
     this.ball.vel.x *= PHYS.FRICTION;
     this.ball.vel.z *= PHYS.FRICTION;
     var side = this.ball.pos.z >= 0 ? 1 : -1;
@@ -501,7 +506,7 @@ Game.prototype._moveCPU = function (p, dt) {
   var laneX = lane * (C.HALF_W * 0.55);
   // Kitchen race: once the rally is open, skilled players work up to the line.
   var backZ = C.HALF_L - 0.9, upZ = C.KITCHEN + 0.3;
-  var advance = (rally && rally.phase === 'open') ? clamp((p.ai.cfg.smart - 0.35) * 1.4, 0, 1) : 0;
+  var advance = (rally && rally.phase === 'open') ? clamp(p.ai.cfg.smart * 1.6 - 0.2, 0, 1) : 0;
   var tx = laneX, tz = fwd * (backZ + (upZ - backZ) * advance);
 
   // Only the player whose LANE the ball is heading into goes for it.
