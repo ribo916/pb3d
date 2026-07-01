@@ -19,9 +19,12 @@ The game now has:
 - Instanced/shared-material repeated props for selected procedural scenery.
 - A generated player-model POC (`assets/models/players/player-poc.glb`) loaded
   through the authored-player adapter.
+- A reserved Player 1 import slot (`player-human-v1`) with fallback to the POC
+  until real licensed/authored character art is provided.
 - Authored-player identity hooks for color slots, scale/build, hair/headwear
   variants, paddle socket, and animation clip names.
 - Visual-only idle/ready/run/forehand/backhand/serve/smash animation blending.
+- Player GLB validation and Player 1 comparison screenshot tooling.
 - Visual-only paddle-hit, bounce/contact, net-hit, serve camera shake, and point
   reaction effects.
 - Compact mobile HUD fixes for portrait and short landscape viewports.
@@ -98,6 +101,8 @@ assets/
 Important contracts:
 
 - `assets/manifest.js` is the runtime slot map.
+- `player-human-v1` is the Player 1-only authored character slot. Its URL is
+  empty until real art is available and it falls back to `player-poc`.
 - `src/assets.js` loads optional GLB assets and provides fallback-safe access.
 - Optional entries should stay optional until their procedural fallback has been
   replaced and verified.
@@ -140,6 +145,46 @@ If the project goal is genuinely photoreal, use real authored/scanned/licensed
 human assets or a professional character-generation workflow. Procedural code
 will not get there by adding more small primitives.
 
+### POC Audit Findings
+
+The current generated POC looks bad for reasons that are inherent to its source
+method, not just missing polish:
+
+- Shoulders and arms read as separate spheres/cylinders; shoulder caps form
+  obvious circles from both gameplay and close-up cameras.
+- Body proportions are toy-like: oversized head, simplified torso/hips, short
+  limb segments, and no believable athletic stance.
+- Head, face, and hair lack real facial planes, expression, ears, brows, skin
+  detail, or credible hair volume.
+- Clothing is only material-color blocking; there are no fabric folds, seams,
+  normals, footwear details, or premium sportswear materials.
+- Paddle socket alignment works technically, but the hand/grip reads abstract
+  because the hand is a sphere and the forearm is a cylinder.
+- Animation silhouette preserves gameplay timing, but it is broad POC body
+  language rather than real shoulder, wrist, spine, and weight-transfer motion.
+
+### Player 1 Import Target
+
+For true photoreal or near-photoreal Player 1 graphics, import a real authored
+or licensed `.glb` into the `player-human-v1` manifest slot. The expected
+contract is:
+
+- Local `+z` faces forward, origin at the feet, real-world height around
+  1.7-1.9 m before manifest scale/offset.
+- A named `paddle_socket` lives under the right hand or forearm. The visible
+  paddle may attach there, but gameplay contact still comes from the primitive
+  paddle blade and `paddleWorld`.
+- Color slots are provided through mesh/material names or glTF `extras`
+  (`userData.slot` / `userData.materialSlot`) using `jersey`, `shorts`, `skin`,
+  `hair`, `shoe`, `headband`, and optionally `paddle`.
+- Swing clips keep contact at 50% of the 0.44 s visual swing, matching
+  `contactT = 0.5`. Do not change `HIT.SWING_WINDOW` or gameplay timing to fit
+  art.
+- Player 1 budget target: roughly 30k-60k triangles, optimized GLB, 1k-2k PBR
+  textures where needed. Use a lower LOD or the existing POC/primitive fallback
+  for mobile if the premium model is too heavy.
+- Run the validator and Player 1 screenshot workflow before accepting the asset.
+
 ## Rendering And Visual Priorities
 
 Priority order:
@@ -163,6 +208,8 @@ Use these after graphics changes:
 npm test
 npm run shots
 npm run build
+npm run player:validate
+npm run player:check
 ```
 
 Use this when gameplay feel or AI movement might have been affected:
@@ -180,6 +227,13 @@ VENUE=indoor PALETTE=green DIFF=4.5 node tools/play.mjs
 
 After visual changes, inspect `tools/shots/*.png` manually. Passing scripts are
 not enough.
+
+For Player 1-specific character checks, inspect:
+
+- `tools/shots/player1-closeup-idle.png`
+- `tools/shots/player1-closeup-forehand.png`
+- `tools/shots/player1-gameplay.png`
+- `tools/shots/player1-mobile.png`
 
 For mobile, verify at least:
 

@@ -12,6 +12,8 @@
     "postbuild": "node tools/copy-static-assets.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "shots": "node tools/shoot.mjs",
+    "player:validate": "node tools/validate-player-glb.mjs assets/models/players/player-poc.glb",
+    "player:check": "node tools/player-check.mjs",
     "music:sync": "node tools/sync-music-catalog.mjs",
     "music:generate": "node tools/generate-music-wavs.mjs"
   },

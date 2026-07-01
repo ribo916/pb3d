@@ -49,6 +49,18 @@ export const ASSET_MANIFEST = {
       optional: true
     },
     {
+      key: 'player-human-v1',
+      label: 'Player 1 authored human model',
+      url: '',
+      scope: 'player',
+      fallbackKey: 'player-poc',
+      playerScale: 1,
+      playerOffset: [0, 0, 0],
+      playerRotation: [0, 0, 0],
+      paddleSocketOffset: [0, 0, 0],
+      optional: true
+    },
+    {
       key: 'player-poc',
       label: 'Human player visual POC',
       url: '/assets/models/players/player-poc.glb',

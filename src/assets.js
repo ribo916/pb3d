@@ -32,6 +32,12 @@ function makePack() {
   return {
     version: ASSET_MANIFEST.version || 1,
     fallback: true,
+    definitions: {
+      models: {},
+      textures: {},
+      environments: {},
+      animations: {}
+    },
     models: {},
     textures: {},
     environments: {},
@@ -39,11 +45,23 @@ function makePack() {
     skipped: [],
     errors: [],
     loaded: [],
-    getModel: function (key) { return this.models[key] || null; },
-    getTexture: function (key) { return this.textures[key] || null; },
-    getEnvironment: function (key) { return this.environments[key] || null; },
-    getAnimation: function (key) { return this.animations[key] || null; }
+    getModel: function (key) { return lookupRecord(this, 'models', key); },
+    getTexture: function (key) { return lookupRecord(this, 'textures', key); },
+    getEnvironment: function (key) { return lookupRecord(this, 'environments', key); },
+    getAnimation: function (key) { return lookupRecord(this, 'animations', key); }
   };
+}
+
+function lookupRecord(pack, kind, key, seen) {
+  if (!key) return null;
+  seen = seen || {};
+  if (seen[key]) return null;
+  seen[key] = true;
+  var record = pack[kind] && pack[kind][key];
+  if (record) return record;
+  var item = pack.definitions && pack.definitions[kind] && pack.definitions[kind][key];
+  if (item && item.fallbackKey) return lookupRecord(pack, kind, item.fallbackKey, seen);
+  return null;
 }
 
 function addLoaded(pack, kind, item, payload) {
@@ -109,6 +127,7 @@ export async function preloadAssetPack(opts, onProgress) {
   var entries = [];
   ['models', 'textures', 'environments', 'animations'].forEach(function (kind) {
     list(kind).forEach(function (item) {
+      pack.definitions[kind][item.key] = item;
       entries.push({ kind: kind, item: item });
     });
   });
