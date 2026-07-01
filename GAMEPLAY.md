@@ -180,6 +180,21 @@ Ball must satisfy **both**:
 - `dist2D(ball, player) < HIT.REACH` (1.5 m horizontal)
 - `0 < ball.y < HIT.REACH_Y_MAX` (2.3 m)
 
+### Who gets the ball (contact dispatch)
+
+`game._checkContacts()` picks **one** hitter per team per frame. By default that
+is the lane-responsible player (`_responsibleSlot`, chosen by the sign of
+`ball.pos.x` — left/right half), *not* whoever is closest.
+
+**Human poach override:** before the reach gate, if the human (`players[0]`) is
+on the receiving team, is *not* already the responsible slot, and has an active,
+unused swing window while in reach, the human is promoted to hitter. This lets
+you step in front of your AI partner and take a ball assigned to their lane —
+exactly like a real poach. You **must** commit a timed swing; merely standing in
+the partner's lane does not steal the ball (the partner AI still plays it). All
+downstream gates (two-bounce rule, cooldown) still apply to the poached hit, and
+`_hit` sets `rally.lastHitter`, so the partner can't double-hit afterward.
+
 ### Cooldowns
 
 - After a serve: `HIT.COOLDOWN_SERVE = 0.25 s`
@@ -357,10 +372,26 @@ Otherwise falls back to ballistic integration.
 
 ---
 
-## Poaching (`AI.checkPoach`)
+## Poaching
+
+### Human poach
+
+The human can poach by moving in front of their AI partner and timing a swing.
+This is handled inline in `game._checkContacts()` (see **Hit Model → Who gets the
+ball**), not in `AI.checkPoach`. There is **no per-ball ownership flag** — the
+default assignment is lane-based (`_responsibleSlot`), and the human override
+promotes `players[0]` to hitter when in reach with an active swing window.
+
+The HUD aim marker (`game._updateHUD`) also lights up when the human is in reach
+of an incoming ball (not just when it's their lane), giving visual confirmation a
+poach is available.
+
+### AI poach (`AI.checkPoach`)
 
 Called after every paddle strike. Checks whether the receiving team's **net partner**
-(not the responsible returner) should intercept.
+(not the responsible returner) should intercept. Skipped when the partner is the
+human (`game._checkPoach` bails on `!partner.ai`) — the human poaches manually via
+the contact-dispatch override above.
 
 | Difficulty | Behaviour |
 |---|---|

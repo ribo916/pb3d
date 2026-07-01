@@ -546,6 +546,13 @@ Game.prototype._checkContacts = function (dt) {
   var team = (this.ball.pos.z > 0) ? 'near' : 'far';
   if (rally.lastHitter === team) return;            // our own shot still outgoing
   var p = this._player(team, this._responsibleSlot(team));
+  // Human poach: the human may take a ball assigned to their partner by
+  // stepping in front and timing a swing while within reach.
+  var human = this.players[0];
+  if (human.team === team && human !== p &&
+      this.swingWindow > 0 && !this.swingUsed && this._reachOK(human.pos)) {
+    p = human;
+  }
   if (!this._reachOK(p.pos)) return;
   // two-bounce rule: serve & return must bounce before being struck
   var mustBounce = (rally.phase === 'serve' || rally.phase === 'return');
@@ -877,7 +884,8 @@ Game.prototype._syncMeshes = function (dt) {
     if (incoming) {
       this._aimPredT = (this._aimPredT || 0) - dt;
       if (this._aimPredT <= 0 || !this._aimPred) { this._aimPred = AI.predict(this.ball); this._aimPredT = 0.08; }
-      yourTurn = (this._responsibleSlot('near', this._aimPred.x) === human.slot);
+      yourTurn = (this._responsibleSlot('near', this._aimPred.x) === human.slot)
+              || this._reachOK(human.pos);
     } else { this._aimPred = null; }
     if (yourTurn) {
       var at = this._aimTarget(human);

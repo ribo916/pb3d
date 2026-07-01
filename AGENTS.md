@@ -166,6 +166,10 @@ behind the near baseline that gently follows the ball and shakes on points.
 - Swing timing window `HIT.SWING_WINDOW = 0.30`; rig swing duration 0.44, contact
   at `contactT = 0.5`.
 - Two-bounce rule gate in `_checkContacts`; reach test `dist2D < 1.5`, `0 < y < 2.3`.
+- Contact dispatch picks one hitter per team by lane (`_responsibleSlot`), but the
+  human can **poach** their AI partner: `_checkContacts` promotes `players[0]` to
+  hitter when in reach with an active swing window. Don't remove this override or
+  make assignment purely lane-based again. See GAMEPLAY.md → Poaching.
 - Momentum aim: `move.x` = left/right (blended with `swingAim`), `-move.z` = depth.
 - Side-out scoring: only the serving team scores; game to 11 win-by-2.
 - Spin is flipped by `-fwd` at hit time so Magnus curves correctly for each side.
