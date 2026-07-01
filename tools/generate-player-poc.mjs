@@ -241,6 +241,14 @@ clips.push(new THREE.AnimationClip('serve', 0.44, [
   quatTrack('right_leg', swingTimes, [[0.16, -0.06, -0.02], [0.22, -0.08, -0.03], [0.08, -0.02, 0.00], [0.04, 0.02, 0.01], [0.08, 0.00, 0.00]]),
   vecTrack('torso', swingTimes, [0, 0.895, 0.035, 0, 0.875, 0.05, 0, 0.91, 0.02, 0, 0.925, 0.005, 0, 0.90, 0.025])
 ]));
+clips.push(new THREE.AnimationClip('smash', 0.44, [
+  // Contact stays at 0.22s; this is visual-only overhead body language.
+  quatTrack('torso', swingTimes, [[-0.16, -0.18, 0.03], [-0.26, -0.22, 0.06], [0.10, 0.10, -0.08], [0.22, 0.18, -0.12], [0.02, 0.04, -0.02]]),
+  quatTrack('hips', swingTimes, [[0.00, -0.06, 0.00], [0.00, -0.10, 0.00], [0.00, 0.06, 0.00], [0.00, 0.12, 0.00], [0.00, 0.02, 0.00]]),
+  quatTrack('left_leg', swingTimes, [[0.16, 0.05, 0.04], [0.22, 0.07, 0.05], [0.10, 0.00, -0.02], [0.05, -0.03, -0.03], [0.08, 0.00, 0.00]]),
+  quatTrack('right_leg', swingTimes, [[0.06, -0.07, -0.03], [0.04, -0.12, -0.04], [0.18, -0.02, 0.03], [0.22, 0.06, 0.05], [0.08, 0.00, 0.00]]),
+  vecTrack('torso', swingTimes, [0, 0.91, 0.02, 0, 0.93, 0.00, 0, 0.90, 0.025, 0, 0.885, 0.045, 0, 0.90, 0.02])
+]));
 
 const exporter = new GLTFExporter();
 const glb = await new Promise((resolve, reject) => {

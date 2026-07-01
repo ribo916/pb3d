@@ -751,11 +751,13 @@ Game.prototype._hit = function (p, swingType) {
 
   // Erne bypasses the kitchen volley rule (player has jumped outside the kitchen).
   var isErne = this.difficulty === 'hard' && this._isErnePosition(p);
+  var maxI = Shots.maxIntent(this.ball.pos.y);
+  var visualSwingType = (isErne || maxI === 'smash') ? 'smash' : (swingType || 'fh');
   var volley = rally ? (rally.bouncesSinceHit < 1) : false;
   var inKitchen = isErne ? false : (Math.abs(pos.z) < C.KITCHEN);
   var res = Rules.onPaddleHit(this.match, p.team, { volley: volley, inKitchen: inKitchen });
   this.cameraShake = Math.max(this.cameraShake, 0.08);
-  p.mesh.swing(swingType || 'fh');
+  p.mesh.swing(visualSwingType);
   if (this.audio) this.audio.sfx.paddle();
   if (rallyOver(res)) { this._endPoint(res); return; }
 
@@ -785,8 +787,6 @@ Game.prototype._hit = function (p, swingType) {
   var quality = Shots.stabilityQuality(stabilityIdx);
 
   // Power cap: ball height limits the allowed intent.
-  var maxI = Shots.maxIntent(this.ball.pos.y);
-
   // Read the aimed target from directional input.
   var at = this._aimTarget(p);
 
@@ -842,9 +842,13 @@ Game.prototype._cpuHit = function (p) {
   var inKitchen = Math.abs(pos.z) < C.KITCHEN;
   if (volley && inKitchen) { pos.z = fwd * (C.KITCHEN + 0.3); inKitchen = false; }
   var res = Rules.onPaddleHit(this.match, p.team, { volley: volley, inKitchen: inKitchen });
-  p.mesh.swing(Math.random() < 0.3 ? 'bh' : 'fh');
-  if (this.audio) this.audio.sfx.paddle();
-  if (rallyOver(res)) { this._endPoint(res); return; }
+  var visualSwingType = Math.random() < 0.3 ? 'bh' : 'fh';
+  if (rallyOver(res)) {
+    p.mesh.swing(visualSwingType);
+    if (this.audio) this.audio.sfx.paddle();
+    this._endPoint(res);
+    return;
+  }
 
   // Build opponents object for deeper-target strategy (opposing near team).
   var oppTeam = p.team === 'far' ? 'near' : 'far';
@@ -854,6 +858,9 @@ Game.prototype._cpuHit = function (p) {
   };
 
   var shot = AI.chooseShot(p.ai, this.ball, this.match, false, opponents, pos);
+  if (shot.isSmash || shot.type === 'erne') visualSwingType = 'smash';
+  p.mesh.swing(visualSwingType);
+  if (this.audio) this.audio.sfx.paddle();
 
   // Deliberate fault: use legacy velocity-based path so faults still miss properly.
   if (shot.fault) {

@@ -552,6 +552,13 @@ export function makePrimitivePlayer(opts) {
         armR.shoulder.rotation.z = -0.22;            // a touch out to the right
         armR.shoulder.rotation.x = 0.80 - p * 1.95;  // back-low -> forward-up
         armR.elbow.rotation.x = -0.60 + arc * 0.45;  // bent forward, extends at contact
+      } else if (this._swingType === 'smash') {
+        // OVERHEAD: same swing duration/contact fraction as every rally swing,
+        // but with a higher paddle path for visual smash reads.
+        upper.rotation.y = -0.30 + p * 0.72;
+        armR.shoulder.rotation.z = -0.35 + p * 0.70;
+        armR.shoulder.rotation.x = -1.12 - ext * 0.72 + p * 0.55;
+        armR.elbow.rotation.x = -0.82 + ext * 0.66;
       } else if (this._swingType === 'bh') {
         // BACKHAND: torso loads to the right (paddle cocked across to the left
         // side), then unwinds left; the arm reaches across then extends out

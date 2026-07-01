@@ -129,7 +129,7 @@ Target direction:
 - [x] Add forehand animation.
 - [x] Add backhand animation.
 - [x] Add serve animation.
-- [ ] Add smash/overhead animation if practical.
+- [x] Add smash/overhead animation if practical.
 - [x] Blend idle/run/swing states without breaking movement.
 - [x] Align animation contact frame with current gameplay hit timing.
 - [x] Verify human swing, CPU hit, serve, poach, ATP, and Erne timing.
@@ -545,6 +545,43 @@ Add a new entry after every graphics-overhaul session:
   only if it can be triggered without changing shot selection, contact timing,
   or the primitive rig's gameplay authority; otherwise move to Phase 8 hit and
   bounce effects.
+
+### 2026-07-01 - Phase 7 Smash Visual
+
+- Phase worked on: Phase 7.
+- Completed checklist items: added a narrow smash/overhead animation path. The
+  generated POC GLB now includes a `smash` clip at `0.44s`, keyed on the same
+  `0.22s` contact frame as the other swing clips. Human and CPU smash/Erne
+  branches now route only their visual swing type to `smash`; shot selection,
+  hit dispatch, timing windows, shot execution, and gameplay authority were
+  left unchanged.
+- Files changed: `tools/generate-player-poc.mjs`,
+  `assets/models/players/player-poc.glb`, `src/players.js`, `src/game.js`,
+  `GRAPHICS_ROADMAP.md`.
+- Tests/checks run: `node tools/generate-player-poc.mjs`; GLB clip
+  structure/duration check confirmed `idle`, `ready`, `run`, `forehand`,
+  `backhand`, `serve`, and `smash`, with all swing clips still `0.44s`;
+  `npm test` passed 29 assertions; `npm run build` passed and copied assets
+  into `dist/`; a focused Playwright/Vite probe forced human and CPU smash
+  contacts and confirmed active authored `smash`, `contactT === 0.5`,
+  `_swingDur === 0.44`, and authored swing scale ~1.0; `npm run shots` passed
+  and verified the serve/rally/scoring loop.
+- Screenshots inspected: `smash-human.png`, `smash-cpu.png`,
+  `roster-closeup.png`, `court.png`, `rally-0.png`, `mobile-check.png`, and
+  `court-night.png`.
+- Gameplay risks noticed: no pure gameplay modules were changed; `HIT`, shot
+  profiles, physics/rules/AI modules, hit dispatch, poaching, ATP/Erne,
+  two-bounce/kitchen behavior, and the 4-shot pattern were left untouched. The
+  primitive rig still owns swing timing, `contactT`, paddle/contact timing, and
+  `paddleWorld`; the new `smash` pose is visual-only and uses the same
+  duration/contact fraction. Visual-only risk: the overhead pose broadens the
+  player silhouette during rare high-ball contacts, so keep checking mobile
+  readability if the animation becomes more dramatic.
+- Blockers: none. Notes: Vite still warns that the main bundle is over 500 kB,
+  and `player-poc.glb` is now about 510 kB after adding the smash clip.
+- Next recommended step: move to Phase 8 with a tiny paddle-hit or
+  bounce/contact visual effect, keeping it short-lived and low-opacity so the
+  neon ball remains easy to track.
 
 ## Resume Prompt
 
