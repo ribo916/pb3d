@@ -34,6 +34,27 @@ const DIFFICULTY_META = {
   hard:   { label: 'DUPR 5.0', tint: '#e23b5a' }
 };
 
+function makeHitFxTexture() {
+  var cv = document.createElement('canvas');
+  cv.width = 96;
+  cv.height = 96;
+  var g = cv.getContext('2d');
+  g.clearRect(0, 0, cv.width, cv.height);
+  g.strokeStyle = 'rgba(255,255,255,0.96)';
+  g.lineWidth = 8;
+  g.beginPath();
+  g.arc(48, 48, 25, 0, Math.PI * 2);
+  g.stroke();
+  g.strokeStyle = 'rgba(70,220,255,0.75)';
+  g.lineWidth = 4;
+  g.beginPath();
+  g.arc(48, 48, 36, 0.25, Math.PI * 1.7);
+  g.stroke();
+  var tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 function renderQuality(isMobile) {
   var forced = '';
   try {
@@ -216,6 +237,25 @@ Game.prototype._initWorld = function () {
   this.scene.add(aimFill);
   this.aimMarkerFill = aimFill;
 
+  this.hitFx = null;
+  if (this.renderQuality.level !== 'low') {
+    var hitFxMat = new THREE.SpriteMaterial({
+      map: makeHitFxTexture(),
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0,
+      depthTest: false,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    });
+    var hitFx = new THREE.Sprite(hitFxMat);
+    hitFx.visible = false;
+    hitFx.frustumCulled = false;
+    hitFx.renderOrder = 998;
+    this.scene.add(hitFx);
+    this.hitFx = { mesh: hitFx, age: 0, dur: 0.18 };
+  }
+
   this.match = Rules.makeMatch({ server: 'near' });
   this.lastHitCooldown = 0;
   this.swingWindow = 0; this.swingUsed = false; this.swingType = 'fh'; this.swingAim = 0;
@@ -347,6 +387,7 @@ Game.prototype._doServe = function () {
   Rules.onPaddleHit(this.match, this.match.server, { volley: false });
   srvEntry.mesh.swing('serve');
   if (this.audio) this.audio.sfx.serve();
+  this._triggerHitEffect();
   this.state = STATE.RALLY;
   this.lastHitCooldown = HIT.COOLDOWN_SERVE;
 };
@@ -759,6 +800,7 @@ Game.prototype._hit = function (p, swingType) {
   this.cameraShake = Math.max(this.cameraShake, 0.08);
   p.mesh.swing(visualSwingType);
   if (this.audio) this.audio.sfx.paddle();
+  this._triggerHitEffect();
   if (rallyOver(res)) { this._endPoint(res); return; }
 
   // ATP — flat around-the-post arc, only at Pro level.
@@ -846,6 +888,7 @@ Game.prototype._cpuHit = function (p) {
   if (rallyOver(res)) {
     p.mesh.swing(visualSwingType);
     if (this.audio) this.audio.sfx.paddle();
+    this._triggerHitEffect();
     this._endPoint(res);
     return;
   }
@@ -861,6 +904,7 @@ Game.prototype._cpuHit = function (p) {
   if (shot.isSmash || shot.type === 'erne') visualSwingType = 'smash';
   p.mesh.swing(visualSwingType);
   if (this.audio) this.audio.sfx.paddle();
+  this._triggerHitEffect();
 
   // Deliberate fault: use legacy velocity-based path so faults still miss properly.
   if (shot.fault) {
@@ -920,10 +964,37 @@ Game.prototype._checkPoach = function (hitterTeam) {
     P1: newP1, P2: newP2, duration: newT, elapsed: 0
   };
   this.ball.pos = Physics.clone(this.ball.spline.P0);
+  this._triggerHitEffect();
   this.lastHitCooldown = HIT.COOLDOWN_RALLY;
 };
 
 /* ----------------------------- rendering ------------------------------ */
+Game.prototype._triggerHitEffect = function () {
+  if (!this.hitFx) return;
+  var mesh = this.hitFx.mesh;
+  mesh.position.set(this.ball.pos.x, Math.max(C.BALL_R * 2.0, this.ball.pos.y), this.ball.pos.z);
+  mesh.scale.set(0.62, 0.62, 1);
+  mesh.visible = true;
+  mesh.material.opacity = 0.44;
+  this.hitFx.age = this.hitFx.dur;
+};
+
+Game.prototype._updateHitEffect = function (dt) {
+  if (!this.hitFx) return;
+  var fx = this.hitFx;
+  if (fx.age <= 0) {
+    fx.mesh.visible = false;
+    fx.mesh.material.opacity = 0;
+    return;
+  }
+  fx.age = Math.max(0, fx.age - dt);
+  var t = 1 - fx.age / fx.dur;
+  var size = 0.62 + t * 0.42;
+  fx.mesh.scale.set(size, size, 1);
+  fx.mesh.material.opacity = (1 - t) * 0.44;
+  if (fx.age <= 0) fx.mesh.visible = false;
+};
+
 Game.prototype._syncMeshes = function (dt) {
   // ball
   var b = this.ball, bm = this.world.ballMesh;
@@ -939,6 +1010,7 @@ Game.prototype._syncMeshes = function (dt) {
   blob.material.opacity = clamp(0.35 - b.pos.y * 0.03, 0.06, 0.35);
   // trail
   this._updateTrail();
+  this._updateHitEffect(dt);
 
   // players — each faces the OPPONENT's side and only yaws toward the ball.
   for (var i = 0; i < this.players.length; i++) {

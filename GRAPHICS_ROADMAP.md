@@ -136,7 +136,7 @@ Target direction:
 
 ### Phase 8: Effects And Juice
 
-- [ ] Add paddle-hit effect.
+- [x] Add paddle-hit effect.
 - [ ] Add bounce/contact effect.
 - [ ] Add net-hit effect.
 - [ ] Add optional point/serve camera polish.
@@ -582,6 +582,32 @@ Add a new entry after every graphics-overhaul session:
 - Next recommended step: move to Phase 8 with a tiny paddle-hit or
   bounce/contact visual effect, keeping it short-lived and low-opacity so the
   neon ball remains easy to track.
+
+### 2026-07-01 - Phase 8 Paddle Hit Pop
+
+- Phase worked on: Phase 8.
+- Completed checklist items: added a paddle-hit effect.
+- Files changed: `src/game.js`, `GRAPHICS_ROADMAP.md`.
+- Tests/checks run: `npm test` passed 29 assertions; `npm run build` passed and
+  copied assets/music into `dist/` with the existing over-500 kB bundle warning;
+  focused Playwright/Vite probe confirmed the hit effect triggers on serve
+  contact, fades to hidden, and is not created in `?quality=low`; `npm run shots`
+  passed and verified the serve/rally/scoring loop.
+- Screenshots inspected: `court.png`, `court-night.png`,
+  `court-indoor-blue.png`, `rally-0.png`, `mobile-check.png`, and
+  `hit-fx-serve.png`.
+- Gameplay risks noticed: no pure gameplay modules were changed; `HIT`, shot
+  profiles, physics/rules/AI modules, hit dispatch, poaching, ATP/Erne,
+  two-bounce/kitchen behavior, and the 4-shot pattern were left untouched. The
+  primitive rig still owns swing timing, `contactT`, paddle/contact timing,
+  gameplay contact, and `paddleWorld`; the effect is triggered only after the
+  existing paddle/serve/poach contact branches have already fired. Visual-only
+  risk: the hollow hit sprite draws above depth so it can appear over the near
+  player in close follow-camera contacts, but it lasts only `0.18s`, is below
+  the ball ghost render order, and is skipped entirely on low quality.
+- Blockers: none. Notes: Vite still warns that the main bundle is over 500 kB.
+- Next recommended step: add an equally small bounce/contact floor effect,
+  gated by quality and tuned so it never competes with the neon ball or trail.
 
 ## Resume Prompt
 
