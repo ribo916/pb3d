@@ -52,12 +52,13 @@ export function updateCamera(rig, ball, humanPos, mode, shake, dt, opts) {
     look    = new THREE.Vector3(bx * 0.3, 0.9, bz * 0.2);
     posLerp = lookLerp = CAMERA.FOLLOW.LERP;
   } else if (mode === 2) {
-    // Top-Down: aerial view, very soft ball tracking
+    // Top-Down: straight-down overhead view, very soft ball tracking
     var td = CAMERA.TOPDOWN;
     desired = new THREE.Vector3(td.POS.x, td.POS.y, td.POS.z);
     look    = new THREE.Vector3(td.LOOK.x + bx * 0.1, td.LOOK.y, td.LOOK.z + bz * 0.05);
     posLerp = CAMERA.FOLLOW_POS_LERP;
     lookLerp = CAMERA.FOLLOW_LOOK_LERP;
+    targetFov = td.FOV || CAMERA.FOV;
   } else {
     // Broadcast (default): horizontal ball tracking, gentle depth follow
     var followX = clamp(bx * CAMERA.FOLLOW_X_SCALE, -CAMERA.FOLLOW_X_RANGE, CAMERA.FOLLOW_X_RANGE);
@@ -76,5 +77,8 @@ export function updateCamera(rig, ball, humanPos, mode, shake, dt, opts) {
     rig.cam.position.x += (Math.random() - 0.5) * shake;
     rig.cam.position.y += (Math.random() - 0.5) * shake;
   }
+  // Every mode (incl. Top-Down, which now carries a small tilt) looks down at an
+  // angle, so the default up-vector (0,1,0) is well-defined and stable — no need
+  // for the horizontal-up pin that a perfectly straight-down camera would require.
   rig.cam.lookAt(rig.camTarget);
 }

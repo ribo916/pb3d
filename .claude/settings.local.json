@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node tools/shoot-topdown.mjs)",
+      "Bash(npx playwright *)",
+      "Bash(node tools/probe-topdown.mjs)",
+      "Bash(node tools/perf-probe.mjs)",
+      "Bash(node tools/tilt-probe.mjs)",
+      "Bash(node tools/vp-probe.mjs)",
+      "Bash(node test/logic.test.mjs)",
+      "Bash(rm -f tools/vp-probe.mjs tools/shots/vp-*.png tools/shots/final-topdown.png tools/shots/final-broadcast.png && git diff --stat)"
+    ],
+    "additionalDirectories": [
+      "/Users/ribo/Dev/pb3d/tools/shots"
+    ]
+  }
+}

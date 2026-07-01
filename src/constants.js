@@ -59,8 +59,14 @@ export const CAMERA = {
     MOBILE_PULLBACK_Z: 1.0,
     MOBILE_PULLBACK_Y: 0.35
   },
-  // Mode 2 — Top-Down: aerial overview
-  TOPDOWN: { POS: { x: 0, y: 16, z: 3.0 }, LOOK: { x: 0, y: 0, z: 0 } }
+  // Mode 2 — Top-Down: a near-overhead view carrying a small deliberate tilt.
+  // A pure straight-down camera can't show the ball's arc, so lobs/drops read as
+  // unexplained speed/size swings (perspective scales by camY/(camY-ballHeight)).
+  // Offsetting POS.z ahead of LOOK.z gives a gentle ~9° tilt (atan(1.7/10.4)) so
+  // height maps to vertical screen travel and the ball separates from its shadow.
+  // Y stays BELOW the indoor truss beams (y=10.8, see scene.js) so the camera
+  // never stares through a beam; the wide FOV keeps both baselines/servers framed.
+  TOPDOWN: { POS: { x: 0, y: 10.4, z: 1.7 }, LOOK: { x: 0, y: 0.4, z: 0 }, FOV: 80 }
 };
 
 // Hit model timings

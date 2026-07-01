@@ -89,6 +89,7 @@ Game.prototype._initWorld = function () {
     courtPalette: this.courtPalette,
     timeOfDay: this.timeOfDay
   });
+  this._syncOverhead(); // honor an initial Top-Down camMode
   this.ball = Physics.makeBall();
 
   // DOUBLES roster: near team = human (slot 0) + CPU partner (slot 1);
@@ -904,8 +905,19 @@ Game.prototype._updateTrail = function () {
 Game.prototype._cycleCamera = function () {
   var names = ['BROADCAST', 'FOLLOW', 'TOP-DOWN'];
   this.camMode = (this.camMode + 1) % names.length;
+  this._syncOverhead();
   this._message(names[this.camMode], 1.2);
   if (this.hud && this.hud.setCamMode) this.hud.setCamMode(this.camMode, names[this.camMode]);
+};
+
+// The straight-overhead Top-Down camera would otherwise look up into the indoor
+// ceiling/trusses; hide that overhead geometry while it's active. Belt-and-braces
+// against ever seeing "the ceiling" in top-down regardless of exact camera pose.
+Game.prototype._syncOverhead = function () {
+  var overhead = this.world && this.world.overhead;
+  if (!overhead) return;
+  var hidden = this.camMode === 2;
+  for (var i = 0; i < overhead.length; i++) overhead[i].visible = !hidden;
 };
 
 Game.prototype._message = function (text, time) {

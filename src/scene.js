@@ -395,6 +395,7 @@ function addNightLights(scene) {
 }
 
 function addIndoorShell(scene, p) {
+  var overhead = []; // ceiling + trusses — hidden by the straight-overhead camera
   var floor = new THREE.Mesh(
     new THREE.PlaneGeometry(120, 120),
     new THREE.MeshStandardMaterial({ color: p.hallFloor, roughness: 0.95 })
@@ -434,6 +435,7 @@ function addIndoorShell(scene, p) {
   ceiling.rotation.x = Math.PI / 2;
   ceiling.position.y = 11.9;
   scene.add(ceiling);
+  overhead.push(ceiling);
 
   for (var i = -2; i <= 2; i++) {
     var truss = new THREE.Group();
@@ -448,6 +450,7 @@ function addIndoorShell(scene, p) {
     truss.add(right);
     truss.position.z = i * 7.5;
     scene.add(truss);
+    overhead.push(truss);
   }
 
   for (var j = -1; j <= 1; j += 2) {
@@ -471,6 +474,8 @@ function addIndoorShell(scene, p) {
     band.rotation.y = s[2];
     scene.add(band);
   }
+
+  return overhead;
 }
 
 function addOutdoorGround(scene, p) {
@@ -685,7 +690,7 @@ export function build(scene, opts) {
   var handles = { lights: {}, venue: cfg.venue, courtPalette: cfg.courtPalette, timeOfDay: cfg.timeOfDay };
 
   if (cfg.venue === 'indoor') {
-    addIndoorShell(scene, p);
+    handles.overhead = addIndoorShell(scene, p);
     addIndoorLighting(scene, handles, p);
   } else {
     addOutdoorSky(scene, p);
