@@ -202,13 +202,40 @@ downstream gates (two-bounce rule, cooldown) still apply to the poached hit, and
 
 ### Input (Human)
 
-| Input | Effect |
+All devices feed the same `input.state` fields (`move`, `aim`, `swingPower`,
+`swingShot`, `swingType`) consumed by `game._hit` / `_aimTarget`.
+
+| Abstract input | Effect |
 |---|---|
-| Left/right stick `move.x` | Lateral aim blend |
+| Left/right stick `move.x` | Lateral aim blend (added to `swingAim`) |
 | Forward/back stick `move.z` | Depth aim (`aimDepth`) — deeper or shorter |
-| Swing button (forehand) | Opens swing window; `swingPower = 'power'` |
-| Swing button (lob) | Opens swing window; `swingShot = 'lob'` |
-| Backhand modifier | Adds −1.5 to spinX |
+| Swing → `swingPower = 'power'` | Drive / speedup intent |
+| Swing → `swingPower = 'touch'` | Drop / dink intent |
+| Swing → `swingShot = 'lob'` | Lob override (always resolves to `lob`) |
+| Backhand (`aim < −0.25`) | `swingType = 'bh'`; adds −1.5 to spinX |
+
+**Intent is not the final shot.** A button sets the *intent*; the shot type is
+resolved at contact by `Shots.classify` (zone + ball height) and can be
+**downgraded by the power cap** — e.g. a `power` press on a ball at/below net
+height becomes a drop/dink, and the all-kitchen dink-battle branch forces a dink
+regardless of button. See [Power Cap](#power-cap) and [Intent → Shot Type](#intent--shot-type-shotsclassify).
+
+#### Device mappings (`src/input.js`)
+
+| Device | Move | Drive (`power`) | Drop (`touch`) | Lob | Aim |
+|---|---|---|---|---|---|
+| **Keyboard** | WASD / arrows | `Space` | `V` | `B` | mouse X (+ `move.x`) |
+| **Mouse** | — | left-click | right-click | middle-click / shift-click | mouse X |
+| **Touch** | left-thumb joystick | flick **up** | short / soft swipe | flick **down** | drag right thumb ↔ |
+
+- Also: `Enter` (or `Space`) serves; `C` (or the 📷 button) cycles camera.
+- **Touch is dual-thumb.** Left half = joystick (movement); right half = swing,
+  classified on release. The joystick rests on the lower-left at all times on
+  touch devices (visible affordance), floats to the thumb while held, and returns
+  to rest on release. Right-thumb gesture classification (`onEnd`): a *committed*
+  swipe (`dist > 55px || speed > 0.6px·ms⁻¹`) resolves by direction —
+  **up = drive, down = lob**, committed-horizontal = drive; anything softer =
+  **drop**. Horizontal travel also sets `aim` continuously in `onMove`.
 
 ---
 

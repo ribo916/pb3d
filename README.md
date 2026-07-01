@@ -43,9 +43,11 @@ You control the **orange** player (marked by a pulsing ground ring). Your partne
 | Serve | `Enter` / `Space` (or the on-screen SERVE button) |
 
 **Touch (mobile)**
-- **Left thumb** = virtual move stick.
-- **Right thumb** = swing & aim: drag left/right to aim, release to hit. A hard/fast
-  swipe = power, a soft/short one = touch, a flick upward = lob.
+- **Left thumb** = virtual move stick. It rests on the lower-left so you can always
+  see it, and jumps to your thumb while you hold.
+- **Right thumb** = swing & aim: drag left/right to aim, release to hit. Direction
+  picks the shot — **flick up = drive (power)**, **flick down = lob**, a short/soft
+  swipe = drop / dink.
 - A **SERVE** button appears when it's your serve.
 
 **The feel:** a swing opens a ~0.3-second timing window; your hit fires the instant
