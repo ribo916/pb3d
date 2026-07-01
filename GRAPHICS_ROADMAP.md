@@ -145,14 +145,14 @@ Target direction:
 
 ### Phase 9: Performance And Verification
 
-- [ ] Run `node test/logic.test.mjs`.
-- [ ] Run screenshot smoke test.
-- [ ] Inspect screenshots manually.
-- [ ] Run headed AI-vs-AI match with `node tools/play.mjs` when feasible.
-- [ ] Verify mobile viewport rendering.
-- [ ] Verify build output.
-- [ ] Check asset sizes and loading behavior.
-- [ ] Confirm Vercel/static deployment compatibility.
+- [x] Run `node test/logic.test.mjs`.
+- [x] Run screenshot smoke test.
+- [x] Inspect screenshots manually.
+- [x] Run headed AI-vs-AI match with `node tools/play.mjs` when feasible.
+- [x] Verify mobile viewport rendering.
+- [x] Verify build output.
+- [x] Check asset sizes and loading behavior.
+- [x] Confirm Vercel/static deployment compatibility.
 
 ## Verification Commands
 
@@ -636,6 +636,47 @@ Add a new entry after every graphics-overhaul session:
 - Next recommended step: begin Phase 9 with a broader verification pass,
   including a headed AI-vs-AI match when feasible and final mobile/build/static
   deployment checks.
+
+### 2026-07-01 - Phase 9 Verification Pass
+
+- Phase worked on: Phase 9.
+- Completed checklist items: all Phase 9 verification items. Ran pure logic,
+  screenshot smoke, headed AI-vs-AI, mobile viewport, build, asset-size/loading,
+  and production-preview/static deploy checks.
+- Files changed: `index.html`, `GRAPHICS_ROADMAP.md`.
+- Tests/checks run: `npm test` passed 29 assertions before and after the
+  visual fix; `npm run shots` passed before and after the fix and verified the
+  serve/rally/point loop; mobile Playwright checks passed at `390x844`,
+  `320x740`, and `844x390` with no page errors, full-size canvas, medium
+  quality, and no HUD/banner overlaps; `npm run build` passed and copied
+  `assets/` plus `music/active` into `dist/`; `npm run preview -- --port
+  43210` initially required sandbox approval, then served the production build
+  successfully with HTTP 200, no page errors, four players, and `serve` state;
+  `env SPEED=6 MATCHES=1 MAXSEC=45 node tools/play.mjs` ran headed and cycled
+  through repeated serve/rally/point states to `near 2 : 5 far` before the
+  safety cap, with no reported page errors.
+- Screenshots inspected: `court.png`, `court-night.png`,
+  `court-tropical-day.png`, `court-indoor-blue.png`, `rally-0.png`,
+  `rally-1.png`, `rally-2.png`, `phase8-effects.png`,
+  `roster-closeup.png`, `mobile-portrait-phase9.png`,
+  `mobile-small-phase9.png`, and `mobile-landscape-phase9.png`.
+- Gameplay risks noticed: no pure gameplay modules were changed; `HIT`, shot
+  profiles, physics/rules/AI modules, hit dispatch, poaching, ATP/Erne,
+  two-bounce/kitchen behavior, player `contactT`/`paddleWorld`, and the 4-shot
+  pattern were left untouched. The primitive rig remains the gameplay source.
+  Visual-only fix: compact mobile HUD layout now stacks the top-right music
+  controls on narrow portrait screens, lowers the score callout slightly, and
+  reduces/repositions the transient banner on short landscape screens.
+- Blockers: none. Notes: Vite still warns that the main bundle is over 500 kB
+  (`dist/assets/index-*.js` about 685 kB minified / 183 kB gzip). Asset-size
+  check showed `assets/` about 664 kB, copied `dist/assets/` about 1.3 MB, and
+  copied `dist/music/` about 37 MB; music remains the dominant static payload.
+  The headed match reached the `MAXSEC=45` cap before a full game over, but the
+  live visual loop, scoring transitions, and browser stability were verified.
+- Next recommended step: treat Phase 9 as complete for this checkpoint; the next
+  graphics pass should focus on reducing the known main-bundle warning via
+  code-splitting/manual chunks or continue asset polish with the same mobile HUD
+  checks in place.
 
 ## Resume Prompt
 
