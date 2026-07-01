@@ -98,7 +98,7 @@ Target direction:
 ### Phase 5: Venue Upgrade
 
 - [x] Replace or augment park scenery with authored/loaded assets.
-- [ ] Replace or augment tropical scenery with authored/loaded assets.
+- [x] Replace or augment tropical scenery with authored/loaded assets.
 - [ ] Replace or augment indoor scenery with authored/loaded assets.
 - [ ] Use instancing or shared materials for repeated props.
 - [x] Preserve venue, palette, and time-of-day menu choices.
@@ -289,6 +289,31 @@ Add a new entry after every graphics-overhaul session:
 - Next recommended step: add a similarly small authored/placeholder prop GLB for
   the tropical venue, then introduce manifest-level placement metadata or a small
   venue prop adapter before scaling up to larger repeated prop sets.
+
+### 2026-07-01 - Phase 5 Tropical Venue Prop GLB
+
+- Phase worked on: Phase 5.
+- Completed checklist items: replaced/augmented tropical scenery with a loaded
+  placeholder venue prop GLB while preserving the procedural tropical sand,
+  water, palms, venue/palette/time-of-day choices, and optional fallback path.
+- Files changed: `assets/manifest.js`,
+  `assets/models/venues/tropical-props.glb`, `GRAPHICS_ROADMAP.md`.
+- Tests/checks run: `npm test` passed 29 assertions; `npm run build` passed and
+  copied `assets/` into `dist/assets`; `npm run shots` passed and verified the
+  serve/rally/scoring loop.
+- Screenshots inspected: `court-tropical-day.png`,
+  `court-tropical-night.png`, `court.png`, `court-indoor-blue.png`, and
+  `rally-0.png`.
+- Gameplay risks noticed: no pure gameplay modules were changed; `HIT`, shot
+  profiles, physics/rules/AI modules, hit dispatch, poaching, ATP/Erne,
+  player `contactT`/`paddleWorld`, and the 4-shot pattern were left untouched.
+  Visual-only risk: the tropical placeholder prop sits in the far-side scenery
+  band and is partly crossed by the default serve banner, but it stays outside
+  the playable court footprint and does not affect ball readability.
+- Blockers: none. Notes: Vite still warns that the main bundle is over 500 kB.
+- Next recommended step: add the indoor venue placeholder GLB, then consider a
+  small manifest-level placement adapter before scaling to repeated prop sets
+  or marking the instancing/shared-materials Phase 5 item complete.
 
 ## Resume Prompt
 

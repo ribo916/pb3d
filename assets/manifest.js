@@ -25,7 +25,7 @@ export const ASSET_MANIFEST = {
     {
       key: 'venue-tropical',
       label: 'Tropical venue props',
-      url: '',
+      url: '/assets/models/venues/tropical-props.glb',
       scope: 'venue',
       venue: 'tropical',
       optional: true
