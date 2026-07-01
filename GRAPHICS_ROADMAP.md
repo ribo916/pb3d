@@ -125,14 +125,14 @@ Target direction:
 
 - [ ] Add idle animation.
 - [ ] Add run/jog animation.
-- [ ] Add ready stance.
+- [x] Add ready stance.
 - [ ] Add forehand animation.
 - [ ] Add backhand animation.
 - [ ] Add serve animation.
 - [ ] Add smash/overhead animation if practical.
-- [ ] Blend idle/run/swing states without breaking movement.
-- [ ] Align animation contact frame with current gameplay hit timing.
-- [ ] Verify human swing, CPU hit, serve, poach, ATP, and Erne timing.
+- [x] Blend idle/run/swing states without breaking movement.
+- [x] Align animation contact frame with current gameplay hit timing.
+- [x] Verify human swing, CPU hit, serve, poach, ATP, and Erne timing.
 
 ### Phase 8: Effects And Juice
 
@@ -470,6 +470,45 @@ Add a new entry after every graphics-overhaul session:
 - Next recommended step: begin Phase 7 by adding/aligning idle, run, ready, and
   swing animation blends against the existing primitive contact frame, with
   explicit checks for human swing, CPU hits, serve, poach, ATP, and Erne timing.
+
+### 2026-07-01 - Phase 7 Ready Stance And Swing Blend
+
+- Phase worked on: Phase 7.
+- Completed checklist items: added an authored ready-stance loop to the
+  generated player POC; blended in-match stationary players to ready, moving
+  players to run, and one-shot swings back to locomotion; scaled authored swing
+  clips to the primitive swing duration so the authored contact frame remains
+  aligned with `contactT = 0.5`; verified human swing, CPU hit, serve, poach,
+  ATP, and Erne animation triggers.
+- Files changed: `src/players.js`, `src/game.js`, `assets/manifest.js`,
+  `assets/README.md`, `assets/models/players/player-poc.glb`,
+  `tools/generate-player-poc.mjs`, `GRAPHICS_ROADMAP.md`.
+- Tests/checks run: `node tools/generate-player-poc.mjs`; `npm test` passed 29
+  assertions; a Node GLB structure/duration check confirmed `idle`, `ready`,
+  `run`, `forehand`, `backhand`, and `serve` clips with swing clips still at
+  `0.44s`; a focused Playwright/Vite probe confirmed ready/run loops, real serve
+  animation, human backhand animation, CPU hit animation, poach swing, ATP
+  swing, Erne swing, `contactT === 0.5`, and authored swing scale ~1.0;
+  `npm run build` passed and copied assets into `dist/`; `npm run shots` passed
+  and verified the serve/rally/scoring loop; an extra mobile Playwright capture
+  refreshed `tools/shots/mobile-check.png`.
+- Screenshots inspected: `roster-closeup.png`, `court.png`, `rally-0.png`,
+  `rally-1.png`, `rally-2.png`, `court-night.png`,
+  `court-tropical-day.png`, `court-indoor-blue.png`, and
+  `mobile-check.png`.
+- Gameplay risks noticed: no pure gameplay modules were changed; `HIT`, shot
+  profiles, physics/rules/AI modules, hit dispatch, poaching, ATP/Erne,
+  two-bounce/kitchen behavior, and the 4-shot pattern were left untouched. The
+  primitive rig still owns swing timing, `contactT`, and `paddleWorld`; authored
+  clips only add visual torso/leg/stance motion around that timing. Visual-only
+  risk: the ready crouch makes near players fill slightly more screen space on
+  mobile, so keep checking ball contrast and HUD overlap as authored motion gets
+  richer.
+- Blockers: none. Notes: Vite still warns that the main bundle is over 500 kB,
+  and `player-poc.glb` is about 500 kB after adding the ready clip.
+- Next recommended step: add dedicated authored forehand/backhand/serve clips
+  with clearer anticipation and follow-through poses, then add a small overhead
+  or smash clip once the existing contact-frame checks stay green.
 
 ## Resume Prompt
 

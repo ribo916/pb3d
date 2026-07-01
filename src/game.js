@@ -941,7 +941,11 @@ Game.prototype._syncMeshes = function (dt) {
     var yaw = clamp((this.ball.pos.x - pl.pos.x) * 0.16, -0.6, 0.6);
     if (v > 0.4) yaw = clamp(pl.vel.x * 0.18, -0.7, 0.7);
     pl.mesh.object.position.set(pl.pos.x, 0, pl.pos.z);
-    pl.mesh.update(dt, { speed: v, facing: base + yaw });
+    pl.mesh.update(dt, {
+      speed: v,
+      facing: base + yaw,
+      ready: this.state === STATE.SERVE || this.state === STATE.RALLY
+    });
   }
 
   // keep the "you" ring under players[0], with a gentle pulse

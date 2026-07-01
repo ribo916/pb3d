@@ -67,14 +67,16 @@ entries are safe and do not produce missing-file requests.
   `userData.variantValue` fields are also supported. The adapter shows the group
   matching roster `hairStyle` and `headwear`, and hides the others.
 - Animation clips may live on the player GLB or optional animation GLBs. Names
-  containing `idle`, `run`/`jog`, `forehand`/`fh`, `backhand`/`bh`, `serve`, or
-  `smash` are recognized by the adapter. The primitive swing remains the timing
-  source until the Phase 7 contact-frame alignment is verified.
+  containing `idle`, `ready`, `run`/`jog`, `forehand`/`fh`, `backhand`/`bh`,
+  `serve`, or `smash` are recognized by the adapter. In-match stationary players
+  prefer `ready` when available and fall back to `idle`. Swing clips are scaled
+  to the primitive swing duration, while the primitive rig remains the gameplay
+  timing source.
 
 ## Player POC
 
-`assets/models/players/player-poc.glb` is a generated, one-character visual POC
-used by the human player only. Regenerate it with:
+`assets/models/players/player-poc.glb` is a generated visual POC used by all
+four roster slots when it loads. Regenerate it with:
 
 ```bash
 node tools/generate-player-poc.mjs

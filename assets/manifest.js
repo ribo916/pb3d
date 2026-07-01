@@ -116,6 +116,13 @@ export const ASSET_MANIFEST = {
       optional: true
     },
     {
+      key: 'player-ready',
+      label: 'Player ready stance animation',
+      url: '',
+      scope: 'player-animation',
+      optional: true
+    },
+    {
       key: 'player-forehand',
       label: 'Player forehand animation',
       url: '',
@@ -125,6 +132,20 @@ export const ASSET_MANIFEST = {
     {
       key: 'player-backhand',
       label: 'Player backhand animation',
+      url: '',
+      scope: 'player-animation',
+      optional: true
+    },
+    {
+      key: 'player-serve',
+      label: 'Player serve animation',
+      url: '',
+      scope: 'player-animation',
+      optional: true
+    },
+    {
+      key: 'player-smash',
+      label: 'Player smash animation',
       url: '',
       scope: 'player-animation',
       optional: true

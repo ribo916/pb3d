@@ -198,7 +198,8 @@ function configureAuthoredModel(model, item) {
 
 function clipKey(name) {
   name = String(name || '').toLowerCase();
-  if (/idle|stand|ready/.test(name)) return 'idle';
+  if (/ready/.test(name)) return 'ready';
+  if (/idle|stand/.test(name)) return 'idle';
   if (/run|jog|walk|move/.test(name)) return 'run';
   if (/backhand|bh/.test(name)) return 'bh';
   if (/forehand|fh|drive|swing/.test(name)) return 'fh';
@@ -297,10 +298,13 @@ function installAuthoredModel(api, opts) {
     mixer: mixer,
     actions: actions,
     active: null,
+    activeName: '',
     locomotion: null,
+    locomotionName: '',
     armSync: record.item && record.item.syncPrimitiveArms ? findAuthoredArmRig(model) : null,
     paddleSocket: paddleSocket,
-    usesPaddleSocket: !!paddleSocket
+    usesPaddleSocket: !!paddleSocket,
+    lastSwingScale: 1
   };
 
   var baseUpdate = api.update;
@@ -312,21 +316,34 @@ function installAuthoredModel(api, opts) {
     action.reset().setLoop(THREE.LoopRepeat, Infinity).fadeIn(0.12).play();
     if (api.authored.locomotion) api.authored.locomotion.fadeOut(0.12);
     api.authored.locomotion = action;
+    api.authored.locomotionName = name;
   }
 
   function playOnce(name) {
     var action = actions[name] || actions.fh;
     if (!action) return;
-    action.reset().setLoop(THREE.LoopOnce, 1).fadeIn(0.04).play();
+    var clip = action.getClip && action.getClip();
+    var dur = api._swingDur || 0.44;
+    var scale = clip && clip.duration ? clip.duration / dur : 1;
+    action.reset().setLoop(THREE.LoopOnce, 1).setEffectiveTimeScale(scale).fadeIn(0.04).play();
     if (api.authored.active && api.authored.active !== action) api.authored.active.fadeOut(0.05);
     api.authored.active = action;
+    api.authored.activeName = actions[name] ? name : 'fh';
+    api.authored.lastSwingScale = scale;
   }
 
   api.update = function (dt, st) {
     baseUpdate.call(this, dt, st);
     if (this.authored && this.authored.mixer) {
       this.authored.mixer.update(dt);
-      if (!this.isSwinging()) playLoop(st && st.speed > 0.15 ? 'run' : 'idle');
+      if (!this.isSwinging()) {
+        if (this.authored.active) {
+          this.authored.active.fadeOut(0.10);
+          this.authored.active = null;
+          this.authored.activeName = '';
+        }
+        playLoop(st && st.speed > 0.15 ? 'run' : ((st && st.ready && actions.ready) ? 'ready' : 'idle'));
+      }
       syncAuthoredArms(this);
       if (this.authored.usesPaddleSocket && this.rig && this.rig.paddleBlade) {
         this.rig.paddleBlade.getWorldPosition(this.paddleWorld);
