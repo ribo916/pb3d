@@ -165,7 +165,7 @@ Game.prototype._initWorld = function () {
 
   var self = this;
   function entry(team, slot, isHuman, colors) {
-    var mesh = makePlayer(colors);
+    var mesh = makePlayer(Object.assign({}, colors, { assets: self.assets }));
     self.scene.add(mesh.object);
     return {
       team: team, slot: slot, isHuman: isHuman, mesh: mesh,

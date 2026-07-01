@@ -9,6 +9,7 @@
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { ASSET_MANIFEST } from '../assets/manifest.js';
 
 function list(kind) {
@@ -132,7 +133,7 @@ export async function preloadAssetPack(opts, onProgress) {
 export function cloneModelScene(record) {
   var gltf = record && record.payload;
   var root = gltf && gltf.scene;
-  return root ? root.clone(true) : null;
+  return root ? SkeletonUtils.clone(root) : null;
 }
 
 export function assetStatusSummary(pack) {

@@ -1,8 +1,8 @@
 /* ============================================================================
  * players.js — Friendly, rounded "Mii"-style players built from primitives.
- * Ported from the original Picklelife js/players.js (ESM Three). Character
- * appearance skinning (hairStyle/body/accessory/tattoo) is intentionally
- * dropped for the standalone — only color slots remain so teams read apart.
+ * Ported from the original Picklelife js/players.js (ESM Three). Optional
+ * authored player models can layer over this rig, but the primitive rig remains
+ * the gameplay fallback and paddle/contact timing driver.
  *
  * Swing design (modeled on arcade tennis): the swing is a horizontal cross-body
  * arc driven by an isolated UPPER-BODY twist (upper.rotation.y) so it reads like
@@ -15,6 +15,7 @@
 'use strict';
 
 import * as THREE from 'three';
+import { cloneModelScene } from './assets.js';
 
 function pivot() { return new THREE.Object3D(); }
 function sphere(r, mat, sx, sy, sz) {
@@ -51,7 +52,184 @@ function box(w, h, d, mat) {
   return mesh;
 }
 
-export function makePlayer(opts) {
+function colorValue(value, fallback) {
+  return value !== undefined ? value : fallback;
+}
+
+function slotColor(slot, opts) {
+  if (slot === 'skin') return colorValue(opts.skin, 0xf0c089);
+  if (slot === 'jersey') return colorValue(opts.jersey, 0x2b6cff);
+  if (slot === 'shorts') return colorValue(opts.shorts, 0x16213e);
+  if (slot === 'shoe') return colorValue(opts.shoe, 0xffffff);
+  if (slot === 'hair') return colorValue(opts.hair, 0x3a2417);
+  if (slot === 'paddle') return colorValue(opts.paddle, 0xff5a3c);
+  if (slot === 'headband') return colorValue(opts.headband || opts.jersey, 0xffffff);
+  return null;
+}
+
+function materialSlot(mesh, mat) {
+  var tags = [
+    mesh && mesh.name,
+    mat && mat.name,
+    mesh && mesh.userData && (mesh.userData.slot || mesh.userData.materialSlot)
+  ].join(' ').toLowerCase();
+  if (/jersey|shirt|top|torso|team/.test(tags)) return 'jersey';
+  if (/short|pants|bottom|skirt/.test(tags)) return 'shorts';
+  if (/shoe|sneaker|sock/.test(tags)) return 'shoe';
+  if (/hair|brow/.test(tags)) return 'hair';
+  if (/paddle|racket|racquet/.test(tags)) return 'paddle';
+  if (/band|cap|visor|hat/.test(tags)) return 'headband';
+  if (/skin|head|face|hand|arm|leg/.test(tags)) return 'skin';
+  return null;
+}
+
+function tintMaterial(mat, slot, opts) {
+  if (!mat || !mat.color) return mat;
+  var color = slotColor(slot, opts);
+  if (color === null) return mat;
+  var next = mat.clone();
+  next.color.set(color);
+  return next;
+}
+
+function applyModelMaterials(root, opts) {
+  root.traverse(function (node) {
+    if (!node.isMesh) return;
+    node.castShadow = true;
+    node.receiveShadow = true;
+    if (Array.isArray(node.material)) {
+      node.material = node.material.map(function (mat) {
+        return tintMaterial(mat, materialSlot(node, mat), opts);
+      });
+    } else {
+      node.material = tintMaterial(node.material, materialSlot(node, node.material), opts);
+    }
+  });
+}
+
+function hidePrimitiveBody(api) {
+  var paddle = api.rig && api.rig.paddle;
+  api.object.traverse(function (node) {
+    if (!node.isMesh) return;
+    var n = node;
+    var keep = false;
+    while (n) {
+      if (n === paddle) { keep = true; break; }
+      n = n.parent;
+    }
+    node.visible = keep;
+  });
+}
+
+function applyTransformFromArray(obj, prop, value) {
+  if (!value || value.length < 3) return;
+  obj[prop].set(value[0], value[1], value[2]);
+}
+
+function configureAuthoredModel(model, item) {
+  item = item || {};
+  if (item.playerOffset) applyTransformFromArray(model, 'position', item.playerOffset);
+  if (item.playerRotation) applyTransformFromArray(model, 'rotation', item.playerRotation);
+  if (item.playerScale !== undefined) {
+    if (Array.isArray(item.playerScale)) applyTransformFromArray(model, 'scale', item.playerScale);
+    else model.scale.setScalar(item.playerScale);
+  }
+}
+
+function clipKey(name) {
+  name = String(name || '').toLowerCase();
+  if (/idle|stand|ready/.test(name)) return 'idle';
+  if (/run|jog|walk|move/.test(name)) return 'run';
+  if (/backhand|bh/.test(name)) return 'bh';
+  if (/forehand|fh|drive|swing/.test(name)) return 'fh';
+  if (/serve/.test(name)) return 'serve';
+  if (/smash|overhead/.test(name)) return 'smash';
+  return '';
+}
+
+function collectAnimationClips(opts, modelRecord) {
+  var out = {};
+  function addClip(clip) {
+    var key = clipKey(clip && clip.name);
+    if (key && !out[key]) out[key] = clip;
+  }
+  var gltf = modelRecord && modelRecord.payload;
+  ((gltf && gltf.animations) || []).forEach(addClip);
+  if (opts.assets && opts.assets.animations) {
+    Object.keys(opts.assets.animations).forEach(function (key) {
+      var record = opts.assets.animations[key];
+      var payload = record && record.payload;
+      ((payload && payload.animations) || []).forEach(addClip);
+    });
+  }
+  return out;
+}
+
+function installAuthoredModel(api, opts) {
+  var assets = opts.assets;
+  var key = opts.playerModelKey || 'player-base';
+  var record = assets && assets.getModel ? assets.getModel(key) : null;
+  var model = cloneModelScene(record);
+  if (!model) return api;
+
+  model.name = 'AuthoredPlayerModel';
+  configureAuthoredModel(model, record.item);
+  applyModelMaterials(model, opts);
+  hidePrimitiveBody(api);
+  api.object.add(model);
+
+  var mixer = new THREE.AnimationMixer(model);
+  var clips = collectAnimationClips(opts, record);
+  var actions = {};
+  Object.keys(clips).forEach(function (name) {
+    actions[name] = mixer.clipAction(clips[name]);
+    actions[name].clampWhenFinished = false;
+  });
+
+  api.authored = {
+    model: model,
+    mixer: mixer,
+    actions: actions,
+    active: null,
+    locomotion: null
+  };
+
+  var baseUpdate = api.update;
+  var baseSwing = api.swing;
+
+  function playLoop(name) {
+    var action = actions[name];
+    if (!action || api.authored.locomotion === action) return;
+    action.reset().setLoop(THREE.LoopRepeat, Infinity).fadeIn(0.12).play();
+    if (api.authored.locomotion) api.authored.locomotion.fadeOut(0.12);
+    api.authored.locomotion = action;
+  }
+
+  function playOnce(name) {
+    var action = actions[name] || actions.fh;
+    if (!action) return;
+    action.reset().setLoop(THREE.LoopOnce, 1).fadeIn(0.04).play();
+    if (api.authored.active && api.authored.active !== action) api.authored.active.fadeOut(0.05);
+    api.authored.active = action;
+  }
+
+  api.update = function (dt, st) {
+    baseUpdate.call(this, dt, st);
+    if (this.authored && this.authored.mixer) {
+      this.authored.mixer.update(dt);
+      if (!this.isSwinging()) playLoop(st && st.speed > 0.15 ? 'run' : 'idle');
+    }
+  };
+
+  api.swing = function (type) {
+    baseSwing.call(this, type);
+    playOnce(type || 'fh');
+  };
+
+  return api;
+}
+
+export function makePrimitivePlayer(opts) {
   opts = opts || {};
   var skin = new THREE.MeshStandardMaterial({ color: opts.skin || 0xf0c089, roughness: 0.7 });
   var jersey = new THREE.MeshStandardMaterial({ color: opts.jersey || 0x2b6cff, roughness: 0.55 });
@@ -281,6 +459,11 @@ export function makePlayer(opts) {
     return this._swing > 0 && Math.abs(p - this.contactT) < 0.12;
   };
   return api;
+}
+
+export function makePlayer(opts) {
+  opts = opts || {};
+  return installAuthoredModel(makePrimitivePlayer(opts), opts);
 }
 
 function angDelta(a, b) {

@@ -106,9 +106,9 @@ Target direction:
 
 ### Phase 6: Player Model Upgrade
 
-- [ ] Add support for skinned/animated player models.
-- [ ] Preserve current primitive player implementation as fallback.
-- [ ] Support team color/material slots.
+- [x] Add support for skinned/animated player models.
+- [x] Preserve current primitive player implementation as fallback.
+- [x] Support team color/material slots.
 - [ ] Support paddle attachment and `paddleWorld` equivalent.
 - [ ] Support height/build/hair/headwear variants or an equivalent readable
   player identity system.
@@ -364,6 +364,38 @@ Add a new entry after every graphics-overhaul session:
 - Next recommended step: begin Phase 6 by adding player-model support behind the
   current primitive player fallback, starting with team color/material slots and
   a preserved paddle attachment/`paddleWorld` equivalent.
+
+### 2026-07-01 - Phase 6 Player Model Adapter
+
+- Phase worked on: Phase 6.
+- Completed checklist items: added support for skinned/animated player models
+  through a `player-base` asset adapter; preserved the primitive player
+  implementation as the fallback and canonical gameplay driver; added team color
+  and material-slot tinting for authored player meshes.
+- Files changed: `src/assets.js`, `src/players.js`, `src/game.js`,
+  `assets/manifest.js`, `assets/README.md`, `GRAPHICS_ROADMAP.md`.
+- Tests/checks run: `npm test` passed 29 assertions; `npm run build` passed and
+  copied `assets/` into `dist/assets`; `npm run shots` passed and verified the
+  serve/rally/scoring loop; a synthetic Node adapter check instantiated a
+  skinned player model, updated its mixer, swung, and confirmed `contactT ===
+  0.5` plus a live `paddleWorld`.
+- Screenshots inspected: `roster-closeup.png`, `court.png`,
+  `court-night.png`, `court-tropical-day.png`, `court-tropical-night.png`,
+  `court-indoor-blue.png`, `mobile-check.png`, `rally-0.png`, and
+  `rally-1.png`.
+- Gameplay risks noticed: no pure gameplay modules were changed; `HIT`, shot
+  profiles, physics/rules/AI modules, hit dispatch, poaching, ATP/Erne,
+  two-bounce/kitchen behavior, and the 4-shot pattern were left untouched. The
+  primitive rig still owns swing timing, `contactT`, and `paddleWorld`; when an
+  authored model is present only the primitive body hides while the primitive
+  paddle remains visible and gameplay-canonical.
+- Blockers: no real skinned player GLB exists yet, so the active screenshot path
+  still verifies the primitive fallback. Notes: Vite still warns that the main
+  bundle is over 500 kB.
+- Next recommended step: add a tiny placeholder `assets/models/players/`
+  `player-base.glb` with named material slots and a simple idle/run/swing clip,
+  then verify authored-model alignment before marking paddle socket and identity
+  variant support complete.
 
 ## Resume Prompt
 

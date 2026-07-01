@@ -43,6 +43,9 @@ export const ASSET_MANIFEST = {
       label: 'Player model prototype',
       url: '',
       scope: 'player',
+      playerScale: 1,
+      playerOffset: [0, 0, 0],
+      playerRotation: [0, 0, 0],
       optional: true
     }
   ],

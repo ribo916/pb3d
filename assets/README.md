@@ -33,6 +33,25 @@ runtime path unless it is meant to ship.
 The loader only fetches entries with a non-empty `url`, so placeholder manifest
 entries are safe and do not produce missing-file requests.
 
+## Player Model Contract
+
+- Put the base player GLB under `assets/models/players/` and set the
+  `player-base` manifest URL.
+- Skinned meshes are cloned with skeleton-safe cloning so the four roster
+  instances can animate independently.
+- The current primitive rig remains the fallback and gameplay driver. When a
+  player model is loaded, the primitive body is hidden but its paddle stays
+  visible; `contactT` and `paddleWorld` still come from the same paddle blade.
+- Optional manifest fields `playerScale`, `playerOffset`, and `playerRotation`
+  align authored models with the primitive rig.
+- Mesh or material names, or `userData.slot` / `userData.materialSlot`, may use
+  `jersey`, `shorts`, `skin`, `hair`, `shoe`, `headband`, or `paddle` to receive
+  roster colors.
+- Animation clips may live on the player GLB or optional animation GLBs. Names
+  containing `idle`, `run`/`jog`, `forehand`/`fh`, `backhand`/`bh`, `serve`, or
+  `smash` are recognized by the adapter. The primitive swing remains the timing
+  source until the Phase 7 contact-frame alignment is verified.
+
 ## Optimization Path
 
 - Compress large GLBs with `gltf-transform optimize` or an equivalent pipeline.
