@@ -18,6 +18,17 @@ PNGs** in `tools/shots/` before reporting the task done. Most of this was built
 without a live render loop — do not trust visual changes by reading code alone.
 Use `HEADED=1 node tools/shoot.mjs` if headless WebGL renders black.
 
+### Watching a full match (gameplay feel)
+To eyeball whether gameplay adheres to the goals, run `node tools/play.mjs` — it
+opens a headed window and plays a full **AI-vs-AI** match (all four players
+AI-driven), fast-forwarding the sim while the render loop keeps drawing, and streams
+score/state transitions to the terminal. Tune with env vars: `SPEED` (sim
+multiplier, default 4), `VENUE` (park|tropical|indoor), `PALETTE` (blue|green),
+`TOD` (day|night), `DIFF`, `MATCHES`, `MAXSEC`. `SPEED` multiplies *simulated* time
+(fixed 1/60 steps), so behavior matches 1x — drop to `SPEED=1` to confirm anything
+suspicious isn't a fast-forward artifact. It exercises the AI only, not human input
+(aim/poach/swing timing still need manual play).
+
 ### The two tuning surfaces — keep them sacred
 - **`src/constants.js`** — court geometry + physics/camera/hit tuning.
 - **`src/shots.js`** — the shot model (apex/depth/spin/margin per shot type).

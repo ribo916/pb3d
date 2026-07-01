@@ -50,6 +50,7 @@ python3 -m http.server      # alternative
 # Tests
 node test/logic.test.mjs    # pure-logic assertions (no Three.js needed)
 node tools/shoot.mjs        # headless render smoke test (needs playwright); writes tools/shots/*.png
+node tools/play.mjs         # headed AI-vs-AI full match you can watch live (needs playwright)
 npm run music:sync          # rescan music/active/* and rebuild music/catalog.js
 npm run music:generate      # regenerate bundled placeholder WAVs, then rescan the catalog
 ```
@@ -59,8 +60,17 @@ npm run music:generate      # regenerate bundled placeholder WAVs, then rescan t
 - After any visual/scene change: `node tools/shoot.mjs`, then **look at the PNGs**
   in `tools/shots/`. Do not trust visual changes without looking — most of this was
   built without a live render loop.
+- To eyeball gameplay feel/mechanics live: `node tools/play.mjs` opens a headed
+  window and plays a full AI-vs-AI match (all four players AI-driven), fast-forwarding
+  the sim while the render loop keeps drawing. Good for rally quality, positioning,
+  kitchen/two-bounce adherence, and shot selection — but it exercises AI only, not
+  human input (aim/poach/swing timing still need manual play). Env knobs:
+  `SPEED` (sim multiplier, default 4), `VENUE` (park|tropical|indoor), `PALETTE`
+  (blue|green), `TOD` (day|night), `DIFF`, `MATCHES`, `MAXSEC`. Speed multiplies
+  *simulated* time (fixed 1/60 steps), so behavior matches 1x; drop to `SPEED=1`
+  to confirm anything suspicious isn't a fast-forward artifact.
 - `playwright` is not a declared dependency here; install it if you need the
-  render smoke test (`npm i -D playwright && npx playwright install chromium`).
+  render smoke test or `play.mjs` (`npm i -D playwright && npx playwright install chromium`).
 
 ---
 
@@ -91,6 +101,7 @@ test/
   logic.test.mjs  Node assertions for the pure modules
 tools/
   shoot.mjs       headless static-server + Playwright render smoke test
+  play.mjs        headed Playwright AI-vs-AI full match viewer (SPEED/VENUE/... env)
   sync-music-catalog.mjs  scans music/active/* and rewrites music/catalog.js
   generate-music-wavs.mjs generates placeholder WAV tracks, then syncs the catalog
   shots/          screenshot output (gitignored)
@@ -259,3 +270,10 @@ The important implementation contract:
   Chromium (SwiftShader WebGL), drives a match via `window.__game`, and asserts the
   serve→rally→point loop plus zero page errors. Use `HEADED=1` if headless WebGL
   renders black.
+- `tools/play.mjs` is the interactive counterpart: it opens a **headed** window and
+  plays a full match with every player AI-driven (it flips `players[0]` off human
+  control and gives it its own AI), then injects extra fixed-step `game.update()`
+  calls each frame to fast-forward while the native render loop draws. It streams
+  score/state transitions to the terminal and reports page errors at the end. Use it
+  to watch mechanics live; use `SPEED=1` to verify anything the fast-forward makes
+  look off. It does not cover human input paths.
