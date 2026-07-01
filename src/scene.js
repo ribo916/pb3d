@@ -268,48 +268,21 @@ function fenceTexture() {
   return tex;
 }
 
-function makeTree(scale, greens) {
-  var grp = new THREE.Group();
-  var trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1 });
-  var trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, 1.6, 7), trunkMat);
-  trunk.position.y = 0.8;
-  grp.add(trunk);
-  var blobs = [[0, 1.9, 0, 0.95], [0.45, 1.7, 0.2, 0.7], [-0.4, 1.75, -0.2, 0.65]];
-  for (var i = 0; i < blobs.length; i++) {
-    var b = blobs[i];
-    var leaf = new THREE.Mesh(
-      new THREE.SphereGeometry(b[3], 8, 6),
-      new THREE.MeshStandardMaterial({ color: greens[i % greens.length], roughness: 0.9, flatShading: true })
-    );
-    leaf.position.set(b[0], b[1], b[2]);
-    grp.add(leaf);
-  }
-  grp.scale.setScalar(scale || 1);
-  return grp;
+var INSTANCE_DUMMY = new THREE.Object3D();
+
+function setInstance(mesh, index, x, y, z, sx, sy, sz, rx, ry, rz) {
+  INSTANCE_DUMMY.position.set(x, y, z);
+  INSTANCE_DUMMY.rotation.set(rx || 0, ry || 0, rz || 0);
+  INSTANCE_DUMMY.scale.set(sx, sy, sz);
+  INSTANCE_DUMMY.updateMatrix();
+  mesh.setMatrixAt(index, INSTANCE_DUMMY.matrix);
 }
 
-function makePalmTree(scale) {
-  var grp = new THREE.Group();
-  var trunk = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.11, 0.19, 3.9, 8),
-    new THREE.MeshStandardMaterial({ color: 0x8c6036, roughness: 1 })
-  );
-  trunk.position.y = 1.95;
-  trunk.rotation.z = -0.08;
-  grp.add(trunk);
-
-  var leafMatA = new THREE.MeshStandardMaterial({ color: 0x4ea64c, roughness: 0.95, side: THREE.DoubleSide });
-  var leafMatB = new THREE.MeshStandardMaterial({ color: 0x7bcf5a, roughness: 0.95, side: THREE.DoubleSide });
-  for (var i = 0; i < 6; i++) {
-    var leaf = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 0.34, 1, 1), i % 2 ? leafMatA : leafMatB);
-    leaf.position.set(0, 3.9, 0);
-    leaf.rotation.x = -0.3 - (i % 2) * 0.1;
-    leaf.rotation.y = (Math.PI * 2 * i) / 6;
-    leaf.rotation.z = -0.32 + (i % 3) * 0.08;
-    grp.add(leaf);
-  }
-  grp.scale.setScalar(scale || 1);
-  return grp;
+function finishInstances(mesh) {
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.instanceMatrix.needsUpdate = true;
+  return mesh;
 }
 
 function addFence(scene) {
@@ -335,12 +308,12 @@ function addFence(scene) {
       grp.add(rail);
     });
     var posts = Math.max(2, Math.round(len / 3));
+    var postMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.04, 0.04, fh, 6), railMat, posts + 1);
     for (var i = 0; i <= posts; i++) {
       var t = i / posts - 0.5;
-      var post = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, fh, 6), railMat);
-      post.position.set(horiz ? t * len : 0, fh / 2, horiz ? 0 : t * len);
-      grp.add(post);
+      setInstance(postMesh, i, horiz ? t * len : 0, fh / 2, horiz ? 0 : t * len, 1, 1, 1);
     }
+    grp.add(finishInstances(postMesh));
     grp.position.set(cx, 0, cz);
     scene.add(grp);
   }
@@ -351,23 +324,81 @@ function addFence(scene) {
 }
 
 function scatterTrees(scene, spots, greens) {
+  var group = new THREE.Group();
+  var trunk = new THREE.InstancedMesh(
+    new THREE.CylinderGeometry(0.12, 0.18, 1.6, 7),
+    new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1 }),
+    spots.length
+  );
+  var blobDefs = [[0, 1.9, 0, 0.95], [0.45, 1.7, 0.2, 0.7], [-0.4, 1.75, -0.2, 0.65]];
+  var leaves = [];
+  for (var g = 0; g < blobDefs.length; g++) {
+    leaves.push(new THREE.InstancedMesh(
+      new THREE.SphereGeometry(1, 8, 6),
+      new THREE.MeshStandardMaterial({ color: greens[g % greens.length], roughness: 0.9, flatShading: true }),
+      spots.length
+    ));
+  }
   for (var i = 0; i < spots.length; i++) {
     var sp = spots[i];
-    var tree = makeTree(sp[2], greens);
-    tree.position.set(sp[0], 0, sp[1]);
-    tree.rotation.y = i * 1.7;
-    scene.add(tree);
+    var scale = sp[2] || 1;
+    var rot = i * 1.7;
+    var c = Math.cos(rot);
+    var s = Math.sin(rot);
+    setInstance(trunk, i, sp[0], 0.8 * scale, sp[1], scale, scale, scale, 0, rot, 0);
+    for (var j = 0; j < blobDefs.length; j++) {
+      var b = blobDefs[j];
+      var bx = sp[0] + (b[0] * c + b[2] * s) * scale;
+      var bz = sp[1] + (-b[0] * s + b[2] * c) * scale;
+      setInstance(leaves[j], i, bx, b[1] * scale, bz, b[3] * scale, b[3] * scale, b[3] * scale, 0, rot, 0);
+    }
   }
+  group.add(finishInstances(trunk));
+  for (var k = 0; k < leaves.length; k++) group.add(finishInstances(leaves[k]));
+  scene.add(group);
 }
 
 function scatterPalms(scene, spots) {
+  var group = new THREE.Group();
+  var trunk = new THREE.InstancedMesh(
+    new THREE.CylinderGeometry(0.11, 0.19, 3.9, 8),
+    new THREE.MeshStandardMaterial({ color: 0x8c6036, roughness: 1 }),
+    spots.length
+  );
+  var leafGeo = new THREE.PlaneGeometry(1.7, 0.34, 1, 1);
+  var leafMatA = new THREE.MeshStandardMaterial({ color: 0x4ea64c, roughness: 0.95, side: THREE.DoubleSide });
+  var leafMatB = new THREE.MeshStandardMaterial({ color: 0x7bcf5a, roughness: 0.95, side: THREE.DoubleSide });
+  var leafA = new THREE.InstancedMesh(leafGeo, leafMatA, spots.length * 3);
+  var leafB = new THREE.InstancedMesh(leafGeo, leafMatB, spots.length * 3);
+  var ai = 0;
+  var bi = 0;
   for (var i = 0; i < spots.length; i++) {
     var sp = spots[i];
-    var palm = makePalmTree(sp[2]);
-    palm.position.set(sp[0], 0, sp[1]);
-    palm.rotation.y = sp[3] || (i * 0.8);
-    scene.add(palm);
+    var scale = sp[2] || 1;
+    var rot = sp[3] || (i * 0.8);
+    setInstance(trunk, i, sp[0], 1.95 * scale, sp[1], scale, scale, scale, 0, rot, -0.08);
+    for (var j = 0; j < 6; j++) {
+      var target = j % 2 ? leafA : leafB;
+      var index = j % 2 ? ai++ : bi++;
+      setInstance(
+        target,
+        index,
+        sp[0],
+        3.9 * scale,
+        sp[1],
+        scale,
+        scale,
+        scale,
+        -0.3 - (j % 2) * 0.1,
+        rot + (Math.PI * 2 * j) / 6,
+        -0.32 + (j % 3) * 0.08
+      );
+    }
   }
+  group.add(finishInstances(trunk));
+  group.add(finishInstances(leafA));
+  group.add(finishInstances(leafB));
+  scene.add(group);
 }
 
 function addParkScenery(scene) {

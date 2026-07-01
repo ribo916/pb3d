@@ -100,7 +100,7 @@ Target direction:
 - [x] Replace or augment park scenery with authored/loaded assets.
 - [x] Replace or augment tropical scenery with authored/loaded assets.
 - [x] Replace or augment indoor scenery with authored/loaded assets.
-- [ ] Use instancing or shared materials for repeated props.
+- [x] Use instancing or shared materials for repeated props.
 - [x] Preserve venue, palette, and time-of-day menu choices.
 - [x] Keep procedural fallback available until new assets are fully verified.
 
@@ -339,6 +339,31 @@ Add a new entry after every graphics-overhaul session:
 - Blockers: none. Notes: Vite still warns that the main bundle is over 500 kB.
 - Next recommended step: address the Phase 5 repeated-prop checklist item with
   a small shared-material or instancing pass before broad venue replacement.
+
+### 2026-07-01 - Phase 5 Repeated Prop Instancing
+
+- Phase worked on: Phase 5.
+- Completed checklist items: used instancing/shared materials for repeated
+  procedural venue props by converting park/tropical tree scatter, tropical palm
+  scatter, and fence posts to `THREE.InstancedMesh` while preserving authored
+  GLB loading and procedural scenery fallback.
+- Files changed: `src/scene.js`, `GRAPHICS_ROADMAP.md`.
+- Tests/checks run: `npm test` passed 29 assertions; `npm run build` passed and
+  copied `assets/` into `dist/assets`; `npm run shots` passed and verified the
+  serve/rally/scoring loop.
+- Screenshots inspected: `court.png`, `court-tropical-day.png`,
+  `court-indoor-blue.png`, `court-night.png`, `mobile-check.png`, and
+  `rally-0.png`.
+- Gameplay risks noticed: no pure gameplay modules were changed; `HIT`, shot
+  profiles, physics/rules/AI modules, hit dispatch, poaching, ATP/Erne,
+  player `contactT`/`paddleWorld`, and the 4-shot pattern were left untouched.
+  Visual-only risk: palm fronds now use instanced transforms instead of child
+  meshes, so continue checking tropical silhouettes when replacing placeholder
+  venue assets with richer authored props.
+- Blockers: none. Notes: Vite still warns that the main bundle is over 500 kB.
+- Next recommended step: begin Phase 6 by adding player-model support behind the
+  current primitive player fallback, starting with team color/material slots and
+  a preserved paddle attachment/`paddleWorld` equivalent.
 
 ## Resume Prompt
 
