@@ -44,6 +44,10 @@ entries are safe and do not produce missing-file requests.
   visible; `contactT` and `paddleWorld` still come from the same paddle blade.
 - Optional manifest fields `playerScale`, `playerOffset`, and `playerRotation`
   align authored models with the primitive rig.
+- `syncPrimitiveArms: true` lets named authored arm nodes follow the existing
+  primitive swing rotations during transition work. The expected node names are
+  `visual_left_upper_arm`, `visual_left_forearm`, `visual_right_upper_arm`, and
+  `visual_right_forearm`.
 - Mesh or material names, or `userData.slot` / `userData.materialSlot`, may use
   `jersey`, `shorts`, `skin`, `hair`, `shoe`, `headband`, or `paddle` to receive
   roster colors.
@@ -51,6 +55,19 @@ entries are safe and do not produce missing-file requests.
   containing `idle`, `run`/`jog`, `forehand`/`fh`, `backhand`/`bh`, `serve`, or
   `smash` are recognized by the adapter. The primitive swing remains the timing
   source until the Phase 7 contact-frame alignment is verified.
+
+## Player POC
+
+`assets/models/players/player-poc.glb` is a generated, one-character visual POC
+used by the human player only. Regenerate it with:
+
+```bash
+node tools/generate-player-poc.mjs
+```
+
+It is deliberately not final character art. Its job is to prove that a visibly
+different authored-style player can sit on top of the current gameplay rig while
+the primitive fallback, swing timing, and `paddleWorld` contract stay intact.
 
 ## Optimization Path
 

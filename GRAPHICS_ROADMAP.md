@@ -113,6 +113,14 @@ Target direction:
 - [ ] Support height/build/hair/headwear variants or an equivalent readable
   player identity system.
 
+### Phase 6.5: One-Character Visual POC
+
+- [x] Interject a visible player-art POC before continuing full animation work.
+- [x] Apply the POC to only one roster slot for side-by-side comparison.
+- [x] Keep the primitive rig and paddle contact timing as the gameplay source.
+- [x] Add a reproducible local generation path for the POC GLB.
+- [x] Verify the POC remains readable in gameplay and mobile screenshots.
+
 ### Phase 7: Animation Integration
 
 - [ ] Add idle animation.
@@ -396,6 +404,39 @@ Add a new entry after every graphics-overhaul session:
   `player-base.glb` with named material slots and a simple idle/run/swing clip,
   then verify authored-model alignment before marking paddle socket and identity
   variant support complete.
+
+### 2026-07-01 - Phase 6.5 One-Character Visual POC
+
+- Phase worked on: Phase 6.5.
+- Completed checklist items: interjected a visible player-art POC before Phase 7;
+  applied the POC only to the human roster slot for direct comparison against
+  the three primitive players; kept the primitive rig and paddle contact timing
+  as the gameplay source; added a reproducible local generator for the POC GLB;
+  verified the POC in gameplay and mobile screenshots.
+- Files changed: `GRAPHICS_ROADMAP.md`, `assets/manifest.js`,
+  `assets/README.md`, `assets/models/players/player-poc.glb`,
+  `src/game.js`, `src/players.js`, `tools/generate-player-poc.mjs`.
+- Tests/checks run: `npm test` passed 29 assertions; `npm run build` passed and
+  copied `assets/` into `dist/assets`; `npm run shots` passed and verified the
+  serve/rally/scoring loop after the initial POC and again after adding authored
+  arm meshes synced to the primitive swing rig.
+- Screenshots inspected: `roster-closeup.png`, `court.png`,
+  `mobile-check.png`, `rally-0.png`, `court-night.png`, and
+  `court-indoor-blue.png`.
+- Gameplay risks noticed: no pure gameplay modules were changed; `HIT`, shot
+  profiles, physics/rules/AI modules, hit dispatch, poaching, ATP/Erne,
+  two-bounce/kitchen behavior, and the 4-shot pattern were left untouched. The
+  human POC hides the primitive body, but the primitive rig still drives arm
+  rotations, swing timing, `contactT`, and `paddleWorld`; only the primitive
+  paddle remains visible as the gameplay-canonical paddle.
+- Blockers: this is still a lightweight authored-style GLB generated from Three
+  primitives, not final photoreal scanned/rigged character art. Notes: Vite
+  still warns that the main bundle is over 500 kB, and the POC GLB is about
+  383 kB.
+- Next recommended step: decide whether the desired target is premium stylized
+  or actual photoreal licensed assets; if staying in-repo, continue with a
+  proper paddle socket on the authored model, then expand the POC into reusable
+  player identity variants.
 
 ## Resume Prompt
 

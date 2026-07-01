@@ -107,17 +107,26 @@ function applyModelMaterials(root, opts) {
   });
 }
 
-function hidePrimitiveBody(api) {
+function isDescendantOfAny(node, roots) {
+  var n = node;
+  while (n) {
+    for (var i = 0; i < roots.length; i++) {
+      if (n === roots[i]) return true;
+    }
+    n = n.parent;
+  }
+  return false;
+}
+
+function hidePrimitiveBody(api, item) {
   var paddle = api.rig && api.rig.paddle;
+  var keepRoots = [paddle];
+  if (item && item.keepPrimitiveArms && api.rig) {
+    keepRoots.push(api.rig.armL.shoulder, api.rig.armR.shoulder);
+  }
   api.object.traverse(function (node) {
     if (!node.isMesh) return;
-    var n = node;
-    var keep = false;
-    while (n) {
-      if (n === paddle) { keep = true; break; }
-      n = n.parent;
-    }
-    node.visible = keep;
+    node.visible = isDescendantOfAny(node, keepRoots);
   });
 }
 
@@ -165,6 +174,30 @@ function collectAnimationClips(opts, modelRecord) {
   return out;
 }
 
+function findAuthoredArmRig(model) {
+  var leftUpper = model.getObjectByName('visual_left_upper_arm');
+  var leftFore = model.getObjectByName('visual_left_forearm');
+  var rightUpper = model.getObjectByName('visual_right_upper_arm');
+  var rightFore = model.getObjectByName('visual_right_forearm');
+  if (!leftUpper || !leftFore || !rightUpper || !rightFore) return null;
+  return {
+    leftUpper: leftUpper,
+    leftFore: leftFore,
+    rightUpper: rightUpper,
+    rightFore: rightFore
+  };
+}
+
+function syncAuthoredArms(api) {
+  var sync = api.authored && api.authored.armSync;
+  var rig = api.rig;
+  if (!sync || !rig) return;
+  sync.leftUpper.rotation.copy(rig.armL.shoulder.rotation);
+  sync.leftFore.rotation.copy(rig.armL.elbow.rotation);
+  sync.rightUpper.rotation.copy(rig.armR.shoulder.rotation);
+  sync.rightFore.rotation.copy(rig.armR.elbow.rotation);
+}
+
 function installAuthoredModel(api, opts) {
   var assets = opts.assets;
   var key = opts.playerModelKey || 'player-base';
@@ -175,7 +208,7 @@ function installAuthoredModel(api, opts) {
   model.name = 'AuthoredPlayerModel';
   configureAuthoredModel(model, record.item);
   applyModelMaterials(model, opts);
-  hidePrimitiveBody(api);
+  hidePrimitiveBody(api, record.item);
   api.object.add(model);
 
   var mixer = new THREE.AnimationMixer(model);
@@ -191,7 +224,8 @@ function installAuthoredModel(api, opts) {
     mixer: mixer,
     actions: actions,
     active: null,
-    locomotion: null
+    locomotion: null,
+    armSync: record.item && record.item.syncPrimitiveArms ? findAuthoredArmRig(model) : null
   };
 
   var baseUpdate = api.update;
@@ -218,6 +252,7 @@ function installAuthoredModel(api, opts) {
     if (this.authored && this.authored.mixer) {
       this.authored.mixer.update(dt);
       if (!this.isSwinging()) playLoop(st && st.speed > 0.15 ? 'run' : 'idle');
+      syncAuthoredArms(this);
     }
   };
 

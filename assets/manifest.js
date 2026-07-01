@@ -47,6 +47,17 @@ export const ASSET_MANIFEST = {
       playerOffset: [0, 0, 0],
       playerRotation: [0, 0, 0],
       optional: true
+    },
+    {
+      key: 'player-poc',
+      label: 'Human player visual POC',
+      url: '/assets/models/players/player-poc.glb',
+      scope: 'player',
+      playerScale: 1,
+      playerOffset: [0, 0, 0],
+      playerRotation: [0, 0, 0],
+      syncPrimitiveArms: true,
+      optional: true
     }
   ],
   textures: [
