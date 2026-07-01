@@ -660,6 +660,27 @@ function addBall(scene, handles, p, shadowOpacity) {
   scene.add(ballMesh);
   handles.ballMesh = ballMesh;
 
+  // "Ghost" ball — a faint marker drawn ON TOP of everything (depthTest off) so
+  // the ball is never lost behind your own player mesh. In Follow mode the low,
+  // close camera looks over your shoulder, and a fast/low incoming ball travels
+  // inside your avatar's silhouette until it passes you; the ghost keeps it
+  // trackable. When the ball is in the open the ghost just sits on it as a faint
+  // glow. A top-level sibling (not a child of ballMesh) with a high renderOrder
+  // reliably paints over opaque geometry.
+  var ghost = new THREE.Mesh(
+    new THREE.SphereGeometry(C.BALL_R * 1.5, 16, 12),
+    new THREE.MeshBasicMaterial({
+      color: p.ballGlow,
+      transparent: true,
+      opacity: 0.35,
+      depthTest: false,
+      depthWrite: false
+    })
+  );
+  ghost.renderOrder = 999;
+  scene.add(ghost);
+  handles.ballGhost = ghost;
+
   var blob = new THREE.Mesh(
     new THREE.CircleGeometry(C.BALL_R * 2.2, 16),
     new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: shadowOpacity })

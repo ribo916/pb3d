@@ -837,6 +837,8 @@ Game.prototype._syncMeshes = function (dt) {
   var b = this.ball, bm = this.world.ballMesh;
   bm.position.set(b.pos.x, b.pos.y, b.pos.z);
   bm.rotation.x += (b.vel.z) * dt * 2; bm.rotation.z -= (b.vel.x) * dt * 2;
+  // Ghost marker (drawn on top) so the ball is never lost behind your own player.
+  if (this.world.ballGhost) this.world.ballGhost.position.set(b.pos.x, b.pos.y, b.pos.z);
   // contact shadow blob
   var blob = this.world.ballBlob;
   blob.position.set(b.pos.x, 0.02, b.pos.z);

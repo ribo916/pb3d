@@ -8,7 +8,9 @@
       "Bash(node tools/tilt-probe.mjs)",
       "Bash(node tools/vp-probe.mjs)",
       "Bash(node test/logic.test.mjs)",
-      "Bash(rm -f tools/vp-probe.mjs tools/shots/vp-*.png tools/shots/final-topdown.png tools/shots/final-broadcast.png && git diff --stat)"
+      "Bash(rm -f tools/vp-probe.mjs tools/shots/vp-*.png tools/shots/final-topdown.png tools/shots/final-broadcast.png && git diff --stat)",
+      "Bash(timeout 120 node tools/shoot.mjs)",
+      "Bash(node tools/shoot.mjs)"
     ],
     "additionalDirectories": [
       "/Users/ribo/Dev/pb3d/tools/shots"
