@@ -38,8 +38,12 @@ entries are safe and do not produce missing-file requests.
 
 ## Player Model Contract
 
-- Put the base player GLB under `assets/models/players/` and set the
-  `player-base` manifest URL.
+- Put Player 1's real authored GLB under `assets/models/players/` and set the
+  `player-human-v1` manifest URL. That slot is Player 1-only and falls back to
+  `player-poc` while the URL is empty.
+- Use `player-base` only for future shared roster-wide replacement work.
+- Authored player GLBs should face local `+z`, use an origin at the feet, and
+  arrive at real-world scale around 1.7-1.9 m before manifest alignment.
 - Skinned meshes are cloned with skeleton-safe cloning so the four roster
   instances can animate independently.
 - The current primitive rig remains the fallback and gameplay driver. When a
@@ -54,6 +58,8 @@ entries are safe and do not produce missing-file requests.
   socket.
 - Optional manifest fields `playerScale`, `playerOffset`, and `playerRotation`
   align authored models with the primitive rig.
+- Optional manifest field `fallbackKey` lets an empty or failed optional player
+  slot resolve to another loaded model, such as `player-poc`.
 - Roster `height` still scales the player root for authored and primitive
   players; roster `build` scales authored-model width/depth in addition to the
   primitive fallback.
@@ -75,6 +81,28 @@ entries are safe and do not produce missing-file requests.
   prefer `ready` when available and fall back to `idle`. Swing clips are scaled
   to the primitive swing duration, while the primitive rig remains the gameplay
   timing source.
+- Swing clips should place paddle contact at 50% of a 0.44 s swing clip so they
+  line up with `contactT = 0.5`. Do not change gameplay timing to fit the art.
+- Player 1 high-quality target budget is roughly 30k-60k triangles, optimized
+  GLB, and 1k-2k PBR textures where they materially improve face, skin, hair,
+  clothes, and shoes. Provide a lower LOD or rely on the existing POC/primitive
+  fallback for mobile if needed.
+- Later roster-wide replacement should use separate optional slots, for example
+  `player-partner-v1`, `player-opponent-a-v1`, and `player-opponent-b-v1`, each
+  falling back to `player-poc` until that character is imported and verified.
+  Keep the same visual-only primitive-rig contract for all four players.
+
+Validate a candidate player GLB without rendering:
+
+```bash
+node tools/validate-player-glb.mjs assets/models/players/player-poc.glb
+```
+
+Capture Player 1 comparison screenshots:
+
+```bash
+npm run player:check
+```
 
 ## Player POC
 
