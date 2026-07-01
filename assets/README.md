@@ -87,6 +87,10 @@ entries are safe and do not produce missing-file requests.
   GLB, and 1k-2k PBR textures where they materially improve face, skin, hair,
   clothes, and shoes. Provide a lower LOD or rely on the existing POC/primitive
   fallback for mobile if needed.
+- Later roster-wide replacement should use separate optional slots, for example
+  `player-partner-v1`, `player-opponent-a-v1`, and `player-opponent-b-v1`, each
+  falling back to `player-poc` until that character is imported and verified.
+  Keep the same visual-only primitive-rig contract for all four players.
 
 Validate a candidate player GLB without rendering:
 

@@ -185,6 +185,16 @@ contract is:
   for mobile if the premium model is too heavy.
 - Run the validator and Player 1 screenshot workflow before accepting the asset.
 
+### Future Roster-Wide Players
+
+After Player 1 reaches the target quality bar, extend the same visual-only
+authored-model concept to the full doubles roster. Add stable optional manifest
+slots such as `player-partner-v1`, `player-opponent-a-v1`, and
+`player-opponent-b-v1`, each with `fallbackKey: 'player-poc'` until real art is
+available. Keep the primitive rig authoritative for every player, reuse the same
+socket/material/clip contract, and expand the Player 1 screenshot workflow into
+a roster comparison pass before replacing the visible POC for all four players.
+
 ## Rendering And Visual Priorities
 
 Priority order:
@@ -304,6 +314,12 @@ Recommended next checkpoint:
 4. Keep the primitive rig as gameplay authority.
 5. Verify paddle socket, contact frame, `paddleWorld`, and gameplay readability.
 6. Compare close-up and gameplay-camera screenshots against the current POC.
+
+After Player 1 is credible, add separate optional roster slots for the partner
+and two opponents and verify them with a roster-wide screenshot workflow. Do not
+replace all four players at once before Player 1 has proven the asset source,
+socket alignment, animation contact frame, mobile budget, and gameplay-camera
+readability.
 
 Only after the player quality bar is credible should broader venue/material
 polish resume.
