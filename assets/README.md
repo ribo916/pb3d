@@ -3,6 +3,9 @@
 This folder is for optional authored graphics assets. The game must still run
 with the procedural fallback when any of these files are absent.
 
+For the broader graphics-overhaul state, visual verification baseline, and next
+character-model priorities, see [`../GRAPHICS.md`](../GRAPHICS.md).
+
 ## Structure
 
 ```text
@@ -86,6 +89,8 @@ It is deliberately not final character art. Its job is to prove that a visibly
 different authored-style player can sit on top of the current gameplay rig while
 the primitive fallback, swing timing, socketed paddle, identity variants, and
 `paddleWorld` contract stay intact.
+
+Do not use this POC as the target quality bar for premium or photoreal players.
 
 ## Optimization Path
 

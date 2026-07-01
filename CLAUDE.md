@@ -2,11 +2,15 @@
 
 > **Primary context is in [`AGENTS.md`](AGENTS.md) — read it before starting any task.**
 > It covers: what this is, tech stack, commands, directory structure, architecture,
-> the gameplay contract, conventions, music asset workflow, how to extend (venues, skinning,
+> the gameplay contract, conventions, music asset workflow, how to extend (venues, graphics,
 > singles), and testing. Both Claude Code and OpenAI Codex use that file.
 >
 > **Gameplay mechanics, tuning constants, shot system, AI, and specialty shots →
 > [`GAMEPLAY.md`](GAMEPLAY.md).** Read before touching any gameplay code.
+>
+> **Graphics architecture, asset pipeline, player-model status, and visual
+> verification → [`GRAPHICS.md`](GRAPHICS.md).** Read before touching rendering,
+> venues, authored assets, player models, effects, or HUD layout.
 
 ---
 
@@ -17,6 +21,10 @@ After **any** visual/scene change, run `node tools/shoot.mjs` and **look at the
 PNGs** in `tools/shots/` before reporting the task done. Most of this was built
 without a live render loop — do not trust visual changes by reading code alone.
 Use `HEADED=1 node tools/shoot.mjs` if headless WebGL renders black.
+
+For graphics-overhaul context, use `GRAPHICS.md` instead of the retired roadmap.
+The current generated player POC is a technical adapter proof, not final
+photoreal or premium character art.
 
 ### Watching a full match (gameplay feel)
 To eyeball whether gameplay adheres to the goals, run `node tools/play.mjs` — it

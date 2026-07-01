@@ -5,12 +5,15 @@ two CPUs, with real pickleball rules, arcade-tuned physics, and a real track-bas
 music picker that supports genre folders such as `KPOP`, `RAP`, `COUNTRY`, and `POP`.
 
 It started life as the 3D match inside a larger browser game and was extracted into
-this clean, decoupled project — focused on gameplay, music, and presentation without
-character skinning, a 2D overworld, or a save system.
+this clean, decoupled project — focused on gameplay, music, and presentation
+without a 2D overworld or save system. The graphics-overhaul branch now has an
+authored-player adapter, but the current generated player POC is not final art.
 
 > **Working on this with an AI agent?** Read [`AGENTS.md`](AGENTS.md) — it's the
-> primary context for both Claude Code and Codex. [`CLAUDE.md`](CLAUDE.md) adds
-> Claude-specific notes.
+> primary context for both Claude Code and Codex. [`GAMEPLAY.md`](GAMEPLAY.md)
+> covers mechanics and tuning, and [`GRAPHICS.md`](GRAPHICS.md) covers the
+> graphics-overhaul state, asset pipeline, player-model caveats, and visual
+> verification. [`CLAUDE.md`](CLAUDE.md) adds Claude-specific notes.
 
 ---
 
@@ -81,8 +84,10 @@ reaction time, shot smarts, aggression, and unforced-error rate.
 ## Project layout
 
 ```
+GRAPHICS.md       graphics-overhaul context, asset contracts, visual verification
 index.html        <canvas> + HUD DOM + menu; loads src/main.js
 package.json      type:module; Vite/test/build/screenshot/music scripts
+assets/           optional authored GLBs/textures/environments copied into dist/assets
 src/
   audio.js        Web Audio SFX + HTMLAudioElement music player + persisted music state
   constants.js    court geometry + ALL tuning (physics/shots/AI/camera/hit)  ← single source of truth
@@ -157,10 +162,22 @@ If you want the built-in placeholder tracks back or need a seed library for test
 npm run music:generate
 ```
 
-## Extending the game (venues, skinning, more)
+## Graphics status
 
-This build is deliberately gameplay-only. The most likely additions all have clean
-seams, documented in detail in [`AGENTS.md` → Extending the game](AGENTS.md#extending-the-game):
+The graphics-overhaul branch has a verified rendering and asset-loading scaffold:
+upgraded procedural courts/lighting/effects, optional GLB venue props, a generated
+player-model POC, animation blending, and mobile HUD fixes.
+
+The current player model is not final art and should not be mistaken for a
+premium or photoreal target. Future graphics work should focus on replacing the
+generated player POC with a real authored character model while preserving the
+primitive rig as the gameplay source for swing timing, contact, `contactT`, and
+`paddleWorld`. See [`GRAPHICS.md`](GRAPHICS.md) and `assets/README.md`.
+
+## Extending the game (venues, graphics, more)
+
+The most likely additions all have clean seams, documented in detail in
+[`AGENTS.md` → Extending the game](AGENTS.md#extending-the-game):
 
 ### Audio expansion ideas
 - Add richer metadata support to the catalog generator if you want album art, sort order, or artist grouping beyond filename parsing.
@@ -170,8 +187,9 @@ seams, documented in detail in [`AGENTS.md` → Extending the game](AGENTS.md#ex
 ### Other planned-friendly extensions
 - **More venues** (e.g. a pro stadium) — parameterize `scene.build(scene, opts)`.
 - **Night mode** — lerp sky/fog/light intensities + the ball's emissive glow.
-- **Character skinning** — `players.makePlayer(opts)` already takes color slots; add
-  geometry variants (hair, body scale, cap/visor) and feed appearance from `game.js`.
+- **Character models** — replace the generated POC with real authored character
+  assets using the adapter contracts in [`GRAPHICS.md`](GRAPHICS.md) and
+  `assets/README.md`.
 - **Singles mode** — simplify serve rotation + movement via an `opts.mode` on `Game`.
 - **Rankings / pre-match cards / venue gating** — layer above `main.js`; `Game`
   already accepts `difficulty`, `partnerDiff`, and an `onMatchOver` hook.

@@ -6,6 +6,10 @@
 >
 > **Gameplay mechanics, tuning surfaces, and system design →
 > [`GAMEPLAY.md`](GAMEPLAY.md).** Read it before touching any gameplay code.
+>
+> **Graphics architecture, asset pipeline, player-model status, and visual
+> verification → [`GRAPHICS.md`](GRAPHICS.md).** Read it before touching
+> rendering, venues, authored assets, player models, effects, or HUD layout.
 
 ---
 
@@ -17,9 +21,10 @@ partner take on two CPUs. Real rules (diagonal serve, two-bounce rule, non-volle
 difficulties, desktop + mobile controls.
 
 The gameplay was ported from a larger project's 3D match and is now fully
-self-contained: **real track-based music, no character skinning, no 2D overworld,
-no save system** — pure gameplay plus audio. Those are intentional extension points (see
-[Extending the game](#extending-the-game)).
+self-contained: **real track-based music, no 2D overworld, no save system** —
+pure gameplay plus audio. The graphics-overhaul branch adds a verified rendering
+and authored-asset scaffold, but the generated player model is only a technical
+POC, not final character art. See [`GRAPHICS.md`](GRAPHICS.md).
 
 **The single most important quality bar is swing + ball-contact feel** — it should
 read like polished arcade tennis (Wii Sports / Mario Tennis energy). Treat the
@@ -78,8 +83,10 @@ npm run music:generate      # regenerate bundled placeholder WAVs, then rescan t
 ## Directory Structure
 
 ```
+GRAPHICS.md       graphics architecture, asset pipeline, verification baseline
 index.html        entry point: <canvas>, HUD DOM, joystick, menu, loads src/main.js
 package.json      type:module; Vite/test/build/screenshot/music scripts
+assets/           optional GLB/textures/environments copied into dist/assets
 src/
   constants.js    court geometry + ALL tuning (physics/shots/AI/camera/hit) — single source of truth
   physics.js      ball integration, net-aware launch() solver, clearsNet()    (pure)
@@ -173,6 +180,8 @@ horizontal cross-body arc from an isolated upper-body twist; the paddle extends
 beyond the hand. Court is dark navy, kitchen a mid-blue band, ball neon green with
 a glow + trail (kept high-contrast on purpose). Camera is a low broadcast angle
 behind the near baseline that gently follows the ball and shakes on points.
+Current graphics-overhaul details, including the generated player POC and why it
+is not final art, live in [`GRAPHICS.md`](GRAPHICS.md).
 
 ### The gameplay contract (don't break these)
 - Swing timing window `HIT.SWING_WINDOW = 0.30`; rig swing duration 0.44, contact
@@ -196,6 +205,7 @@ behind the near baseline that gently follows the ball and shakes on points.
   `node test/logic.test.mjs` keeps working.
 - Match the existing code style in a file you touch; don't reformat wholesale.
 - After visual changes, regenerate and view screenshots before claiming done.
+- Before visual/asset/player-model work, read [`GRAPHICS.md`](GRAPHICS.md).
 - After changing music assets, run `npm run music:sync` so `music/catalog.js`
   matches the folders on disk.
 - **The 4-shot pattern is a first-class design constraint.** Serve deep → return
@@ -226,8 +236,8 @@ The shipped library now includes imported Picklelife MP3 tracks grouped by genre
 ## Extending the game
 
 These were intentionally left out for a clean gameplay core. Each has an obvious
-seam. (The "current game" this was ported from did audio/venues/skinning the way
-described below — mirror that.)
+seam. (The "current game" this was ported from did audio, venues, and richer
+player presentation the way described below — mirror that where it still fits.)
 
 ### Audio expansion
 
@@ -251,9 +261,10 @@ The important implementation contract:
 - **Night mode** — add a `nightMode` flag to `scene.build` and lerp sky/fog/light
   intensities + the ball's `emissiveIntensity` (the original raised it to ~1.2 at
   night so the ball stays visible).
-- **Character skinning** — `players.makePlayer(opts)` already takes color slots;
-  re-add geometry variants (hair styles, body scale, cap/visor/band) inside
-  `makePlayer` and feed a per-player appearance object from `game.js`.
+- **Character models** — the branch has an authored-player adapter and generated
+  POC, but the POC is not final art. Keep the primitive rig as gameplay authority
+  and use [`GRAPHICS.md`](GRAPHICS.md) plus `assets/README.md` before replacing
+  player assets.
 - **Singles mode** — the rules/movement are doubles-specific; a singles variant
   would simplify the serve rotation (no serverNum 1/2, no partner) and movement
   (one player per side). Architect via an `opts.mode` on `Game`.
