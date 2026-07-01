@@ -56,6 +56,7 @@ export const ASSET_MANIFEST = {
       playerScale: 1,
       playerOffset: [0, 0, 0],
       playerRotation: [0, 0, 0],
+      paddleSocketOffset: [0, 0, 0],
       syncPrimitiveArms: true,
       optional: true
     }

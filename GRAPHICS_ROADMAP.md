@@ -109,8 +109,8 @@ Target direction:
 - [x] Add support for skinned/animated player models.
 - [x] Preserve current primitive player implementation as fallback.
 - [x] Support team color/material slots.
-- [ ] Support paddle attachment and `paddleWorld` equivalent.
-- [ ] Support height/build/hair/headwear variants or an equivalent readable
+- [x] Support paddle attachment and `paddleWorld` equivalent.
+- [x] Support height/build/hair/headwear variants or an equivalent readable
   player identity system.
 
 ### Phase 6.5: One-Character Visual POC
@@ -437,6 +437,39 @@ Add a new entry after every graphics-overhaul session:
   or actual photoreal licensed assets; if staying in-repo, continue with a
   proper paddle socket on the authored model, then expand the POC into reusable
   player identity variants.
+
+### 2026-07-01 - Phase 6 Player Socket And Identity Variants
+
+- Phase worked on: Phase 6.
+- Completed checklist items: support paddle attachment and `paddleWorld`
+  equivalent for authored player models; support height/build/hair/headwear
+  variants through the authored player identity system.
+- Files changed: `src/players.js`, `src/game.js`, `assets/manifest.js`,
+  `assets/README.md`, `assets/models/players/player-poc.glb`,
+  `tools/generate-player-poc.mjs`, `GRAPHICS_ROADMAP.md`.
+- Tests/checks run: `node tools/generate-player-poc.mjs` regenerated the POC
+  GLB; `npm test` passed 29 assertions; a Node GLB structure check confirmed
+  `paddle_socket`, five variant groups, and the expected clips; `npm run build`
+  passed and copied assets into `dist/`; `npm run shots` passed and verified the
+  serve/rally/scoring loop; an extra mobile Playwright capture refreshed
+  `tools/shots/mobile-check.png`.
+- Screenshots inspected: `roster-closeup.png`, `court.png`, `rally-0.png`,
+  `court-night.png`, `court-tropical-day.png`, `court-indoor-blue.png`, and
+  `mobile-check.png`.
+- Gameplay risks noticed: no pure gameplay modules were changed; `HIT`, shot
+  profiles, physics/rules/AI modules, hit dispatch, poaching, ATP/Erne,
+  two-bounce/kitchen behavior, and the 4-shot pattern were left untouched. The
+  primitive rig still owns swing timing and `contactT`; authored models now
+  attach the visible primitive paddle to a named `paddle_socket` when present,
+  and refresh `paddleWorld` from the same blade after arm sync. Visual-only
+  risk: all four roster slots now use the generated POC when it loads, so future
+  screenshots should keep checking player silhouette clarity and ball contrast.
+- Blockers: none. Notes: Vite still warns that the main bundle is over 500 kB,
+  and `player-poc.glb` is now about 498 kB after adding socket and variant
+  nodes.
+- Next recommended step: begin Phase 7 by adding/aligning idle, run, ready, and
+  swing animation blends against the existing primitive contact frame, with
+  explicit checks for human swing, CPU hits, serve, poach, ATP, and Erne timing.
 
 ## Resume Prompt
 

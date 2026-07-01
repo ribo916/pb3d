@@ -107,6 +107,57 @@ function applyModelMaterials(root, opts) {
   });
 }
 
+function namedLike(node, names) {
+  var n = String((node && node.name) || '').toLowerCase();
+  for (var i = 0; i < names.length; i++) {
+    if (n === names[i] || n.indexOf(names[i]) >= 0) return true;
+  }
+  return false;
+}
+
+function findNamed(root, names) {
+  var found = null;
+  root.traverse(function (node) {
+    if (found) return;
+    if (namedLike(node, names)) found = node;
+  });
+  return found;
+}
+
+function variantInfo(node) {
+  var data = (node && node.userData) || {};
+  if (data.variantGroup && data.variantValue) {
+    return {
+      group: String(data.variantGroup).toLowerCase(),
+      value: String(data.variantValue).toLowerCase()
+    };
+  }
+  var name = String((node && node.name) || '').toLowerCase();
+  var m = name.match(/(?:^|_)variant_([a-z0-9]+)_([a-z0-9]+)/);
+  if (!m) return null;
+  return { group: m[1], value: m[2] };
+}
+
+function variantChoice(group, opts) {
+  if (group === 'hair') return String(opts.hairStyle || 'short').toLowerCase();
+  if (group === 'headwear') return String(opts.headwear || 'none').toLowerCase();
+  return null;
+}
+
+function applyAuthoredIdentity(model, opts) {
+  var body = buildScale(opts.build);
+  model.scale.x *= body;
+  model.scale.z *= body;
+
+  model.traverse(function (node) {
+    var info = variantInfo(node);
+    if (!info) return;
+    var choice = variantChoice(info.group, opts);
+    if (!choice) return;
+    node.visible = info.value === choice;
+  });
+}
+
 function isDescendantOfAny(node, roots) {
   var n = node;
   while (n) {
@@ -198,6 +249,25 @@ function syncAuthoredArms(api) {
   sync.rightFore.rotation.copy(rig.armR.elbow.rotation);
 }
 
+function installAuthoredPaddle(api, model, item) {
+  item = item || {};
+  var socket = findNamed(model, ['paddle_socket', 'paddlesocket', 'right_hand_socket', 'hand_r_socket']);
+  var paddle = api.rig && api.rig.paddle;
+  if (!socket || !paddle || item.usePaddleSocket === false) return null;
+
+  socket.add(paddle);
+  paddle.position.set(0, 0, 0);
+  paddle.rotation.set(0, 0, 0);
+  paddle.scale.set(1, 1, 1);
+  applyTransformFromArray(paddle, 'position', item.paddleSocketOffset);
+  applyTransformFromArray(paddle, 'rotation', item.paddleSocketRotation);
+  if (item.paddleSocketScale !== undefined) {
+    if (Array.isArray(item.paddleSocketScale)) applyTransformFromArray(paddle, 'scale', item.paddleSocketScale);
+    else paddle.scale.setScalar(item.paddleSocketScale);
+  }
+  return socket;
+}
+
 function installAuthoredModel(api, opts) {
   var assets = opts.assets;
   var key = opts.playerModelKey || 'player-base';
@@ -208,6 +278,7 @@ function installAuthoredModel(api, opts) {
   model.name = 'AuthoredPlayerModel';
   configureAuthoredModel(model, record.item);
   applyModelMaterials(model, opts);
+  applyAuthoredIdentity(model, opts);
   hidePrimitiveBody(api, record.item);
   api.object.add(model);
 
@@ -219,13 +290,17 @@ function installAuthoredModel(api, opts) {
     actions[name].clampWhenFinished = false;
   });
 
+  var paddleSocket = installAuthoredPaddle(api, model, record.item);
+
   api.authored = {
     model: model,
     mixer: mixer,
     actions: actions,
     active: null,
     locomotion: null,
-    armSync: record.item && record.item.syncPrimitiveArms ? findAuthoredArmRig(model) : null
+    armSync: record.item && record.item.syncPrimitiveArms ? findAuthoredArmRig(model) : null,
+    paddleSocket: paddleSocket,
+    usesPaddleSocket: !!paddleSocket
   };
 
   var baseUpdate = api.update;
@@ -253,6 +328,9 @@ function installAuthoredModel(api, opts) {
       this.authored.mixer.update(dt);
       if (!this.isSwinging()) playLoop(st && st.speed > 0.15 ? 'run' : 'idle');
       syncAuthoredArms(this);
+      if (this.authored.usesPaddleSocket && this.rig && this.rig.paddleBlade) {
+        this.rig.paddleBlade.getWorldPosition(this.paddleWorld);
+      }
     }
   };
 
@@ -409,7 +487,7 @@ export function makePrimitivePlayer(opts) {
 
   var api = {
     object: root3,
-    rig: { pelvis: pelvis, upper: upper, armL: armL, armR: armR, legL: legL, legR: legR, paddle: paddle },
+    rig: { pelvis: pelvis, upper: upper, armL: armL, armR: armR, legL: legL, legR: legR, paddle: paddle, paddleBlade: bladeRef },
     _t: 0, _stride: 0, _swing: 0, _swingDur: 0.44, _swingType: 'fh', _facing: 0,
     contactT: 0.5,                 // fraction of swing where the paddle meets the ball
     paddleWorld: new THREE.Vector3()

@@ -67,6 +67,14 @@ function box(name, w, h, d, material, pos, scale, rot) {
 const root = new THREE.Group();
 root.name = 'player_poc_root';
 
+function variantGroup(group, value) {
+  const g = new THREE.Group();
+  g.name = 'variant_' + group + '_' + value;
+  g.userData.variantGroup = group;
+  g.userData.variantValue = value;
+  return g;
+}
+
 const hips = new THREE.Group();
 hips.name = 'hips';
 hips.position.y = 0.78;
@@ -83,12 +91,37 @@ torso.add(box('jersey_side_panel_right', 0.035, 0.44, 0.16, mats.jerseyDark, [0.
 torso.add(box('jersey_chest_stripe', 0.36, 0.035, 0.025, mats.stripe, [0, 0.18, 0.135]));
 torso.add(cyl('skin_neck', 0.06, 0.07, 0.12, mats.skin, [0, 0.48, 0]));
 torso.add(sph('skin_head', 0.17, mats.skin, [0, 0.67, 0.03], [0.92, 1.08, 0.88]));
-torso.add(mesh('hair_cap', new THREE.SphereGeometry(0.176, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.58), mats.hair, [0, 0.715, 0.02], [0.98, 0.82, 0.9]));
-torso.add(box('headband_front', 0.27, 0.028, 0.028, mats.headband, [0, 0.675, 0.17]));
-torso.add(box('headband_left', 0.025, 0.028, 0.13, mats.headband, [-0.15, 0.675, 0.055]));
-torso.add(box('headband_right', 0.025, 0.028, 0.13, mats.headband, [0.15, 0.675, 0.055]));
-torso.add(sph('hair_back_volume', 0.12, mats.hair, [0, 0.62, -0.11], [1.15, 0.95, 0.55]));
 torso.add(sph('skin_nose', 0.025, mats.skin, [0, 0.65, 0.18], [0.75, 0.85, 1.2]));
+
+const shortHair = variantGroup('hair', 'short');
+shortHair.add(mesh('hair_short_cap', new THREE.SphereGeometry(0.176, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.58), mats.hair, [0, 0.715, 0.02], [0.98, 0.82, 0.9]));
+shortHair.add(sph('hair_short_back_volume', 0.12, mats.hair, [0, 0.62, -0.11], [1.15, 0.95, 0.55]));
+torso.add(shortHair);
+
+const longHair = variantGroup('hair', 'long');
+longHair.add(mesh('hair_long_cap', new THREE.SphereGeometry(0.176, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.58), mats.hair, [0, 0.715, 0.02], [0.98, 0.82, 0.9]));
+longHair.add(box('hair_long_left_panel', 0.045, 0.24, 0.12, mats.hair, [-0.155, 0.56, 0.0]));
+longHair.add(box('hair_long_right_panel', 0.045, 0.24, 0.12, mats.hair, [0.155, 0.56, 0.0]));
+longHair.add(box('hair_long_back_panel', 0.22, 0.25, 0.055, mats.hair, [0, 0.54, -0.13]));
+torso.add(longHair);
+
+const ponyHair = variantGroup('hair', 'ponytail');
+ponyHair.add(mesh('hair_ponytail_cap', new THREE.SphereGeometry(0.176, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.58), mats.hair, [0, 0.715, 0.02], [0.98, 0.82, 0.9]));
+ponyHair.add(box('hair_ponytail_back_pad', 0.18, 0.14, 0.075, mats.hair, [0, 0.575, -0.125]));
+ponyHair.add(box('headband_ponytail_tie', 0.08, 0.028, 0.035, mats.headband, [0.02, 0.57, -0.19]));
+ponyHair.add(sph('hair_ponytail_tail', 0.075, mats.hair, [0.03, 0.49, -0.215], [0.62, 1.2, 0.62]));
+torso.add(ponyHair);
+
+const headband = variantGroup('headwear', 'headband');
+headband.add(box('headband_front', 0.27, 0.028, 0.028, mats.headband, [0, 0.675, 0.17]));
+headband.add(box('headband_left', 0.025, 0.028, 0.13, mats.headband, [-0.15, 0.675, 0.055]));
+headband.add(box('headband_right', 0.025, 0.028, 0.13, mats.headband, [0.15, 0.675, 0.055]));
+torso.add(headband);
+
+const cap = variantGroup('headwear', 'cap');
+cap.add(mesh('headband_cap_crown', new THREE.SphereGeometry(0.18, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.45), mats.headband, [0, 0.735, 0.02], [1.04, 0.68, 0.98]));
+cap.add(box('headband_cap_brim', 0.22, 0.025, 0.10, mats.headband, [0, 0.67, 0.205]));
+torso.add(cap);
 
 [-1, 1].forEach((side) => {
   torso.add(sph(side < 0 ? 'jersey_left_shoulder_cap' : 'jersey_right_shoulder_cap',
@@ -113,6 +146,13 @@ function makeArm(side) {
     0.046, 0.04, 0.22, mats.skin, [0, -0.11, 0], [0.95, 1.0, 0.85]));
   fore.add(sph('skin_' + sideName + '_hand',
     0.058, mats.skin, [0, -0.24, 0], [0.9, 0.9, 0.82]));
+  if (side < 0) {
+    const socket = new THREE.Group();
+    socket.name = 'paddle_socket';
+    socket.position.set(0, -0.24, 0);
+    socket.userData.slot = 'paddleSocket';
+    fore.add(socket);
+  }
 }
 
 makeArm(1);
