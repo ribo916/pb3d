@@ -8,6 +8,10 @@
 'use strict';
 
 import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import * as Physics from './physics.js';
 import * as Rules from './rules.js';
 import * as AI from './ai.js';
@@ -30,6 +34,70 @@ const DIFFICULTY_META = {
   hard:   { label: 'DUPR 5.0', tint: '#e23b5a' }
 };
 
+function makeHitFxTexture() {
+  var cv = document.createElement('canvas');
+  cv.width = 96;
+  cv.height = 96;
+  var g = cv.getContext('2d');
+  g.clearRect(0, 0, cv.width, cv.height);
+  g.strokeStyle = 'rgba(255,255,255,0.96)';
+  g.lineWidth = 8;
+  g.beginPath();
+  g.arc(48, 48, 25, 0, Math.PI * 2);
+  g.stroke();
+  g.strokeStyle = 'rgba(70,220,255,0.75)';
+  g.lineWidth = 4;
+  g.beginPath();
+  g.arc(48, 48, 36, 0.25, Math.PI * 1.7);
+  g.stroke();
+  var tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function makeNetFxTexture() {
+  var cv = document.createElement('canvas');
+  cv.width = 96;
+  cv.height = 96;
+  var g = cv.getContext('2d');
+  g.clearRect(0, 0, cv.width, cv.height);
+  g.strokeStyle = 'rgba(255,255,255,0.92)';
+  g.lineWidth = 7;
+  g.beginPath();
+  g.moveTo(28, 48); g.lineTo(68, 48);
+  g.moveTo(48, 28); g.lineTo(48, 68);
+  g.stroke();
+  g.strokeStyle = 'rgba(141,255,66,0.68)';
+  g.lineWidth = 4;
+  g.beginPath();
+  g.moveTo(34, 34); g.lineTo(62, 62);
+  g.moveTo(62, 34); g.lineTo(34, 62);
+  g.stroke();
+  var tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function renderQuality(isMobile) {
+  var forced = '';
+  try {
+    forced = new URLSearchParams(window.location.search).get('quality') ||
+      window.localStorage.getItem('pb3d.renderQuality') || '';
+  } catch (e) {}
+  forced = String(forced).toLowerCase();
+  var level = (forced === 'low' || forced === 'medium' || forced === 'high')
+    ? forced : (isMobile ? 'medium' : 'high');
+  if (level === 'low') return {
+    level: level, pixelRatio: 1, shadowMap: 1024, bloom: false, antialias: false
+  };
+  if (level === 'medium') return {
+    level: level, pixelRatio: 1.5, shadowMap: 1024, bloom: false, antialias: true
+  };
+  return {
+    level: level, pixelRatio: 2, shadowMap: 2048, bloom: true, antialias: true
+  };
+}
+
 function normalizeDifficulty(d) {
   if (d === '4.0' || d === 'beginner' || d === 'easy') return 'easy';
   if (d === '4.5' || d === 'intermediate' || d === 'normal') return 'normal';
@@ -43,6 +111,7 @@ export function Game(opts) {
   this.canvas = opts.canvas;
   this.hud = opts.hud || null;
   this.audio = opts.audio || null;
+  this.assets = opts.assets || null;
   this.difficulty = normalizeDifficulty(opts.difficulty);
   this.levelMeta = DIFFICULTY_META[this.difficulty] || DIFFICULTY_META.normal;
   this.venue = opts.venue || 'park';
@@ -54,6 +123,7 @@ export function Game(opts) {
   this.state = STATE.MENU;
   this.excitement = 0;
   this.cameraShake = 0;
+  this.renderQuality = renderQuality(this.isMobile);
   var CAM_MAP = { broadcast: 0, follow: 1, topdown: 2 };
   this.camMode = CAM_MAP[opts.cameraMode] !== undefined ? CAM_MAP[opts.cameraMode] : 1;
   this.msgTimer = 0;
@@ -65,18 +135,35 @@ export function Game(opts) {
 }
 
 Game.prototype._initThree = function () {
-  var renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: false });
-  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  THREE.ColorManagement.enabled = true;
+  var renderer = new THREE.WebGLRenderer({
+    canvas: this.canvas,
+    antialias: this.renderQuality.antialias,
+    alpha: false,
+    powerPreference: 'high-performance'
+  });
+  renderer.setPixelRatio(Math.min(this.renderQuality.pixelRatio, window.devicePixelRatio || 1));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.NoToneMapping;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.06;
   this.renderer = renderer;
 
   this.scene = new THREE.Scene();
   var rig = makeCamera(this._aspect());
   this.camRig = rig;
   this.camera = rig.cam;
+
+  if (this.renderQuality.bloom) {
+    var size = new THREE.Vector2(window.innerWidth || 1280, window.innerHeight || 720);
+    var composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(this.scene, this.camera));
+    var bloom = new UnrealBloomPass(size, 0.18, 0.28, 0.86);
+    composer.addPass(bloom);
+    composer.addPass(new OutputPass());
+    this.composer = composer;
+  }
 };
 
 Game.prototype._aspect = function () {
@@ -87,7 +174,9 @@ Game.prototype._initWorld = function () {
   this.world = Scene.build(this.scene, {
     venue: this.venue,
     courtPalette: this.courtPalette,
-    timeOfDay: this.timeOfDay
+    timeOfDay: this.timeOfDay,
+    quality: this.renderQuality,
+    assets: this.assets
   });
   this._syncOverhead(); // honor an initial Top-Down camMode
   this.ball = Physics.makeBall();
@@ -98,29 +187,32 @@ Game.prototype._initWorld = function () {
     nearYou: {
       jersey: 0xff7a1f, shorts: 0x20283c, paddle: 0x2bd4ff, shoe: 0xf6f8ff,
       skin: 0xe4bf9f, hair: 0x241814, height: 'tall', build: 'average',
-      hairStyle: 'short', headwear: 'headband', headband: 0x2bd4ff
+      hairStyle: 'short', headwear: 'headband', headband: 0x2bd4ff,
+      playerModelKey: 'player-poc'
     },
     nearMate: {
       jersey: 0x21bdb0, shorts: 0x20283c, paddle: 0xffa53c, shoe: 0xf8fbff,
       skin: 0xe8c3ab, hair: 0x5b3724, height: 'medium', build: 'average',
-      hairStyle: 'long', headwear: 'none'
+      hairStyle: 'long', headwear: 'none', playerModelKey: 'player-poc'
     },
     farA: {
       jersey: 0xf14668, shorts: 0x30111e, paddle: 0x36d399, shoe: 0xf9fbff,
       skin: 0xf0cbb2, hair: 0xd5bb58, height: 'tower', build: 'slim',
-      hairStyle: 'short', headwear: 'cap', headband: 0xf4f5f6
+      hairStyle: 'short', headwear: 'cap', headband: 0xf4f5f6,
+      playerModelKey: 'player-poc'
     },
     farB: {
       jersey: 0xff7aa8, shorts: 0x55233a, paddle: 0xc8ff65, shoe: 0xfffbff,
       skin: 0xedc6b0, hair: 0x4a2b22, height: 'medium', build: 'average',
-      hairStyle: 'ponytail', headwear: 'none', headband: 0xffd166
+      hairStyle: 'ponytail', headwear: 'none', headband: 0xffd166,
+      playerModelKey: 'player-poc'
     }
   };
   this.youColor = palettes.nearYou.jersey;
 
   var self = this;
   function entry(team, slot, isHuman, colors) {
-    var mesh = makePlayer(colors);
+    var mesh = makePlayer(Object.assign({}, colors, { assets: self.assets }));
     self.scene.add(mesh.object);
     return {
       team: team, slot: slot, isHuman: isHuman, mesh: mesh,
@@ -143,14 +235,82 @@ Game.prototype._initWorld = function () {
   ring.rotation.x = -Math.PI / 2;
   this.scene.add(ring);
   this.youMarker = ring;
+  var ringGlowMat = new THREE.MeshBasicMaterial({
+    color: this.youColor, transparent: true, opacity: 0.18, depthWrite: false,
+    blending: THREE.AdditiveBlending
+  });
+  var ringGlow = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.035, 8, 32), ringGlowMat);
+  ringGlow.rotation.x = -Math.PI / 2;
+  this.scene.add(ringGlow);
+  this.youMarkerGlow = ringGlow;
 
   // AIM MARKER — a flat ring on the opponents' court showing where your held
   // direction will steer the shot. Hidden until it's your turn to hit.
-  var aimMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false });
+  var aimMat = new THREE.MeshBasicMaterial({ color: 0xf7fbff, transparent: true, opacity: 0, depthWrite: false });
   var aimRing = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.05, 8, 24), aimMat);
   aimRing.rotation.x = -Math.PI / 2;
   this.scene.add(aimRing);
   this.aimMarker = aimRing;
+  var aimFillMat = new THREE.MeshBasicMaterial({
+    color: 0x2bd4ff, transparent: true, opacity: 0, depthWrite: false,
+    blending: THREE.AdditiveBlending
+  });
+  var aimFill = new THREE.Mesh(new THREE.CircleGeometry(0.28, 28), aimFillMat);
+  aimFill.rotation.x = -Math.PI / 2;
+  this.scene.add(aimFill);
+  this.aimMarkerFill = aimFill;
+
+  this.hitFx = null;
+  this.bounceFx = null;
+  this.netFx = null;
+  if (this.renderQuality.level !== 'low') {
+    var hitFxMat = new THREE.SpriteMaterial({
+      map: makeHitFxTexture(),
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0,
+      depthTest: false,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    });
+    var hitFx = new THREE.Sprite(hitFxMat);
+    hitFx.visible = false;
+    hitFx.frustumCulled = false;
+    hitFx.renderOrder = 998;
+    this.scene.add(hitFx);
+    this.hitFx = { mesh: hitFx, age: 0, dur: 0.18 };
+
+    var bounceFxMat = new THREE.MeshBasicMaterial({
+      color: 0xf5fbff,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    });
+    var bounceFx = new THREE.Mesh(new THREE.RingGeometry(0.18, 0.31, 32), bounceFxMat);
+    bounceFx.rotation.x = -Math.PI / 2;
+    bounceFx.visible = false;
+    bounceFx.frustumCulled = false;
+    bounceFx.renderOrder = 4;
+    this.scene.add(bounceFx);
+    this.bounceFx = { mesh: bounceFx, age: 0, dur: 0.24 };
+
+    var netFxMat = new THREE.SpriteMaterial({
+      map: makeNetFxTexture(),
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0,
+      depthTest: false,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    });
+    var netFx = new THREE.Sprite(netFxMat);
+    netFx.visible = false;
+    netFx.frustumCulled = false;
+    netFx.renderOrder = 997;
+    this.scene.add(netFx);
+    this.netFx = { mesh: netFx, age: 0, dur: 0.22 };
+  }
 
   this.match = Rules.makeMatch({ server: 'near' });
   this.lastHitCooldown = 0;
@@ -215,6 +375,7 @@ Game.prototype._bindResize = function () {
     self.canvas.style.width = w + 'px';
     self.canvas.style.height = h + 'px';
     self.renderer.setSize(w, h, false);
+    if (self.composer) self.composer.setSize(w, h);
     self.camera.aspect = w / h;
     self.camera.updateProjectionMatrix();
   }
@@ -282,6 +443,8 @@ Game.prototype._doServe = function () {
   Rules.onPaddleHit(this.match, this.match.server, { volley: false });
   srvEntry.mesh.swing('serve');
   if (this.audio) this.audio.sfx.serve();
+  this.cameraShake = Math.max(this.cameraShake, 0.05);
+  this._triggerHitEffect();
   this.state = STATE.RALLY;
   this.lastHitCooldown = HIT.COOLDOWN_SERVE;
 };
@@ -292,6 +455,7 @@ Game.prototype._endPoint = function (result) {
   this.ball.live = false;
   this.excitement = 1.0;
   this.cameraShake = result.scored ? 0.25 : 0.12;
+  this._triggerPointReaction(result.rallyWinner);
   var msg = this._resultMessage(result);
   this._message(msg, 1.6);
   if (this.audio) { result.scored ? this.audio.sfx.point() : this.audio.sfx.fault(); }
@@ -448,9 +612,11 @@ Game.prototype._handleBallEvent = function (e) {
   var r = null;
   if (e.type === 'bounce' || e.type === 'floor-out') {
     if (this.audio) this.audio.sfx.bounce();
+    this._triggerBounceEffect(e.x, e.z);
     r = Rules.onFloor(this.match, { inBounds: e.type === 'bounce', x: e.x, z: e.z, side: e.side });
   } else if (e.type === 'net') {
     if (this.audio) this.audio.sfx.net();
+    this._triggerNetEffect();
     r = Rules.onNetFault(this.match);
   }
   if (rallyOver(r)) this._endPoint(r);
@@ -686,12 +852,15 @@ Game.prototype._hit = function (p, swingType) {
 
   // Erne bypasses the kitchen volley rule (player has jumped outside the kitchen).
   var isErne = this.difficulty === 'hard' && this._isErnePosition(p);
+  var maxI = Shots.maxIntent(this.ball.pos.y);
+  var visualSwingType = (isErne || maxI === 'smash') ? 'smash' : (swingType || 'fh');
   var volley = rally ? (rally.bouncesSinceHit < 1) : false;
   var inKitchen = isErne ? false : (Math.abs(pos.z) < C.KITCHEN);
   var res = Rules.onPaddleHit(this.match, p.team, { volley: volley, inKitchen: inKitchen });
   this.cameraShake = Math.max(this.cameraShake, 0.08);
-  p.mesh.swing(swingType || 'fh');
+  p.mesh.swing(visualSwingType);
   if (this.audio) this.audio.sfx.paddle();
+  this._triggerHitEffect();
   if (rallyOver(res)) { this._endPoint(res); return; }
 
   // ATP — flat around-the-post arc, only at Pro level.
@@ -720,8 +889,6 @@ Game.prototype._hit = function (p, swingType) {
   var quality = Shots.stabilityQuality(stabilityIdx);
 
   // Power cap: ball height limits the allowed intent.
-  var maxI = Shots.maxIntent(this.ball.pos.y);
-
   // Read the aimed target from directional input.
   var at = this._aimTarget(p);
 
@@ -777,9 +944,14 @@ Game.prototype._cpuHit = function (p) {
   var inKitchen = Math.abs(pos.z) < C.KITCHEN;
   if (volley && inKitchen) { pos.z = fwd * (C.KITCHEN + 0.3); inKitchen = false; }
   var res = Rules.onPaddleHit(this.match, p.team, { volley: volley, inKitchen: inKitchen });
-  p.mesh.swing(Math.random() < 0.3 ? 'bh' : 'fh');
-  if (this.audio) this.audio.sfx.paddle();
-  if (rallyOver(res)) { this._endPoint(res); return; }
+  var visualSwingType = Math.random() < 0.3 ? 'bh' : 'fh';
+  if (rallyOver(res)) {
+    p.mesh.swing(visualSwingType);
+    if (this.audio) this.audio.sfx.paddle();
+    this._triggerHitEffect();
+    this._endPoint(res);
+    return;
+  }
 
   // Build opponents object for deeper-target strategy (opposing near team).
   var oppTeam = p.team === 'far' ? 'near' : 'far';
@@ -789,6 +961,10 @@ Game.prototype._cpuHit = function (p) {
   };
 
   var shot = AI.chooseShot(p.ai, this.ball, this.match, false, opponents, pos);
+  if (shot.isSmash || shot.type === 'erne') visualSwingType = 'smash';
+  p.mesh.swing(visualSwingType);
+  if (this.audio) this.audio.sfx.paddle();
+  this._triggerHitEffect();
 
   // Deliberate fault: use legacy velocity-based path so faults still miss properly.
   if (shot.fault) {
@@ -848,10 +1024,101 @@ Game.prototype._checkPoach = function (hitterTeam) {
     P1: newP1, P2: newP2, duration: newT, elapsed: 0
   };
   this.ball.pos = Physics.clone(this.ball.spline.P0);
+  this._triggerHitEffect();
   this.lastHitCooldown = HIT.COOLDOWN_RALLY;
 };
 
 /* ----------------------------- rendering ------------------------------ */
+Game.prototype._triggerHitEffect = function () {
+  if (!this.hitFx) return;
+  var mesh = this.hitFx.mesh;
+  mesh.position.set(this.ball.pos.x, Math.max(C.BALL_R * 2.0, this.ball.pos.y), this.ball.pos.z);
+  mesh.scale.set(0.62, 0.62, 1);
+  mesh.visible = true;
+  mesh.material.opacity = 0.44;
+  this.hitFx.age = this.hitFx.dur;
+};
+
+Game.prototype._updateHitEffect = function (dt) {
+  if (!this.hitFx) return;
+  var fx = this.hitFx;
+  if (fx.age <= 0) {
+    fx.mesh.visible = false;
+    fx.mesh.material.opacity = 0;
+    return;
+  }
+  fx.age = Math.max(0, fx.age - dt);
+  var t = 1 - fx.age / fx.dur;
+  var size = 0.62 + t * 0.42;
+  fx.mesh.scale.set(size, size, 1);
+  fx.mesh.material.opacity = (1 - t) * 0.44;
+  if (fx.age <= 0) fx.mesh.visible = false;
+};
+
+Game.prototype._triggerBounceEffect = function (x, z) {
+  if (!this.bounceFx) return;
+  var mesh = this.bounceFx.mesh;
+  mesh.position.set(x || 0, 0.052, z || 0);
+  mesh.scale.set(1, 1, 1);
+  mesh.visible = true;
+  mesh.material.opacity = 0.28;
+  this.bounceFx.age = this.bounceFx.dur;
+};
+
+Game.prototype._updateBounceEffect = function (dt) {
+  if (!this.bounceFx) return;
+  var fx = this.bounceFx;
+  if (fx.age <= 0) {
+    fx.mesh.visible = false;
+    fx.mesh.material.opacity = 0;
+    return;
+  }
+  fx.age = Math.max(0, fx.age - dt);
+  var t = 1 - fx.age / fx.dur;
+  var size = 1 + t * 1.5;
+  fx.mesh.scale.set(size, size, 1);
+  fx.mesh.material.opacity = (1 - t) * 0.28;
+  if (fx.age <= 0) fx.mesh.visible = false;
+};
+
+Game.prototype._triggerNetEffect = function () {
+  if (!this.netFx) return;
+  var mesh = this.netFx.mesh;
+  mesh.position.set(this.ball.pos.x, Math.max(C.BALL_R * 2.0, this.ball.pos.y), this.ball.pos.z);
+  mesh.scale.set(0.54, 0.54, 1);
+  mesh.visible = true;
+  mesh.material.opacity = 0.42;
+  this.netFx.age = this.netFx.dur;
+};
+
+Game.prototype._updateNetEffect = function (dt) {
+  if (!this.netFx) return;
+  var fx = this.netFx;
+  if (fx.age <= 0) {
+    fx.mesh.visible = false;
+    fx.mesh.material.opacity = 0;
+    return;
+  }
+  fx.age = Math.max(0, fx.age - dt);
+  var t = 1 - fx.age / fx.dur;
+  var size = 0.54 + t * 0.36;
+  fx.mesh.scale.set(size, size, 1);
+  fx.mesh.material.opacity = (1 - t) * 0.42;
+  if (fx.age <= 0) fx.mesh.visible = false;
+};
+
+Game.prototype._triggerPointReaction = function (winner) {
+  if (this.renderQuality.level === 'low') return;
+  this.pointReaction = { winner: winner, age: 0.55, dur: 0.55 };
+};
+
+Game.prototype._reactionOffset = function (team) {
+  var rx = this.pointReaction;
+  if (!rx || rx.age <= 0 || team !== rx.winner) return 0;
+  var t = 1 - rx.age / rx.dur;
+  return Math.sin(t * Math.PI) * 0.12;
+};
+
 Game.prototype._syncMeshes = function (dt) {
   // ball
   var b = this.ball, bm = this.world.ballMesh;
@@ -867,6 +1134,10 @@ Game.prototype._syncMeshes = function (dt) {
   blob.material.opacity = clamp(0.35 - b.pos.y * 0.03, 0.06, 0.35);
   // trail
   this._updateTrail();
+  this._updateHitEffect(dt);
+  this._updateBounceEffect(dt);
+  this._updateNetEffect(dt);
+  if (this.pointReaction) this.pointReaction.age = Math.max(0, this.pointReaction.age - dt);
 
   // players — each faces the OPPONENT's side and only yaws toward the ball.
   for (var i = 0; i < this.players.length; i++) {
@@ -875,8 +1146,12 @@ Game.prototype._syncMeshes = function (dt) {
     var base = (pl.team === 'near') ? Math.PI : 0;
     var yaw = clamp((this.ball.pos.x - pl.pos.x) * 0.16, -0.6, 0.6);
     if (v > 0.4) yaw = clamp(pl.vel.x * 0.18, -0.7, 0.7);
-    pl.mesh.object.position.set(pl.pos.x, 0, pl.pos.z);
-    pl.mesh.update(dt, { speed: v, facing: base + yaw });
+    pl.mesh.object.position.set(pl.pos.x, this._reactionOffset(pl.team), pl.pos.z);
+    pl.mesh.update(dt, {
+      speed: v,
+      facing: base + yaw,
+      ready: this.state === STATE.SERVE || this.state === STATE.RALLY
+    });
   }
 
   // keep the "you" ring under players[0], with a gentle pulse
@@ -885,6 +1160,10 @@ Game.prototype._syncMeshes = function (dt) {
     this.youMarker.position.set(me.x, 0.04, me.z);
     var pulse = 1 + Math.sin(performance.now() / 320) * 0.07;
     this.youMarker.scale.set(pulse, pulse, 1);
+    if (this.youMarkerGlow) {
+      this.youMarkerGlow.position.set(me.x, 0.035, me.z);
+      this.youMarkerGlow.scale.set(1.05 + (pulse - 1) * 1.4, 1.05 + (pulse - 1) * 1.4, 1);
+    }
   }
 
   // Aim marker: show on the opponents' court when it's your turn to hit.
@@ -905,8 +1184,15 @@ Game.prototype._syncMeshes = function (dt) {
       this.aimMarker.position.set(at.x, 0.04, at.z);
       var target = this.swingWindow > 0 ? 0.8 : 0.32;
       this.aimMarker.material.opacity += (target - this.aimMarker.material.opacity) * Math.min(1, dt * 10);
+      if (this.aimMarkerFill) {
+        this.aimMarkerFill.position.set(at.x, 0.035, at.z);
+        this.aimMarkerFill.material.opacity += ((target * 0.18) - this.aimMarkerFill.material.opacity) * Math.min(1, dt * 10);
+      }
     } else {
       this.aimMarker.material.opacity += (0 - this.aimMarker.material.opacity) * Math.min(1, dt * 10);
+      if (this.aimMarkerFill) {
+        this.aimMarkerFill.material.opacity += (0 - this.aimMarkerFill.material.opacity) * Math.min(1, dt * 10);
+      }
     }
   }
 };
@@ -965,4 +1251,7 @@ Game.prototype._updateHUD = function () {
   });
 };
 
-Game.prototype.render = function () { this.renderer.render(this.scene, this.camera); };
+Game.prototype.render = function () {
+  if (this.composer) this.composer.render();
+  else this.renderer.render(this.scene, this.camera);
+};

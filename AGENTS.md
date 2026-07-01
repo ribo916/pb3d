@@ -6,6 +6,10 @@
 >
 > **Gameplay mechanics, tuning surfaces, and system design →
 > [`GAMEPLAY.md`](GAMEPLAY.md).** Read it before touching any gameplay code.
+>
+> **Graphics architecture, asset pipeline, player-model status, and visual
+> verification → [`GRAPHICS.md`](GRAPHICS.md).** Read it before touching
+> rendering, venues, authored assets, player models, effects, or HUD layout.
 
 ---
 
@@ -17,9 +21,10 @@ partner take on two CPUs. Real rules (diagonal serve, two-bounce rule, non-volle
 difficulties, desktop + mobile controls.
 
 The gameplay was ported from a larger project's 3D match and is now fully
-self-contained: **real track-based music, no character skinning, no 2D overworld,
-no save system** — pure gameplay plus audio. Those are intentional extension points (see
-[Extending the game](#extending-the-game)).
+self-contained: **real track-based music, no 2D overworld, no save system** —
+pure gameplay plus audio. The graphics-overhaul branch adds a verified rendering
+and authored-asset scaffold, but the generated player model is only a technical
+POC, not final character art. See [`GRAPHICS.md`](GRAPHICS.md).
 
 **The single most important quality bar is swing + ball-contact feel** — it should
 read like polished arcade tennis (Wii Sports / Mario Tennis energy). Treat the
@@ -29,10 +34,10 @@ tuning constants as load-bearing; don't "improve" the numbers casually.
 
 ## Tech Stack
 
-- **No build step, no bundler.** Modern Three.js (r160) is loaded via an
-  `<script type="importmap">` from a CDN; everything else is hand-written ES
-  modules (`import`/`export`).
-- **Runs over HTTP** (ES modules don't load from `file://`): `npx serve .`.
+- **Vite static build.** Modern Three.js (r160) is installed from npm and bundled
+  by Vite; the app code remains hand-written ES modules (`import`/`export`).
+- **Runs over HTTP**: `npm run dev` for local development, `npm run build` for a
+  Vercel/static-ready `dist/`, and `npm run preview` to inspect the production build.
 - **ES modules**, `'use strict'`, mostly ES5-style code inside (ported verbatim
   to preserve tuned behavior) — don't refactor style for its own sake.
 - **Pure-logic modules have no Three.js / DOM dependency** and run in plain Node
@@ -43,21 +48,22 @@ tuning constants as load-bearing; don't "improve" the numbers casually.
 ## Commands
 
 ```bash
-# Run the game (any static server works)
-npx serve .                 # then open the printed localhost URL
-python3 -m http.server      # alternative
+# Run the game
+npm run dev                 # then open the printed localhost URL
 
 # Tests
-node test/logic.test.mjs    # pure-logic assertions (no Three.js needed)
-node tools/shoot.mjs        # headless render smoke test (needs playwright); writes tools/shots/*.png
+npm test                    # pure-logic assertions (no Three.js needed)
+npm run shots               # headless render smoke test; writes tools/shots/*.png
 node tools/play.mjs         # headed AI-vs-AI full match you can watch live (needs playwright)
+npm run build               # production static build in dist/
+npm run preview             # preview the production build locally
 npm run music:sync          # rescan music/active/* and rebuild music/catalog.js
 npm run music:generate      # regenerate bundled placeholder WAVs, then rescan the catalog
 ```
 
 **When to run what:**
 - After any logic change (physics/rules/shots/ai/game): `node test/logic.test.mjs`.
-- After any visual/scene change: `node tools/shoot.mjs`, then **look at the PNGs**
+- After any visual/scene change: `npm run shots`, then **look at the PNGs**
   in `tools/shots/`. Do not trust visual changes without looking — most of this was
   built without a live render loop.
 - To eyeball gameplay feel/mechanics live: `node tools/play.mjs` opens a headed
@@ -69,16 +75,18 @@ npm run music:generate      # regenerate bundled placeholder WAVs, then rescan t
   (blue|green), `TOD` (day|night), `DIFF`, `MATCHES`, `MAXSEC`. Speed multiplies
   *simulated* time (fixed 1/60 steps), so behavior matches 1x; drop to `SPEED=1`
   to confirm anything suspicious isn't a fast-forward artifact.
-- `playwright` is not a declared dependency here; install it if you need the
-  render smoke test or `play.mjs` (`npm i -D playwright && npx playwright install chromium`).
+- `playwright` is a declared dev dependency; run `npx playwright install chromium`
+  if a fresh machine does not already have the browser installed.
 
 ---
 
 ## Directory Structure
 
 ```
-index.html        entry point: importmap, <canvas>, HUD DOM, joystick, menu, loads src/main.js
-package.json      type:module; scripts for test + serve
+GRAPHICS.md       graphics architecture, asset pipeline, verification baseline
+index.html        entry point: <canvas>, HUD DOM, joystick, menu, loads src/main.js
+package.json      type:module; Vite/test/build/screenshot/music scripts
+assets/           optional GLB/textures/environments copied into dist/assets
 src/
   constants.js    court geometry + ALL tuning (physics/shots/AI/camera/hit) — single source of truth
   physics.js      ball integration, net-aware launch() solver, clearsNet()    (pure)
@@ -100,7 +108,7 @@ music/
 test/
   logic.test.mjs  Node assertions for the pure modules
 tools/
-  shoot.mjs       headless static-server + Playwright render smoke test
+  shoot.mjs       Vite + Playwright render smoke test
   play.mjs        headed Playwright AI-vs-AI full match viewer (SPEED/VENUE/... env)
   sync-music-catalog.mjs  scans music/active/* and rewrites music/catalog.js
   generate-music-wavs.mjs generates placeholder WAV tracks, then syncs the catalog
@@ -172,6 +180,8 @@ horizontal cross-body arc from an isolated upper-body twist; the paddle extends
 beyond the hand. Court is dark navy, kitchen a mid-blue band, ball neon green with
 a glow + trail (kept high-contrast on purpose). Camera is a low broadcast angle
 behind the near baseline that gently follows the ball and shakes on points.
+Current graphics-overhaul details, including the generated player POC and why it
+is not final art, live in [`GRAPHICS.md`](GRAPHICS.md).
 
 ### The gameplay contract (don't break these)
 - Swing timing window `HIT.SWING_WINDOW = 0.30`; rig swing duration 0.44, contact
@@ -195,6 +205,7 @@ behind the near baseline that gently follows the ball and shakes on points.
   `node test/logic.test.mjs` keeps working.
 - Match the existing code style in a file you touch; don't reformat wholesale.
 - After visual changes, regenerate and view screenshots before claiming done.
+- Before visual/asset/player-model work, read [`GRAPHICS.md`](GRAPHICS.md).
 - After changing music assets, run `npm run music:sync` so `music/catalog.js`
   matches the folders on disk.
 - **The 4-shot pattern is a first-class design constraint.** Serve deep → return
@@ -225,8 +236,8 @@ The shipped library now includes imported Picklelife MP3 tracks grouped by genre
 ## Extending the game
 
 These were intentionally left out for a clean gameplay core. Each has an obvious
-seam. (The "current game" this was ported from did audio/venues/skinning the way
-described below — mirror that.)
+seam. (The "current game" this was ported from did audio, venues, and richer
+player presentation the way described below — mirror that where it still fits.)
 
 ### Audio expansion
 
@@ -250,9 +261,10 @@ The important implementation contract:
 - **Night mode** — add a `nightMode` flag to `scene.build` and lerp sky/fog/light
   intensities + the ball's `emissiveIntensity` (the original raised it to ~1.2 at
   night so the ball stays visible).
-- **Character skinning** — `players.makePlayer(opts)` already takes color slots;
-  re-add geometry variants (hair styles, body scale, cap/visor/band) inside
-  `makePlayer` and feed a per-player appearance object from `game.js`.
+- **Character models** — the branch has an authored-player adapter and generated
+  POC, but the POC is not final art. Keep the primitive rig as gameplay authority
+  and use [`GRAPHICS.md`](GRAPHICS.md) plus `assets/README.md` before replacing
+  player assets.
 - **Singles mode** — the rules/movement are doubles-specific; a singles variant
   would simplify the serve rotation (no serverNum 1/2, no partner) and movement
   (one player per side). Architect via an `opts.mode` on `Game`.
@@ -266,7 +278,7 @@ The important implementation contract:
 - `test/logic.test.mjs` imports only the pure modules — keep new pure logic
   importable without Three.js so it stays node-testable.
 - If you change rules/physics/shots/ai behavior, update or add an assertion.
-- `tools/shoot.mjs` spins up a tiny static server, loads the page in headless
+- `tools/shoot.mjs` spins up a Vite dev server, loads the page in headless
   Chromium (SwiftShader WebGL), drives a match via `window.__game`, and asserts the
   serve→rally→point loop plus zero page errors. Use `HEADED=1` if headless WebGL
   renders black.

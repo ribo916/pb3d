@@ -7,6 +7,7 @@
 
 import * as THREE from 'three';
 import { COURT } from './constants.js';
+import { cloneModelScene } from './assets.js';
 
 const C = COURT;
 
@@ -94,6 +95,14 @@ const VENUE_PRESETS = {
   }
 };
 
+function makeRng(seed) {
+  var s = seed >>> 0;
+  return function () {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+}
+
 function resolveOptions(opts) {
   var venue = VENUE_PRESETS[opts && opts.venue] ? opts.venue : 'park';
   var palette = COURT_PALETTES[opts && opts.courtPalette] ? opts.courtPalette : 'blue';
@@ -121,6 +130,7 @@ function courtTexture(colors) {
   cv.width = W;
   cv.height = H;
   var g = cv.getContext('2d');
+  var rng = makeRng(colors.venueKey === 'indoor' ? 9941 : (colors.court === '#1d6a3a' ? 4417 : 2281));
   var mPerPxX = (2 * C.HALF_W) / W;
   var mPerPxZ = (2 * C.HALF_L) / H;
   function X(m) { return (m + C.HALF_W) / mPerPxX; }
@@ -128,10 +138,22 @@ function courtTexture(colors) {
 
   g.fillStyle = colors.court;
   g.fillRect(0, 0, W, H);
+  var courtGrad = g.createLinearGradient(0, 0, W, H);
+  courtGrad.addColorStop(0, 'rgba(255,255,255,0.10)');
+  courtGrad.addColorStop(0.46, 'rgba(255,255,255,0.00)');
+  courtGrad.addColorStop(1, 'rgba(0,0,0,0.16)');
+  g.fillStyle = courtGrad;
+  g.fillRect(0, 0, W, H);
   g.fillStyle = colors.kitchen;
   g.fillRect(0, Z(-C.KITCHEN), W, Z(C.KITCHEN) - Z(-C.KITCHEN));
-  g.strokeStyle = '#f4f7fb';
-  g.lineWidth = 7;
+  var kitchenGrad = g.createLinearGradient(0, Z(-C.KITCHEN), 0, Z(C.KITCHEN));
+  kitchenGrad.addColorStop(0, 'rgba(255,255,255,0.14)');
+  kitchenGrad.addColorStop(0.5, 'rgba(255,255,255,0.02)');
+  kitchenGrad.addColorStop(1, 'rgba(0,0,0,0.10)');
+  g.fillStyle = kitchenGrad;
+  g.fillRect(0, Z(-C.KITCHEN), W, Z(C.KITCHEN) - Z(-C.KITCHEN));
+  g.strokeStyle = 'rgba(0,0,0,0.20)';
+  g.lineWidth = 13;
   g.lineCap = 'square';
   function line(x1, z1, x2, z2) {
     g.beginPath();
@@ -147,9 +169,45 @@ function courtTexture(colors) {
   line(-C.HALF_W, C.KITCHEN, C.HALF_W, C.KITCHEN);
   line(0, -C.HALF_L, 0, -C.KITCHEN);
   line(0, C.KITCHEN, 0, C.HALF_L);
-  for (var i = 0; i < 4000; i++) {
-    g.fillStyle = 'rgba(255,255,255,' + (Math.random() * 0.03) + ')';
-    g.fillRect(Math.random() * W, Math.random() * H, 2, 2);
+  g.strokeStyle = '#f8fbff';
+  g.lineWidth = 7;
+  line(-C.HALF_W, -C.HALF_L, C.HALF_W, -C.HALF_L);
+  line(-C.HALF_W, C.HALF_L, C.HALF_W, C.HALF_L);
+  line(-C.HALF_W, -C.HALF_L, -C.HALF_W, C.HALF_L);
+  line(C.HALF_W, -C.HALF_L, C.HALF_W, C.HALF_L);
+  line(-C.HALF_W, -C.KITCHEN, C.HALF_W, -C.KITCHEN);
+  line(-C.HALF_W, C.KITCHEN, C.HALF_W, C.KITCHEN);
+  line(0, -C.HALF_L, 0, -C.KITCHEN);
+  line(0, C.KITCHEN, 0, C.HALF_L);
+  g.globalCompositeOperation = 'overlay';
+  for (var i = 0; i < 5200; i++) {
+    var a = rng() * 0.05;
+    g.fillStyle = 'rgba(255,255,255,' + a + ')';
+    g.fillRect(rng() * W, rng() * H, 1 + rng() * 2, 1 + rng() * 2);
+  }
+  g.globalCompositeOperation = 'source-over';
+  for (var j = 0; j < 110; j++) {
+    var x = rng() * W;
+    var y = rng() * H;
+    var len = 18 + rng() * 90;
+    g.strokeStyle = 'rgba(255,255,255,' + (0.035 + rng() * 0.055) + ')';
+    g.lineWidth = 1 + rng() * 2;
+    g.beginPath();
+    g.moveTo(x, y);
+    g.lineTo(x + len * (rng() > 0.5 ? 1 : -1), y + (rng() - 0.5) * 10);
+    g.stroke();
+  }
+  for (var k = 0; k < 24; k++) {
+    var sx = X((rng() * 2 - 1) * C.HALF_W * 0.86);
+    var sz = Z((rng() * 2 - 1) * C.HALF_L * 0.86);
+    var r = 12 + rng() * 32;
+    var grad = g.createRadialGradient(sx, sz, 0, sx, sz, r);
+    grad.addColorStop(0, 'rgba(0,0,0,0.045)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grad;
+    g.beginPath();
+    g.arc(sx, sz, r, 0, Math.PI * 2);
+    g.fill();
   }
   var tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -210,48 +268,21 @@ function fenceTexture() {
   return tex;
 }
 
-function makeTree(scale, greens) {
-  var grp = new THREE.Group();
-  var trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1 });
-  var trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, 1.6, 7), trunkMat);
-  trunk.position.y = 0.8;
-  grp.add(trunk);
-  var blobs = [[0, 1.9, 0, 0.95], [0.45, 1.7, 0.2, 0.7], [-0.4, 1.75, -0.2, 0.65]];
-  for (var i = 0; i < blobs.length; i++) {
-    var b = blobs[i];
-    var leaf = new THREE.Mesh(
-      new THREE.SphereGeometry(b[3], 8, 6),
-      new THREE.MeshStandardMaterial({ color: greens[i % greens.length], roughness: 0.9, flatShading: true })
-    );
-    leaf.position.set(b[0], b[1], b[2]);
-    grp.add(leaf);
-  }
-  grp.scale.setScalar(scale || 1);
-  return grp;
+var INSTANCE_DUMMY = new THREE.Object3D();
+
+function setInstance(mesh, index, x, y, z, sx, sy, sz, rx, ry, rz) {
+  INSTANCE_DUMMY.position.set(x, y, z);
+  INSTANCE_DUMMY.rotation.set(rx || 0, ry || 0, rz || 0);
+  INSTANCE_DUMMY.scale.set(sx, sy, sz);
+  INSTANCE_DUMMY.updateMatrix();
+  mesh.setMatrixAt(index, INSTANCE_DUMMY.matrix);
 }
 
-function makePalmTree(scale) {
-  var grp = new THREE.Group();
-  var trunk = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.11, 0.19, 3.9, 8),
-    new THREE.MeshStandardMaterial({ color: 0x8c6036, roughness: 1 })
-  );
-  trunk.position.y = 1.95;
-  trunk.rotation.z = -0.08;
-  grp.add(trunk);
-
-  var leafMatA = new THREE.MeshStandardMaterial({ color: 0x4ea64c, roughness: 0.95, side: THREE.DoubleSide });
-  var leafMatB = new THREE.MeshStandardMaterial({ color: 0x7bcf5a, roughness: 0.95, side: THREE.DoubleSide });
-  for (var i = 0; i < 6; i++) {
-    var leaf = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 0.34, 1, 1), i % 2 ? leafMatA : leafMatB);
-    leaf.position.set(0, 3.9, 0);
-    leaf.rotation.x = -0.3 - (i % 2) * 0.1;
-    leaf.rotation.y = (Math.PI * 2 * i) / 6;
-    leaf.rotation.z = -0.32 + (i % 3) * 0.08;
-    grp.add(leaf);
-  }
-  grp.scale.setScalar(scale || 1);
-  return grp;
+function finishInstances(mesh) {
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.instanceMatrix.needsUpdate = true;
+  return mesh;
 }
 
 function addFence(scene) {
@@ -277,12 +308,12 @@ function addFence(scene) {
       grp.add(rail);
     });
     var posts = Math.max(2, Math.round(len / 3));
+    var postMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.04, 0.04, fh, 6), railMat, posts + 1);
     for (var i = 0; i <= posts; i++) {
       var t = i / posts - 0.5;
-      var post = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, fh, 6), railMat);
-      post.position.set(horiz ? t * len : 0, fh / 2, horiz ? 0 : t * len);
-      grp.add(post);
+      setInstance(postMesh, i, horiz ? t * len : 0, fh / 2, horiz ? 0 : t * len, 1, 1, 1);
     }
+    grp.add(finishInstances(postMesh));
     grp.position.set(cx, 0, cz);
     scene.add(grp);
   }
@@ -293,23 +324,81 @@ function addFence(scene) {
 }
 
 function scatterTrees(scene, spots, greens) {
+  var group = new THREE.Group();
+  var trunk = new THREE.InstancedMesh(
+    new THREE.CylinderGeometry(0.12, 0.18, 1.6, 7),
+    new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1 }),
+    spots.length
+  );
+  var blobDefs = [[0, 1.9, 0, 0.95], [0.45, 1.7, 0.2, 0.7], [-0.4, 1.75, -0.2, 0.65]];
+  var leaves = [];
+  for (var g = 0; g < blobDefs.length; g++) {
+    leaves.push(new THREE.InstancedMesh(
+      new THREE.SphereGeometry(1, 8, 6),
+      new THREE.MeshStandardMaterial({ color: greens[g % greens.length], roughness: 0.9, flatShading: true }),
+      spots.length
+    ));
+  }
   for (var i = 0; i < spots.length; i++) {
     var sp = spots[i];
-    var tree = makeTree(sp[2], greens);
-    tree.position.set(sp[0], 0, sp[1]);
-    tree.rotation.y = i * 1.7;
-    scene.add(tree);
+    var scale = sp[2] || 1;
+    var rot = i * 1.7;
+    var c = Math.cos(rot);
+    var s = Math.sin(rot);
+    setInstance(trunk, i, sp[0], 0.8 * scale, sp[1], scale, scale, scale, 0, rot, 0);
+    for (var j = 0; j < blobDefs.length; j++) {
+      var b = blobDefs[j];
+      var bx = sp[0] + (b[0] * c + b[2] * s) * scale;
+      var bz = sp[1] + (-b[0] * s + b[2] * c) * scale;
+      setInstance(leaves[j], i, bx, b[1] * scale, bz, b[3] * scale, b[3] * scale, b[3] * scale, 0, rot, 0);
+    }
   }
+  group.add(finishInstances(trunk));
+  for (var k = 0; k < leaves.length; k++) group.add(finishInstances(leaves[k]));
+  scene.add(group);
 }
 
 function scatterPalms(scene, spots) {
+  var group = new THREE.Group();
+  var trunk = new THREE.InstancedMesh(
+    new THREE.CylinderGeometry(0.11, 0.19, 3.9, 8),
+    new THREE.MeshStandardMaterial({ color: 0x8c6036, roughness: 1 }),
+    spots.length
+  );
+  var leafGeo = new THREE.PlaneGeometry(1.7, 0.34, 1, 1);
+  var leafMatA = new THREE.MeshStandardMaterial({ color: 0x4ea64c, roughness: 0.95, side: THREE.DoubleSide });
+  var leafMatB = new THREE.MeshStandardMaterial({ color: 0x7bcf5a, roughness: 0.95, side: THREE.DoubleSide });
+  var leafA = new THREE.InstancedMesh(leafGeo, leafMatA, spots.length * 3);
+  var leafB = new THREE.InstancedMesh(leafGeo, leafMatB, spots.length * 3);
+  var ai = 0;
+  var bi = 0;
   for (var i = 0; i < spots.length; i++) {
     var sp = spots[i];
-    var palm = makePalmTree(sp[2]);
-    palm.position.set(sp[0], 0, sp[1]);
-    palm.rotation.y = sp[3] || (i * 0.8);
-    scene.add(palm);
+    var scale = sp[2] || 1;
+    var rot = sp[3] || (i * 0.8);
+    setInstance(trunk, i, sp[0], 1.95 * scale, sp[1], scale, scale, scale, 0, rot, -0.08);
+    for (var j = 0; j < 6; j++) {
+      var target = j % 2 ? leafA : leafB;
+      var index = j % 2 ? ai++ : bi++;
+      setInstance(
+        target,
+        index,
+        sp[0],
+        3.9 * scale,
+        sp[1],
+        scale,
+        scale,
+        scale,
+        -0.3 - (j % 2) * 0.1,
+        rot + (Math.PI * 2 * j) / 6,
+        -0.32 + (j % 3) * 0.08
+      );
+    }
   }
+  group.add(finishInstances(trunk));
+  group.add(finishInstances(leafA));
+  group.add(finishInstances(leafB));
+  scene.add(group);
 }
 
 function addParkScenery(scene) {
@@ -501,13 +590,46 @@ function addOutdoorGround(scene, p) {
 function addCourt(scene, p) {
   var court = new THREE.Mesh(
     new THREE.PlaneGeometry(2 * C.HALF_W, 2 * C.HALF_L),
-    new THREE.MeshStandardMaterial({ map: courtTexture(p), roughness: 0.7, metalness: 0.05 })
+    new THREE.MeshStandardMaterial({ map: courtTexture(p), roughness: 0.82, metalness: 0.02 })
   );
   court.rotation.x = -Math.PI / 2;
   court.position.y = 0.012;
   court.receiveShadow = true;
   scene.add(court);
+  addCourtAccents(scene, p);
   return court;
+}
+
+function addCourtAccents(scene, p) {
+  var edgeMat = new THREE.MeshStandardMaterial({
+    color: p.venueKey === 'indoor' ? 0xdce8f2 : 0x17212a,
+    roughness: 0.72,
+    metalness: 0.02
+  });
+  function rail(w, d, x, z) {
+    var m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.045, d), edgeMat);
+    m.position.set(x, 0.035, z);
+    m.castShadow = true;
+    m.receiveShadow = true;
+    scene.add(m);
+  }
+  rail(2 * C.HALF_W + 0.26, 0.08, 0, C.HALF_L + 0.11);
+  rail(2 * C.HALF_W + 0.26, 0.08, 0, -C.HALF_L - 0.11);
+  rail(0.08, 2 * C.HALF_L + 0.26, C.HALF_W + 0.11, 0);
+  rail(0.08, 2 * C.HALF_L + 0.26, -C.HALF_W - 0.11, 0);
+
+  var badgeMat = new THREE.MeshStandardMaterial({
+    color: p.venueKey === 'indoor' ? 0xffffff : 0xf5fbff,
+    roughness: 0.65,
+    transparent: true,
+    opacity: 0.34
+  });
+  [-1, 1].forEach(function (s) {
+    var badge = new THREE.Mesh(new THREE.PlaneGeometry(1.05, 0.16), badgeMat);
+    badge.rotation.x = -Math.PI / 2;
+    badge.position.set(0, 0.018, s * (C.HALF_L - 0.38));
+    scene.add(badge);
+  });
 }
 
 function addNet(scene) {
@@ -562,14 +684,15 @@ function addIndoorLighting(scene, handles, p) {
   var key = new THREE.DirectionalLight(0xffffff, 1.15);
   key.position.set(0, 16, 1.5);
   key.castShadow = true;
-  key.shadow.mapSize.set(1024, 1024);
+  key.shadow.mapSize.set(p.shadowMapSize || 1024, p.shadowMapSize || 1024);
   key.shadow.camera.near = 1;
   key.shadow.camera.far = 48;
   key.shadow.camera.left = -11;
   key.shadow.camera.right = 11;
   key.shadow.camera.top = 13;
   key.shadow.camera.bottom = -13;
-  key.shadow.bias = -0.00035;
+  key.shadow.bias = -0.00022;
+  key.shadow.normalBias = 0.02;
   scene.add(key);
   handles.lights.sun = key;
 
@@ -593,14 +716,15 @@ function addOutdoorLighting(scene, handles, p) {
   var sun = new THREE.DirectionalLight(p.sunColor, p.sunInt);
   sun.position.set(p.sunPos[0], p.sunPos[1], p.sunPos[2]);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
+  sun.shadow.mapSize.set(p.shadowMapSize || 1024, p.shadowMapSize || 1024);
   sun.shadow.camera.near = 1;
   sun.shadow.camera.far = 50;
   sun.shadow.camera.left = -10;
   sun.shadow.camera.right = 10;
   sun.shadow.camera.top = 12;
   sun.shadow.camera.bottom = -12;
-  sun.shadow.bias = -0.0004;
+  sun.shadow.bias = -0.00025;
+  sun.shadow.normalBias = 0.018;
   scene.add(sun);
   handles.lights.sun = sun;
 
@@ -623,10 +747,11 @@ function addOutdoorLighting(scene, handles, p) {
       lamp.target.position.set(cfg.target[0], cfg.target[1], cfg.target[2]);
       if (cfg.shadow) {
         lamp.castShadow = true;
-        lamp.shadow.mapSize.set(1024, 1024);
+        lamp.shadow.mapSize.set(p.shadowMapSize || 1024, p.shadowMapSize || 1024);
         lamp.shadow.camera.near = 1;
         lamp.shadow.camera.far = 28;
-        lamp.shadow.bias = -0.00045;
+        lamp.shadow.bias = -0.00025;
+        lamp.shadow.normalBias = 0.018;
       }
       scene.add(lamp);
       scene.add(lamp.target);
@@ -637,13 +762,13 @@ function addOutdoorLighting(scene, handles, p) {
 
 function addBall(scene, handles, p, shadowOpacity) {
   var ballMat = new THREE.MeshStandardMaterial({
-    color: 0x4fc800,
-    roughness: 0.62,
+    color: 0x73ff26,
+    roughness: 0.48,
     metalness: 0.0,
     emissive: p.ballEmissive,
     emissiveIntensity: p.ballEmissiveInt
   });
-  var ballMesh = new THREE.Mesh(new THREE.SphereGeometry(C.BALL_R * 1.5, 20, 16), ballMat);
+  var ballMesh = new THREE.Mesh(new THREE.SphereGeometry(C.BALL_R * 1.55, 24, 18), ballMat);
   ballMesh.castShadow = true;
 
   var glow = new THREE.Mesh(
@@ -691,7 +816,7 @@ function addBall(scene, handles, p, shadowOpacity) {
   handles.ballBlob = blob;
 
   var trailGeo = new THREE.BufferGeometry();
-  var trailLen = 18;
+  var trailLen = 22;
   trailGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(trailLen * 3), 3));
   var trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({
     color: p.trail,
@@ -705,9 +830,35 @@ function addBall(scene, handles, p, shadowOpacity) {
   handles.trailBuf = [];
 }
 
+function addLoadedModel(scene, assets, key) {
+  if (!assets || !assets.getModel) return null;
+  var model = cloneModelScene(assets.getModel(key));
+  if (!model) return null;
+  model.traverse(function (obj) {
+    if (obj && obj.isMesh) {
+      obj.castShadow = obj.castShadow !== false;
+      obj.receiveShadow = obj.receiveShadow !== false;
+    }
+  });
+  scene.add(model);
+  return model;
+}
+
+function addLoadedVenueAssets(scene, handles, cfg, assets) {
+  var loaded = [];
+  var shared = addLoadedModel(scene, assets, 'venue-shared');
+  if (shared) loaded.push(shared);
+  var venue = addLoadedModel(scene, assets, 'venue-' + cfg.venue);
+  if (venue) loaded.push(venue);
+  handles.loadedAssets = loaded;
+  handles.assetFallback = loaded.length === 0;
+}
+
 export function build(scene, opts) {
   var cfg = resolveOptions(opts);
   var p = resolvePreset(cfg);
+  var quality = (opts && opts.quality) || {};
+  p.shadowMapSize = quality.shadowMap || 1024;
   var handles = { lights: {}, venue: cfg.venue, courtPalette: cfg.courtPalette, timeOfDay: cfg.timeOfDay };
 
   if (cfg.venue === 'indoor') {
@@ -720,6 +871,8 @@ export function build(scene, opts) {
     else addParkScenery(scene);
     addOutdoorLighting(scene, handles, p);
   }
+
+  addLoadedVenueAssets(scene, handles, cfg, opts && opts.assets);
 
   if (cfg.venue === 'indoor') {
     var indoorSurround = new THREE.Mesh(

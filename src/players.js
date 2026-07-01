@@ -1,8 +1,8 @@
 /* ============================================================================
  * players.js — Friendly, rounded "Mii"-style players built from primitives.
- * Ported from the original Picklelife js/players.js (ESM Three). Character
- * appearance skinning (hairStyle/body/accessory/tattoo) is intentionally
- * dropped for the standalone — only color slots remain so teams read apart.
+ * Ported from the original Picklelife js/players.js (ESM Three). Optional
+ * authored player models can layer over this rig, but the primitive rig remains
+ * the gameplay fallback and paddle/contact timing driver.
  *
  * Swing design (modeled on arcade tennis): the swing is a horizontal cross-body
  * arc driven by an isolated UPPER-BODY twist (upper.rotation.y) so it reads like
@@ -15,6 +15,7 @@
 'use strict';
 
 import * as THREE from 'three';
+import { cloneModelScene } from './assets.js';
 
 function pivot() { return new THREE.Object3D(); }
 function sphere(r, mat, sx, sy, sz) {
@@ -51,7 +52,314 @@ function box(w, h, d, mat) {
   return mesh;
 }
 
-export function makePlayer(opts) {
+function colorValue(value, fallback) {
+  return value !== undefined ? value : fallback;
+}
+
+function slotColor(slot, opts) {
+  if (slot === 'skin') return colorValue(opts.skin, 0xf0c089);
+  if (slot === 'jersey') return colorValue(opts.jersey, 0x2b6cff);
+  if (slot === 'shorts') return colorValue(opts.shorts, 0x16213e);
+  if (slot === 'shoe') return colorValue(opts.shoe, 0xffffff);
+  if (slot === 'hair') return colorValue(opts.hair, 0x3a2417);
+  if (slot === 'paddle') return colorValue(opts.paddle, 0xff5a3c);
+  if (slot === 'headband') return colorValue(opts.headband || opts.jersey, 0xffffff);
+  return null;
+}
+
+function materialSlot(mesh, mat) {
+  var tags = [
+    mesh && mesh.name,
+    mat && mat.name,
+    mesh && mesh.userData && (mesh.userData.slot || mesh.userData.materialSlot)
+  ].join(' ').toLowerCase();
+  if (/jersey|shirt|top|torso|team/.test(tags)) return 'jersey';
+  if (/short|pants|bottom|skirt/.test(tags)) return 'shorts';
+  if (/shoe|sneaker|sock/.test(tags)) return 'shoe';
+  if (/hair|brow/.test(tags)) return 'hair';
+  if (/paddle|racket|racquet/.test(tags)) return 'paddle';
+  if (/band|cap|visor|hat/.test(tags)) return 'headband';
+  if (/skin|head|face|hand|arm|leg/.test(tags)) return 'skin';
+  return null;
+}
+
+function tintMaterial(mat, slot, opts) {
+  if (!mat || !mat.color) return mat;
+  var color = slotColor(slot, opts);
+  if (color === null) return mat;
+  var next = mat.clone();
+  next.color.set(color);
+  return next;
+}
+
+function applyModelMaterials(root, opts) {
+  root.traverse(function (node) {
+    if (!node.isMesh) return;
+    node.castShadow = true;
+    node.receiveShadow = true;
+    if (Array.isArray(node.material)) {
+      node.material = node.material.map(function (mat) {
+        return tintMaterial(mat, materialSlot(node, mat), opts);
+      });
+    } else {
+      node.material = tintMaterial(node.material, materialSlot(node, node.material), opts);
+    }
+  });
+}
+
+function namedLike(node, names) {
+  var n = String((node && node.name) || '').toLowerCase();
+  for (var i = 0; i < names.length; i++) {
+    if (n === names[i] || n.indexOf(names[i]) >= 0) return true;
+  }
+  return false;
+}
+
+function findNamed(root, names) {
+  var found = null;
+  root.traverse(function (node) {
+    if (found) return;
+    if (namedLike(node, names)) found = node;
+  });
+  return found;
+}
+
+function variantInfo(node) {
+  var data = (node && node.userData) || {};
+  if (data.variantGroup && data.variantValue) {
+    return {
+      group: String(data.variantGroup).toLowerCase(),
+      value: String(data.variantValue).toLowerCase()
+    };
+  }
+  var name = String((node && node.name) || '').toLowerCase();
+  var m = name.match(/(?:^|_)variant_([a-z0-9]+)_([a-z0-9]+)/);
+  if (!m) return null;
+  return { group: m[1], value: m[2] };
+}
+
+function variantChoice(group, opts) {
+  if (group === 'hair') return String(opts.hairStyle || 'short').toLowerCase();
+  if (group === 'headwear') return String(opts.headwear || 'none').toLowerCase();
+  return null;
+}
+
+function applyAuthoredIdentity(model, opts) {
+  var body = buildScale(opts.build);
+  model.scale.x *= body;
+  model.scale.z *= body;
+
+  model.traverse(function (node) {
+    var info = variantInfo(node);
+    if (!info) return;
+    var choice = variantChoice(info.group, opts);
+    if (!choice) return;
+    node.visible = info.value === choice;
+  });
+}
+
+function isDescendantOfAny(node, roots) {
+  var n = node;
+  while (n) {
+    for (var i = 0; i < roots.length; i++) {
+      if (n === roots[i]) return true;
+    }
+    n = n.parent;
+  }
+  return false;
+}
+
+function hidePrimitiveBody(api, item) {
+  var paddle = api.rig && api.rig.paddle;
+  var keepRoots = [paddle];
+  if (item && item.keepPrimitiveArms && api.rig) {
+    keepRoots.push(api.rig.armL.shoulder, api.rig.armR.shoulder);
+  }
+  api.object.traverse(function (node) {
+    if (!node.isMesh) return;
+    node.visible = isDescendantOfAny(node, keepRoots);
+  });
+}
+
+function applyTransformFromArray(obj, prop, value) {
+  if (!value || value.length < 3) return;
+  obj[prop].set(value[0], value[1], value[2]);
+}
+
+function configureAuthoredModel(model, item) {
+  item = item || {};
+  if (item.playerOffset) applyTransformFromArray(model, 'position', item.playerOffset);
+  if (item.playerRotation) applyTransformFromArray(model, 'rotation', item.playerRotation);
+  if (item.playerScale !== undefined) {
+    if (Array.isArray(item.playerScale)) applyTransformFromArray(model, 'scale', item.playerScale);
+    else model.scale.setScalar(item.playerScale);
+  }
+}
+
+function clipKey(name) {
+  name = String(name || '').toLowerCase();
+  if (/ready/.test(name)) return 'ready';
+  if (/idle|stand/.test(name)) return 'idle';
+  if (/run|jog|walk|move/.test(name)) return 'run';
+  if (/backhand|bh/.test(name)) return 'bh';
+  if (/forehand|fh|drive|swing/.test(name)) return 'fh';
+  if (/serve/.test(name)) return 'serve';
+  if (/smash|overhead/.test(name)) return 'smash';
+  return '';
+}
+
+function collectAnimationClips(opts, modelRecord) {
+  var out = {};
+  function addClip(clip) {
+    var key = clipKey(clip && clip.name);
+    if (key && !out[key]) out[key] = clip;
+  }
+  var gltf = modelRecord && modelRecord.payload;
+  ((gltf && gltf.animations) || []).forEach(addClip);
+  if (opts.assets && opts.assets.animations) {
+    Object.keys(opts.assets.animations).forEach(function (key) {
+      var record = opts.assets.animations[key];
+      var payload = record && record.payload;
+      ((payload && payload.animations) || []).forEach(addClip);
+    });
+  }
+  return out;
+}
+
+function findAuthoredArmRig(model) {
+  var leftUpper = model.getObjectByName('visual_left_upper_arm');
+  var leftFore = model.getObjectByName('visual_left_forearm');
+  var rightUpper = model.getObjectByName('visual_right_upper_arm');
+  var rightFore = model.getObjectByName('visual_right_forearm');
+  if (!leftUpper || !leftFore || !rightUpper || !rightFore) return null;
+  return {
+    leftUpper: leftUpper,
+    leftFore: leftFore,
+    rightUpper: rightUpper,
+    rightFore: rightFore
+  };
+}
+
+function syncAuthoredArms(api) {
+  var sync = api.authored && api.authored.armSync;
+  var rig = api.rig;
+  if (!sync || !rig) return;
+  sync.leftUpper.rotation.copy(rig.armL.shoulder.rotation);
+  sync.leftFore.rotation.copy(rig.armL.elbow.rotation);
+  sync.rightUpper.rotation.copy(rig.armR.shoulder.rotation);
+  sync.rightFore.rotation.copy(rig.armR.elbow.rotation);
+}
+
+function installAuthoredPaddle(api, model, item) {
+  item = item || {};
+  var socket = findNamed(model, ['paddle_socket', 'paddlesocket', 'right_hand_socket', 'hand_r_socket']);
+  var paddle = api.rig && api.rig.paddle;
+  if (!socket || !paddle || item.usePaddleSocket === false) return null;
+
+  socket.add(paddle);
+  paddle.position.set(0, 0, 0);
+  paddle.rotation.set(0, 0, 0);
+  paddle.scale.set(1, 1, 1);
+  applyTransformFromArray(paddle, 'position', item.paddleSocketOffset);
+  applyTransformFromArray(paddle, 'rotation', item.paddleSocketRotation);
+  if (item.paddleSocketScale !== undefined) {
+    if (Array.isArray(item.paddleSocketScale)) applyTransformFromArray(paddle, 'scale', item.paddleSocketScale);
+    else paddle.scale.setScalar(item.paddleSocketScale);
+  }
+  return socket;
+}
+
+function installAuthoredModel(api, opts) {
+  var assets = opts.assets;
+  var key = opts.playerModelKey || 'player-base';
+  var record = assets && assets.getModel ? assets.getModel(key) : null;
+  var model = cloneModelScene(record);
+  if (!model) return api;
+
+  model.name = 'AuthoredPlayerModel';
+  configureAuthoredModel(model, record.item);
+  applyModelMaterials(model, opts);
+  applyAuthoredIdentity(model, opts);
+  hidePrimitiveBody(api, record.item);
+  api.object.add(model);
+
+  var mixer = new THREE.AnimationMixer(model);
+  var clips = collectAnimationClips(opts, record);
+  var actions = {};
+  Object.keys(clips).forEach(function (name) {
+    actions[name] = mixer.clipAction(clips[name]);
+    actions[name].clampWhenFinished = false;
+  });
+
+  var paddleSocket = installAuthoredPaddle(api, model, record.item);
+
+  api.authored = {
+    model: model,
+    mixer: mixer,
+    actions: actions,
+    active: null,
+    activeName: '',
+    locomotion: null,
+    locomotionName: '',
+    armSync: record.item && record.item.syncPrimitiveArms ? findAuthoredArmRig(model) : null,
+    paddleSocket: paddleSocket,
+    usesPaddleSocket: !!paddleSocket,
+    lastSwingScale: 1
+  };
+
+  var baseUpdate = api.update;
+  var baseSwing = api.swing;
+
+  function playLoop(name) {
+    var action = actions[name];
+    if (!action || api.authored.locomotion === action) return;
+    action.reset().setLoop(THREE.LoopRepeat, Infinity).fadeIn(0.12).play();
+    if (api.authored.locomotion) api.authored.locomotion.fadeOut(0.12);
+    api.authored.locomotion = action;
+    api.authored.locomotionName = name;
+  }
+
+  function playOnce(name) {
+    var action = actions[name] || actions.fh;
+    if (!action) return;
+    var clip = action.getClip && action.getClip();
+    var dur = api._swingDur || 0.44;
+    var scale = clip && clip.duration ? clip.duration / dur : 1;
+    action.reset().setLoop(THREE.LoopOnce, 1).setEffectiveTimeScale(scale).fadeIn(0.04).play();
+    if (api.authored.active && api.authored.active !== action) api.authored.active.fadeOut(0.05);
+    api.authored.active = action;
+    api.authored.activeName = actions[name] ? name : 'fh';
+    api.authored.lastSwingScale = scale;
+  }
+
+  api.update = function (dt, st) {
+    baseUpdate.call(this, dt, st);
+    if (this.authored && this.authored.mixer) {
+      this.authored.mixer.update(dt);
+      if (!this.isSwinging()) {
+        if (this.authored.active) {
+          this.authored.active.fadeOut(0.10);
+          this.authored.active = null;
+          this.authored.activeName = '';
+        }
+        playLoop(st && st.speed > 0.15 ? 'run' : ((st && st.ready && actions.ready) ? 'ready' : 'idle'));
+      }
+      syncAuthoredArms(this);
+      if (this.authored.usesPaddleSocket && this.rig && this.rig.paddleBlade) {
+        this.rig.paddleBlade.getWorldPosition(this.paddleWorld);
+      }
+    }
+  };
+
+  api.swing = function (type) {
+    baseSwing.call(this, type);
+    playOnce(type || 'fh');
+  };
+
+  return api;
+}
+
+export function makePrimitivePlayer(opts) {
   opts = opts || {};
   var skin = new THREE.MeshStandardMaterial({ color: opts.skin || 0xf0c089, roughness: 0.7 });
   var jersey = new THREE.MeshStandardMaterial({ color: opts.jersey || 0x2b6cff, roughness: 0.55 });
@@ -196,7 +504,7 @@ export function makePlayer(opts) {
 
   var api = {
     object: root3,
-    rig: { pelvis: pelvis, upper: upper, armL: armL, armR: armR, legL: legL, legR: legR, paddle: paddle },
+    rig: { pelvis: pelvis, upper: upper, armL: armL, armR: armR, legL: legL, legR: legR, paddle: paddle, paddleBlade: bladeRef },
     _t: 0, _stride: 0, _swing: 0, _swingDur: 0.44, _swingType: 'fh', _facing: 0,
     contactT: 0.5,                 // fraction of swing where the paddle meets the ball
     paddleWorld: new THREE.Vector3()
@@ -244,6 +552,13 @@ export function makePlayer(opts) {
         armR.shoulder.rotation.z = -0.22;            // a touch out to the right
         armR.shoulder.rotation.x = 0.80 - p * 1.95;  // back-low -> forward-up
         armR.elbow.rotation.x = -0.60 + arc * 0.45;  // bent forward, extends at contact
+      } else if (this._swingType === 'smash') {
+        // OVERHEAD: same swing duration/contact fraction as every rally swing,
+        // but with a higher paddle path for visual smash reads.
+        upper.rotation.y = -0.30 + p * 0.72;
+        armR.shoulder.rotation.z = -0.35 + p * 0.70;
+        armR.shoulder.rotation.x = -1.12 - ext * 0.72 + p * 0.55;
+        armR.elbow.rotation.x = -0.82 + ext * 0.66;
       } else if (this._swingType === 'bh') {
         // BACKHAND: torso loads to the right (paddle cocked across to the left
         // side), then unwinds left; the arm reaches across then extends out
@@ -281,6 +596,11 @@ export function makePlayer(opts) {
     return this._swing > 0 && Math.abs(p - this.contactT) < 0.12;
   };
   return api;
+}
+
+export function makePlayer(opts) {
+  opts = opts || {};
+  return installAuthoredModel(makePrimitivePlayer(opts), opts);
 }
 
 function angDelta(a, b) {

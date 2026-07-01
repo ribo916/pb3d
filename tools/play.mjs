@@ -20,10 +20,9 @@
  *   MAXSEC   real-seconds safety cap/match    (default 240)
  */
 import { chromium } from 'playwright';
-import http from 'node:http';
-import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { startViteServer } from './vite-test-server.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -36,24 +35,9 @@ const DIFF = process.env.DIFF || '4.5';
 const MATCHES = Number(process.env.MATCHES || 1);
 const MAXSEC = Number(process.env.MAXSEC || 240);
 
-const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
-  '.json': 'application/json', '.css': 'text/css', '.png': 'image/png', '.wav': 'audio/wav',
-  '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg' };
-
-const server = http.createServer((req, res) => {
-  let url = decodeURIComponent(req.url.split('?')[0]);
-  if (url === '/') url = '/index.html';
-  const file = path.join(ROOT, url);
-  fs.readFile(file, (err, data) => {
-    if (err) { res.writeHead(404); res.end('not found'); return; }
-    res.writeHead(200, { 'content-type': MIME[path.extname(file)] || 'application/octet-stream' });
-    res.end(data);
-  });
-});
-
-await new Promise((r) => server.listen(0, r));
-const port = server.address().port;
-const base = `http://localhost:${port}/`;
+const testServer = await startViteServer(ROOT);
+const server = testServer.server;
+const base = testServer.base;
 
 const browser = await chromium.launch({
   headless: false,
@@ -141,4 +125,4 @@ if (errors.length) console.error('\nPAGE ERRORS:\n' + errors.join('\n'));
 console.log('\nDone — closing in 5s (Ctrl-C to keep the window).');
 await page.waitForTimeout(5000);
 await browser.close();
-server.close();
+await server.close();
