@@ -237,7 +237,14 @@ Game.prototype.start = function () {
   this.state = STATE.SERVE;
   var humanServes = this._serverEntry().isHuman;
   this.serveDelay = humanServes ? 0 : 0.9;
+  this._clearServeInput();
   this._message(humanServes ? 'YOUR SERVE — tap SERVE or Space' : 'OPPONENT SERVE', 2.2);
+};
+
+// Drop any swing/serve input queued during the previous rally so a stale press
+// can't auto-fire the next serve. A fresh press is required each time.
+Game.prototype._clearServeInput = function () {
+  if (this.input) { this.input.state.serveQueued = false; this.input.state.swingQueued = false; }
 };
 
 Game.prototype._placeServe = function () {
@@ -251,6 +258,7 @@ Game.prototype._placeServe = function () {
   this.ball.vel = Physics.vec(0, 0, 0);
   this.ball.spin = Physics.vec(0, 0, 0);
   this.serveChecked = false;
+  this._clearServeInput();
 };
 
 Game.prototype._doServe = function () {
@@ -370,7 +378,12 @@ Game.prototype._tickServe = function (dt) {
   this.ball.pos = Physics.vec(sp.x + (s.team === 'near' ? 0.3 : -0.3),
     0.9 + Math.sin(performance.now() / 200) * 0.03, sp.z - fwd * 0.2);
   if (srvEntry.isHuman) {
-    if (this.input && this.input.consumeServe()) { this.input.consumeSwing(); this._doServe(); }
+    if (this.input && this.input.consumeServe()) {
+      this.input.consumeSwing();
+      // Must be behind the baseline on the server's own side to serve.
+      if (srvEntry.pos.z * fwd >= C.HALF_L - C.SERVE_LINE_TOL) this._doServe();
+      else this._message('Move behind the baseline to serve', 1.2);
+    }
   } else {
     this.serveDelay -= dt;
     if (this.serveDelay <= 0) this._doServe();

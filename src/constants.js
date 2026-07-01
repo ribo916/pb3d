@@ -23,7 +23,8 @@ export const COURT = {
   NET_H_POST: 0.914,      // 36 in
   LINE_W: 0.05,
   BALL_R: 0.037,          // ~74mm dia pickleball
-  POST_X: 10 * FT + 0.30
+  POST_X: 10 * FT + 0.30,
+  SERVE_LINE_TOL: 0.1     // server may be this far in front of the baseline and still serve
 };
 
 // Arcade-tuned physics constants (slightly punchier than real life so rallies read well)

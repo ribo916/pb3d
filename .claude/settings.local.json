@@ -11,7 +11,9 @@
       "Bash(rm -f tools/vp-probe.mjs tools/shots/vp-*.png tools/shots/final-topdown.png tools/shots/final-broadcast.png && git diff --stat)",
       "Bash(timeout 120 node tools/shoot.mjs)",
       "Bash(node tools/shoot.mjs)",
-      "Bash(SPEED=12 MAXSEC=45 node tools/play.mjs)"
+      "Bash(SPEED=12 MAXSEC=45 node tools/play.mjs)",
+      "Bash(SPEED=8 MAXSEC=25 MATCHES=1 timeout 60 node tools/play.mjs)",
+      "Bash(SPEED=8 MAXSEC=20 MATCHES=1 node tools/play.mjs)"
     ],
     "additionalDirectories": [
       "/Users/ribo/Dev/pb3d/tools/shots"
