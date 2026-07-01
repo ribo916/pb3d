@@ -6,11 +6,18 @@
   "description": "Standalone Three.js doubles pickleball game (gameplay ported from Picklelife's 3D match).",
   "scripts": {
     "test": "node test/logic.test.mjs",
-    "serve": "npx -y serve -l 5173 .",
+    "dev": "vite --host 127.0.0.1",
+    "serve": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "postbuild": "node tools/copy-static-assets.mjs",
+    "preview": "vite preview --host 127.0.0.1",
+    "shots": "node tools/shoot.mjs",
     "music:sync": "node tools/sync-music-catalog.mjs",
     "music:generate": "node tools/generate-music-wavs.mjs"
   },
   "devDependencies": {
-    "playwright": "^1.61.1"
+    "playwright": "^1.61.1",
+    "three": "^0.160.1",
+    "vite": "^5.4.21"
   }
 }

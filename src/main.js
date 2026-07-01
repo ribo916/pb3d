@@ -7,6 +7,7 @@ import { Game } from './game.js';
 import { makeInput } from './input.js';
 import { makeHUD } from './hud.js';
 import { makeAudio } from './audio.js';
+import { preloadAssetPack, assetStatusSummary } from './assets.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -16,6 +17,7 @@ let audio   = makeAudio();
 let last    = 0;
 let running = false;
 let paused  = false;
+let starting = false;
 
 const MENU_META = {
   venue: {
@@ -208,7 +210,25 @@ function quitToMenu() {
   updateAudioUI();
 }
 
-function startMatch(difficulty, config) {
+async function startMatch(difficulty, config) {
+  if (starting) return;
+  starting = true;
+  var startBtn = $('startBtn');
+  var startLabel = startBtn.textContent;
+  startBtn.disabled = true;
+  startBtn.textContent = 'Loading...';
+  var assetPack = null;
+  try {
+    assetPack = await preloadAssetPack(config);
+    window.__pb3dAssets = assetPack;
+    console.info('PB3D assets:', assetStatusSummary(assetPack));
+  } catch (e) {
+    console.warn('PB3D asset preload failed; using procedural fallback.', e);
+  }
+  starting = false;
+  startBtn.disabled = false;
+  startBtn.textContent = startLabel;
+
   $('menu').style.display = 'none';
 
   const hudRefs = {
@@ -227,7 +247,8 @@ function startMatch(difficulty, config) {
     venue: config.venue,
     courtPalette: config.courtPalette,
     timeOfDay: config.timeOfDay,
-    cameraMode: config.cameraMode
+    cameraMode: config.cameraMode,
+    assets: assetPack
   });
   input = makeInput($('game'), $('joy'), $('joyKnob'));
   game.setInput(input);
@@ -262,6 +283,7 @@ document.querySelectorAll('input[name="musicStart"]').forEach(function (el) {
 });
 
 $('startBtn').addEventListener('click', function () {
+  if (starting) return;
   var cfg = syncMenuSummary();
   applyMenuMusicStart(true);
   audio.unlock();

@@ -16,13 +16,16 @@ character skinning, a 2D overworld, or a save system.
 
 ## Run
 
-No build step. Modern Three.js (r160) loads via an `<script type="importmap">` from a
-CDN, and the rest is hand-written ES modules. ES modules don't load from `file://`,
-so serve the folder over HTTP:
+Modern Three.js (r160) is installed from npm and served/bundled by Vite. The app
+code remains hand-written ES modules and deploys as static assets:
 
 ```bash
-npx serve .            # or: python3 -m http.server
+npm install
+npm run dev
 # then open the printed localhost URL
+
+npm run build          # writes static output to dist/
+npm run preview        # preview the production build
 ```
 
 ---
@@ -78,8 +81,8 @@ reaction time, shot smarts, aggression, and unforced-error rate.
 ## Project layout
 
 ```
-index.html        importmap + <canvas> + HUD DOM + menu; loads src/main.js
-package.json      type:module; test + serve scripts
+index.html        <canvas> + HUD DOM + menu; loads src/main.js
+package.json      type:module; Vite/test/build/screenshot/music scripts
 src/
   audio.js        Web Audio SFX + HTMLAudioElement music player + persisted music state
   constants.js    court geometry + ALL tuning (physics/shots/AI/camera/hit)  ← single source of truth
@@ -116,13 +119,14 @@ Change feel there, not scattered through the code.
 
 ```bash
 node test/logic.test.mjs   # pure-logic assertions (physics/shots/rules/ai) — no Three.js needed
-node tools/shoot.mjs       # headless WebGL render smoke test; writes tools/shots/*.png
+npm run shots              # headless WebGL render smoke test; writes tools/shots/*.png
+npm run build              # Vite production build; copies music/active into dist/
 npm run music:sync         # rescan music/active/* and rebuild music/catalog.js
 ```
 
-The smoke test needs Playwright (not a declared dependency): `npm i -D playwright &&
-npx playwright install chromium`. After any visual change, run it and **look at the
-PNGs** — much of this was built without a live render loop.
+The smoke test uses Playwright; run `npx playwright install chromium` on a fresh
+machine if the browser is missing. After any visual change, run it and **look at
+the PNGs** — much of this was built without a live render loop.
 
 ---
 

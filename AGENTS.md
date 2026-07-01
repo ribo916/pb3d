@@ -29,10 +29,10 @@ tuning constants as load-bearing; don't "improve" the numbers casually.
 
 ## Tech Stack
 
-- **No build step, no bundler.** Modern Three.js (r160) is loaded via an
-  `<script type="importmap">` from a CDN; everything else is hand-written ES
-  modules (`import`/`export`).
-- **Runs over HTTP** (ES modules don't load from `file://`): `npx serve .`.
+- **Vite static build.** Modern Three.js (r160) is installed from npm and bundled
+  by Vite; the app code remains hand-written ES modules (`import`/`export`).
+- **Runs over HTTP**: `npm run dev` for local development, `npm run build` for a
+  Vercel/static-ready `dist/`, and `npm run preview` to inspect the production build.
 - **ES modules**, `'use strict'`, mostly ES5-style code inside (ported verbatim
   to preserve tuned behavior) — don't refactor style for its own sake.
 - **Pure-logic modules have no Three.js / DOM dependency** and run in plain Node
@@ -43,21 +43,22 @@ tuning constants as load-bearing; don't "improve" the numbers casually.
 ## Commands
 
 ```bash
-# Run the game (any static server works)
-npx serve .                 # then open the printed localhost URL
-python3 -m http.server      # alternative
+# Run the game
+npm run dev                 # then open the printed localhost URL
 
 # Tests
-node test/logic.test.mjs    # pure-logic assertions (no Three.js needed)
-node tools/shoot.mjs        # headless render smoke test (needs playwright); writes tools/shots/*.png
+npm test                    # pure-logic assertions (no Three.js needed)
+npm run shots               # headless render smoke test; writes tools/shots/*.png
 node tools/play.mjs         # headed AI-vs-AI full match you can watch live (needs playwright)
+npm run build               # production static build in dist/
+npm run preview             # preview the production build locally
 npm run music:sync          # rescan music/active/* and rebuild music/catalog.js
 npm run music:generate      # regenerate bundled placeholder WAVs, then rescan the catalog
 ```
 
 **When to run what:**
 - After any logic change (physics/rules/shots/ai/game): `node test/logic.test.mjs`.
-- After any visual/scene change: `node tools/shoot.mjs`, then **look at the PNGs**
+- After any visual/scene change: `npm run shots`, then **look at the PNGs**
   in `tools/shots/`. Do not trust visual changes without looking — most of this was
   built without a live render loop.
 - To eyeball gameplay feel/mechanics live: `node tools/play.mjs` opens a headed
@@ -69,16 +70,16 @@ npm run music:generate      # regenerate bundled placeholder WAVs, then rescan t
   (blue|green), `TOD` (day|night), `DIFF`, `MATCHES`, `MAXSEC`. Speed multiplies
   *simulated* time (fixed 1/60 steps), so behavior matches 1x; drop to `SPEED=1`
   to confirm anything suspicious isn't a fast-forward artifact.
-- `playwright` is not a declared dependency here; install it if you need the
-  render smoke test or `play.mjs` (`npm i -D playwright && npx playwright install chromium`).
+- `playwright` is a declared dev dependency; run `npx playwright install chromium`
+  if a fresh machine does not already have the browser installed.
 
 ---
 
 ## Directory Structure
 
 ```
-index.html        entry point: importmap, <canvas>, HUD DOM, joystick, menu, loads src/main.js
-package.json      type:module; scripts for test + serve
+index.html        entry point: <canvas>, HUD DOM, joystick, menu, loads src/main.js
+package.json      type:module; Vite/test/build/screenshot/music scripts
 src/
   constants.js    court geometry + ALL tuning (physics/shots/AI/camera/hit) — single source of truth
   physics.js      ball integration, net-aware launch() solver, clearsNet()    (pure)
@@ -100,7 +101,7 @@ music/
 test/
   logic.test.mjs  Node assertions for the pure modules
 tools/
-  shoot.mjs       headless static-server + Playwright render smoke test
+  shoot.mjs       Vite + Playwright render smoke test
   play.mjs        headed Playwright AI-vs-AI full match viewer (SPEED/VENUE/... env)
   sync-music-catalog.mjs  scans music/active/* and rewrites music/catalog.js
   generate-music-wavs.mjs generates placeholder WAV tracks, then syncs the catalog
@@ -266,7 +267,7 @@ The important implementation contract:
 - `test/logic.test.mjs` imports only the pure modules — keep new pure logic
   importable without Three.js so it stays node-testable.
 - If you change rules/physics/shots/ai behavior, update or add an assertion.
-- `tools/shoot.mjs` spins up a tiny static server, loads the page in headless
+- `tools/shoot.mjs` spins up a Vite dev server, loads the page in headless
   Chromium (SwiftShader WebGL), drives a match via `window.__game`, and asserts the
   serve→rally→point loop plus zero page errors. Use `HEADED=1` if headless WebGL
   renders black.

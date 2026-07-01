@@ -8,6 +8,10 @@
 'use strict';
 
 import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import * as Physics from './physics.js';
 import * as Rules from './rules.js';
 import * as AI from './ai.js';
@@ -30,6 +34,26 @@ const DIFFICULTY_META = {
   hard:   { label: 'DUPR 5.0', tint: '#e23b5a' }
 };
 
+function renderQuality(isMobile) {
+  var forced = '';
+  try {
+    forced = new URLSearchParams(window.location.search).get('quality') ||
+      window.localStorage.getItem('pb3d.renderQuality') || '';
+  } catch (e) {}
+  forced = String(forced).toLowerCase();
+  var level = (forced === 'low' || forced === 'medium' || forced === 'high')
+    ? forced : (isMobile ? 'medium' : 'high');
+  if (level === 'low') return {
+    level: level, pixelRatio: 1, shadowMap: 1024, bloom: false, antialias: false
+  };
+  if (level === 'medium') return {
+    level: level, pixelRatio: 1.5, shadowMap: 1024, bloom: false, antialias: true
+  };
+  return {
+    level: level, pixelRatio: 2, shadowMap: 2048, bloom: true, antialias: true
+  };
+}
+
 function normalizeDifficulty(d) {
   if (d === '4.0' || d === 'beginner' || d === 'easy') return 'easy';
   if (d === '4.5' || d === 'intermediate' || d === 'normal') return 'normal';
@@ -43,6 +67,7 @@ export function Game(opts) {
   this.canvas = opts.canvas;
   this.hud = opts.hud || null;
   this.audio = opts.audio || null;
+  this.assets = opts.assets || null;
   this.difficulty = normalizeDifficulty(opts.difficulty);
   this.levelMeta = DIFFICULTY_META[this.difficulty] || DIFFICULTY_META.normal;
   this.venue = opts.venue || 'park';
@@ -54,6 +79,7 @@ export function Game(opts) {
   this.state = STATE.MENU;
   this.excitement = 0;
   this.cameraShake = 0;
+  this.renderQuality = renderQuality(this.isMobile);
   var CAM_MAP = { broadcast: 0, follow: 1, topdown: 2 };
   this.camMode = CAM_MAP[opts.cameraMode] !== undefined ? CAM_MAP[opts.cameraMode] : 1;
   this.msgTimer = 0;
@@ -65,18 +91,35 @@ export function Game(opts) {
 }
 
 Game.prototype._initThree = function () {
-  var renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: false });
-  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  THREE.ColorManagement.enabled = true;
+  var renderer = new THREE.WebGLRenderer({
+    canvas: this.canvas,
+    antialias: this.renderQuality.antialias,
+    alpha: false,
+    powerPreference: 'high-performance'
+  });
+  renderer.setPixelRatio(Math.min(this.renderQuality.pixelRatio, window.devicePixelRatio || 1));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.NoToneMapping;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.06;
   this.renderer = renderer;
 
   this.scene = new THREE.Scene();
   var rig = makeCamera(this._aspect());
   this.camRig = rig;
   this.camera = rig.cam;
+
+  if (this.renderQuality.bloom) {
+    var size = new THREE.Vector2(window.innerWidth || 1280, window.innerHeight || 720);
+    var composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(this.scene, this.camera));
+    var bloom = new UnrealBloomPass(size, 0.18, 0.28, 0.86);
+    composer.addPass(bloom);
+    composer.addPass(new OutputPass());
+    this.composer = composer;
+  }
 };
 
 Game.prototype._aspect = function () {
@@ -87,7 +130,9 @@ Game.prototype._initWorld = function () {
   this.world = Scene.build(this.scene, {
     venue: this.venue,
     courtPalette: this.courtPalette,
-    timeOfDay: this.timeOfDay
+    timeOfDay: this.timeOfDay,
+    quality: this.renderQuality,
+    assets: this.assets
   });
   this._syncOverhead(); // honor an initial Top-Down camMode
   this.ball = Physics.makeBall();
@@ -143,14 +188,30 @@ Game.prototype._initWorld = function () {
   ring.rotation.x = -Math.PI / 2;
   this.scene.add(ring);
   this.youMarker = ring;
+  var ringGlowMat = new THREE.MeshBasicMaterial({
+    color: this.youColor, transparent: true, opacity: 0.18, depthWrite: false,
+    blending: THREE.AdditiveBlending
+  });
+  var ringGlow = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.035, 8, 32), ringGlowMat);
+  ringGlow.rotation.x = -Math.PI / 2;
+  this.scene.add(ringGlow);
+  this.youMarkerGlow = ringGlow;
 
   // AIM MARKER — a flat ring on the opponents' court showing where your held
   // direction will steer the shot. Hidden until it's your turn to hit.
-  var aimMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false });
+  var aimMat = new THREE.MeshBasicMaterial({ color: 0xf7fbff, transparent: true, opacity: 0, depthWrite: false });
   var aimRing = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.05, 8, 24), aimMat);
   aimRing.rotation.x = -Math.PI / 2;
   this.scene.add(aimRing);
   this.aimMarker = aimRing;
+  var aimFillMat = new THREE.MeshBasicMaterial({
+    color: 0x2bd4ff, transparent: true, opacity: 0, depthWrite: false,
+    blending: THREE.AdditiveBlending
+  });
+  var aimFill = new THREE.Mesh(new THREE.CircleGeometry(0.28, 28), aimFillMat);
+  aimFill.rotation.x = -Math.PI / 2;
+  this.scene.add(aimFill);
+  this.aimMarkerFill = aimFill;
 
   this.match = Rules.makeMatch({ server: 'near' });
   this.lastHitCooldown = 0;
@@ -215,6 +276,7 @@ Game.prototype._bindResize = function () {
     self.canvas.style.width = w + 'px';
     self.canvas.style.height = h + 'px';
     self.renderer.setSize(w, h, false);
+    if (self.composer) self.composer.setSize(w, h);
     self.camera.aspect = w / h;
     self.camera.updateProjectionMatrix();
   }
@@ -885,6 +947,10 @@ Game.prototype._syncMeshes = function (dt) {
     this.youMarker.position.set(me.x, 0.04, me.z);
     var pulse = 1 + Math.sin(performance.now() / 320) * 0.07;
     this.youMarker.scale.set(pulse, pulse, 1);
+    if (this.youMarkerGlow) {
+      this.youMarkerGlow.position.set(me.x, 0.035, me.z);
+      this.youMarkerGlow.scale.set(1.05 + (pulse - 1) * 1.4, 1.05 + (pulse - 1) * 1.4, 1);
+    }
   }
 
   // Aim marker: show on the opponents' court when it's your turn to hit.
@@ -905,8 +971,15 @@ Game.prototype._syncMeshes = function (dt) {
       this.aimMarker.position.set(at.x, 0.04, at.z);
       var target = this.swingWindow > 0 ? 0.8 : 0.32;
       this.aimMarker.material.opacity += (target - this.aimMarker.material.opacity) * Math.min(1, dt * 10);
+      if (this.aimMarkerFill) {
+        this.aimMarkerFill.position.set(at.x, 0.035, at.z);
+        this.aimMarkerFill.material.opacity += ((target * 0.18) - this.aimMarkerFill.material.opacity) * Math.min(1, dt * 10);
+      }
     } else {
       this.aimMarker.material.opacity += (0 - this.aimMarker.material.opacity) * Math.min(1, dt * 10);
+      if (this.aimMarkerFill) {
+        this.aimMarkerFill.material.opacity += (0 - this.aimMarkerFill.material.opacity) * Math.min(1, dt * 10);
+      }
     }
   }
 };
@@ -965,4 +1038,7 @@ Game.prototype._updateHUD = function () {
   });
 };
 
-Game.prototype.render = function () { this.renderer.render(this.scene, this.camera); };
+Game.prototype.render = function () {
+  if (this.composer) this.composer.render();
+  else this.renderer.render(this.scene, this.camera);
+};

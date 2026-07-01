@@ -1,33 +1,18 @@
 /* Test first 3 shots at Pro difficulty — observe return of serve and third shot */
 import { chromium } from 'playwright';
-import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { startViteServer } from './vite-test-server.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = '/Users/ribo/Dev/pb3d';
+const ROOT = path.resolve(__dirname, '..');
 const OUT = path.join(ROOT, 'tools/shots');
 fs.mkdirSync(OUT, { recursive: true });
 
-const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
-  '.json': 'application/json', '.css': 'text/css', '.png': 'image/png',
-  '.svg': 'image/svg+xml' };
-
-const server = http.createServer((req, res) => {
-  let url = decodeURIComponent(req.url.split('?')[0]);
-  if (url === '/') url = '/index.html';
-  const file = path.join(ROOT, url);
-  fs.readFile(file, (err, data) => {
-    if (err) { res.writeHead(404); res.end('not found'); return; }
-    res.writeHead(200, { 'content-type': MIME[path.extname(file)] || 'application/octet-stream' });
-    res.end(data);
-  });
-});
-
-await new Promise((r) => server.listen(0, r));
-const port = server.address().port;
-const base = `http://localhost:${port}/`;
+const testServer = await startViteServer(ROOT);
+const server = testServer.server;
+const base = testServer.base;
 
 const browser = await chromium.launch({
   headless: true,
@@ -115,4 +100,4 @@ for (const s of shots) {
 if (errors.length) console.error('PAGE ERRORS:', errors.join('\n'));
 
 await browser.close();
-server.close();
+await server.close();
