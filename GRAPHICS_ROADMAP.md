@@ -99,7 +99,7 @@ Target direction:
 
 - [x] Replace or augment park scenery with authored/loaded assets.
 - [x] Replace or augment tropical scenery with authored/loaded assets.
-- [ ] Replace or augment indoor scenery with authored/loaded assets.
+- [x] Replace or augment indoor scenery with authored/loaded assets.
 - [ ] Use instancing or shared materials for repeated props.
 - [x] Preserve venue, palette, and time-of-day menu choices.
 - [x] Keep procedural fallback available until new assets are fully verified.
@@ -314,6 +314,31 @@ Add a new entry after every graphics-overhaul session:
 - Next recommended step: add the indoor venue placeholder GLB, then consider a
   small manifest-level placement adapter before scaling to repeated prop sets
   or marking the instancing/shared-materials Phase 5 item complete.
+
+### 2026-07-01 - Phase 5 Indoor Venue Prop GLB
+
+- Phase worked on: Phase 5.
+- Completed checklist items: replaced/augmented indoor scenery with a loaded
+  placeholder venue prop GLB while preserving the procedural gym shell and
+  optional fallback path.
+- Files changed: `assets/manifest.js`,
+  `assets/models/venues/indoor-props.glb`, `GRAPHICS_ROADMAP.md`.
+- Tests/checks run: `npm test` passed 29 assertions; `npm run build` passed and
+  copied `assets/` into `dist/assets`; `npm run shots` passed and verified the
+  serve/rally/scoring loop; an extra HUD-hidden indoor prop inspection screenshot
+  was captured with a short Playwright/Vite check.
+- Screenshots inspected: `court-indoor-blue.png`,
+  `court-indoor-green.png`, `indoor-props-check.png`, `court.png`, and
+  `rally-0.png`.
+- Gameplay risks noticed: no pure gameplay modules were changed; `HIT`, shot
+  profiles, physics/rules/AI modules, hit dispatch, poaching, ATP/Erne,
+  player `contactT`/`paddleWorld`, and the 4-shot pattern were left untouched.
+  Visual-only risk: the indoor prop is intentionally a small placeholder cluster
+  in the far-side scenery band, and part of it is crossed by the default serve
+  banner in normal screenshots.
+- Blockers: none. Notes: Vite still warns that the main bundle is over 500 kB.
+- Next recommended step: address the Phase 5 repeated-prop checklist item with
+  a small shared-material or instancing pass before broad venue replacement.
 
 ## Resume Prompt
 

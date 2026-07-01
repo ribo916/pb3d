@@ -33,7 +33,7 @@ export const ASSET_MANIFEST = {
     {
       key: 'venue-indoor',
       label: 'Indoor venue props',
-      url: '',
+      url: '/assets/models/venues/indoor-props.glb',
       scope: 'venue',
       venue: 'indoor',
       optional: true
