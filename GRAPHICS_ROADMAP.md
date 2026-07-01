@@ -123,12 +123,12 @@ Target direction:
 
 ### Phase 7: Animation Integration
 
-- [ ] Add idle animation.
-- [ ] Add run/jog animation.
+- [x] Add idle animation.
+- [x] Add run/jog animation.
 - [x] Add ready stance.
-- [ ] Add forehand animation.
-- [ ] Add backhand animation.
-- [ ] Add serve animation.
+- [x] Add forehand animation.
+- [x] Add backhand animation.
+- [x] Add serve animation.
 - [ ] Add smash/overhead animation if practical.
 - [x] Blend idle/run/swing states without breaking movement.
 - [x] Align animation contact frame with current gameplay hit timing.
@@ -509,6 +509,42 @@ Add a new entry after every graphics-overhaul session:
 - Next recommended step: add dedicated authored forehand/backhand/serve clips
   with clearer anticipation and follow-through poses, then add a small overhead
   or smash clip once the existing contact-frame checks stay green.
+
+### 2026-07-01 - Phase 7 Swing Clip Polish
+
+- Phase worked on: Phase 7.
+- Completed checklist items: marked idle and run/jog animation complete from
+  the existing generated POC clips; improved and marked forehand, backhand, and
+  serve animation complete with clearer authored anticipation/contact/follow-
+  through body poses while keeping the primitive contact frame unchanged.
+- Files changed: `tools/generate-player-poc.mjs`,
+  `assets/models/players/player-poc.glb`, `GRAPHICS_ROADMAP.md`.
+- Tests/checks run: `node tools/generate-player-poc.mjs`; GLB clip
+  structure/duration check confirmed `idle`, `ready`, `run`, `forehand`,
+  `backhand`, and `serve`, with `forehand`/`backhand`/`serve` still `0.44s`
+  and keyed at `0.22s`; `npm test` passed 29 assertions; `npm run build`
+  passed and copied assets into `dist/`; `npm run shots` passed and verified
+  the serve/rally/scoring loop; a focused Playwright/Vite probe confirmed real
+  serve animation, human backhand swing animation, CPU hit animation,
+  `contactT === 0.5`, `_swingDur === 0.44`, and authored swing scale ~1.0.
+- Screenshots inspected: `roster-closeup.png`, `court.png`, `rally-0.png`,
+  `rally-1.png`, `rally-2.png`, `court-night.png`,
+  `court-tropical-day.png`, `court-indoor-blue.png`, and
+  `mobile-check.png`.
+- Gameplay risks noticed: no pure gameplay modules were changed; `HIT`, shot
+  profiles, physics/rules/AI modules, hit dispatch, poaching, ATP/Erne,
+  two-bounce/kitchen behavior, and the 4-shot pattern were left untouched. The
+  primitive rig still owns swing timing, `contactT`, gameplay contact, and
+  `paddleWorld`; authored clips only add torso/hip/leg anticipation and finish
+  around the same midpoint contact. Visual-only risk: stronger follow-through
+  poses can make near-player silhouettes broader in mobile views, so keep
+  checking ball and paddle readability.
+- Blockers: none. Notes: Vite still warns that the main bundle is over 500 kB,
+  and `player-poc.glb` is now about 507 kB.
+- Next recommended step: add a narrowly routed authored smash/overhead visual
+  only if it can be triggered without changing shot selection, contact timing,
+  or the primitive rig's gameplay authority; otherwise move to Phase 8 hit and
+  bounce effects.
 
 ## Resume Prompt
 
