@@ -55,6 +55,29 @@ function makeHitFxTexture() {
   return tex;
 }
 
+function makeNetFxTexture() {
+  var cv = document.createElement('canvas');
+  cv.width = 96;
+  cv.height = 96;
+  var g = cv.getContext('2d');
+  g.clearRect(0, 0, cv.width, cv.height);
+  g.strokeStyle = 'rgba(255,255,255,0.92)';
+  g.lineWidth = 7;
+  g.beginPath();
+  g.moveTo(28, 48); g.lineTo(68, 48);
+  g.moveTo(48, 28); g.lineTo(48, 68);
+  g.stroke();
+  g.strokeStyle = 'rgba(141,255,66,0.68)';
+  g.lineWidth = 4;
+  g.beginPath();
+  g.moveTo(34, 34); g.lineTo(62, 62);
+  g.moveTo(62, 34); g.lineTo(34, 62);
+  g.stroke();
+  var tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 function renderQuality(isMobile) {
   var forced = '';
   try {
@@ -238,6 +261,8 @@ Game.prototype._initWorld = function () {
   this.aimMarkerFill = aimFill;
 
   this.hitFx = null;
+  this.bounceFx = null;
+  this.netFx = null;
   if (this.renderQuality.level !== 'low') {
     var hitFxMat = new THREE.SpriteMaterial({
       map: makeHitFxTexture(),
@@ -254,6 +279,37 @@ Game.prototype._initWorld = function () {
     hitFx.renderOrder = 998;
     this.scene.add(hitFx);
     this.hitFx = { mesh: hitFx, age: 0, dur: 0.18 };
+
+    var bounceFxMat = new THREE.MeshBasicMaterial({
+      color: 0xf5fbff,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    });
+    var bounceFx = new THREE.Mesh(new THREE.RingGeometry(0.18, 0.31, 32), bounceFxMat);
+    bounceFx.rotation.x = -Math.PI / 2;
+    bounceFx.visible = false;
+    bounceFx.frustumCulled = false;
+    bounceFx.renderOrder = 4;
+    this.scene.add(bounceFx);
+    this.bounceFx = { mesh: bounceFx, age: 0, dur: 0.24 };
+
+    var netFxMat = new THREE.SpriteMaterial({
+      map: makeNetFxTexture(),
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0,
+      depthTest: false,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    });
+    var netFx = new THREE.Sprite(netFxMat);
+    netFx.visible = false;
+    netFx.frustumCulled = false;
+    netFx.renderOrder = 997;
+    this.scene.add(netFx);
+    this.netFx = { mesh: netFx, age: 0, dur: 0.22 };
   }
 
   this.match = Rules.makeMatch({ server: 'near' });
@@ -387,6 +443,7 @@ Game.prototype._doServe = function () {
   Rules.onPaddleHit(this.match, this.match.server, { volley: false });
   srvEntry.mesh.swing('serve');
   if (this.audio) this.audio.sfx.serve();
+  this.cameraShake = Math.max(this.cameraShake, 0.05);
   this._triggerHitEffect();
   this.state = STATE.RALLY;
   this.lastHitCooldown = HIT.COOLDOWN_SERVE;
@@ -398,6 +455,7 @@ Game.prototype._endPoint = function (result) {
   this.ball.live = false;
   this.excitement = 1.0;
   this.cameraShake = result.scored ? 0.25 : 0.12;
+  this._triggerPointReaction(result.rallyWinner);
   var msg = this._resultMessage(result);
   this._message(msg, 1.6);
   if (this.audio) { result.scored ? this.audio.sfx.point() : this.audio.sfx.fault(); }
@@ -554,9 +612,11 @@ Game.prototype._handleBallEvent = function (e) {
   var r = null;
   if (e.type === 'bounce' || e.type === 'floor-out') {
     if (this.audio) this.audio.sfx.bounce();
+    this._triggerBounceEffect(e.x, e.z);
     r = Rules.onFloor(this.match, { inBounds: e.type === 'bounce', x: e.x, z: e.z, side: e.side });
   } else if (e.type === 'net') {
     if (this.audio) this.audio.sfx.net();
+    this._triggerNetEffect();
     r = Rules.onNetFault(this.match);
   }
   if (rallyOver(r)) this._endPoint(r);
@@ -995,6 +1055,70 @@ Game.prototype._updateHitEffect = function (dt) {
   if (fx.age <= 0) fx.mesh.visible = false;
 };
 
+Game.prototype._triggerBounceEffect = function (x, z) {
+  if (!this.bounceFx) return;
+  var mesh = this.bounceFx.mesh;
+  mesh.position.set(x || 0, 0.052, z || 0);
+  mesh.scale.set(1, 1, 1);
+  mesh.visible = true;
+  mesh.material.opacity = 0.28;
+  this.bounceFx.age = this.bounceFx.dur;
+};
+
+Game.prototype._updateBounceEffect = function (dt) {
+  if (!this.bounceFx) return;
+  var fx = this.bounceFx;
+  if (fx.age <= 0) {
+    fx.mesh.visible = false;
+    fx.mesh.material.opacity = 0;
+    return;
+  }
+  fx.age = Math.max(0, fx.age - dt);
+  var t = 1 - fx.age / fx.dur;
+  var size = 1 + t * 1.5;
+  fx.mesh.scale.set(size, size, 1);
+  fx.mesh.material.opacity = (1 - t) * 0.28;
+  if (fx.age <= 0) fx.mesh.visible = false;
+};
+
+Game.prototype._triggerNetEffect = function () {
+  if (!this.netFx) return;
+  var mesh = this.netFx.mesh;
+  mesh.position.set(this.ball.pos.x, Math.max(C.BALL_R * 2.0, this.ball.pos.y), this.ball.pos.z);
+  mesh.scale.set(0.54, 0.54, 1);
+  mesh.visible = true;
+  mesh.material.opacity = 0.42;
+  this.netFx.age = this.netFx.dur;
+};
+
+Game.prototype._updateNetEffect = function (dt) {
+  if (!this.netFx) return;
+  var fx = this.netFx;
+  if (fx.age <= 0) {
+    fx.mesh.visible = false;
+    fx.mesh.material.opacity = 0;
+    return;
+  }
+  fx.age = Math.max(0, fx.age - dt);
+  var t = 1 - fx.age / fx.dur;
+  var size = 0.54 + t * 0.36;
+  fx.mesh.scale.set(size, size, 1);
+  fx.mesh.material.opacity = (1 - t) * 0.42;
+  if (fx.age <= 0) fx.mesh.visible = false;
+};
+
+Game.prototype._triggerPointReaction = function (winner) {
+  if (this.renderQuality.level === 'low') return;
+  this.pointReaction = { winner: winner, age: 0.55, dur: 0.55 };
+};
+
+Game.prototype._reactionOffset = function (team) {
+  var rx = this.pointReaction;
+  if (!rx || rx.age <= 0 || team !== rx.winner) return 0;
+  var t = 1 - rx.age / rx.dur;
+  return Math.sin(t * Math.PI) * 0.12;
+};
+
 Game.prototype._syncMeshes = function (dt) {
   // ball
   var b = this.ball, bm = this.world.ballMesh;
@@ -1011,6 +1135,9 @@ Game.prototype._syncMeshes = function (dt) {
   // trail
   this._updateTrail();
   this._updateHitEffect(dt);
+  this._updateBounceEffect(dt);
+  this._updateNetEffect(dt);
+  if (this.pointReaction) this.pointReaction.age = Math.max(0, this.pointReaction.age - dt);
 
   // players — each faces the OPPONENT's side and only yaws toward the ball.
   for (var i = 0; i < this.players.length; i++) {
@@ -1019,7 +1146,7 @@ Game.prototype._syncMeshes = function (dt) {
     var base = (pl.team === 'near') ? Math.PI : 0;
     var yaw = clamp((this.ball.pos.x - pl.pos.x) * 0.16, -0.6, 0.6);
     if (v > 0.4) yaw = clamp(pl.vel.x * 0.18, -0.7, 0.7);
-    pl.mesh.object.position.set(pl.pos.x, 0, pl.pos.z);
+    pl.mesh.object.position.set(pl.pos.x, this._reactionOffset(pl.team), pl.pos.z);
     pl.mesh.update(dt, {
       speed: v,
       facing: base + yaw,

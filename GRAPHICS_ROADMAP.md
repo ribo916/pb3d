@@ -137,11 +137,11 @@ Target direction:
 ### Phase 8: Effects And Juice
 
 - [x] Add paddle-hit effect.
-- [ ] Add bounce/contact effect.
-- [ ] Add net-hit effect.
-- [ ] Add optional point/serve camera polish.
-- [ ] Add optional point celebration or reaction animations.
-- [ ] Keep all effects readable and performance-safe.
+- [x] Add bounce/contact effect.
+- [x] Add net-hit effect.
+- [x] Add optional point/serve camera polish.
+- [x] Add optional point celebration or reaction animations.
+- [x] Keep all effects readable and performance-safe.
 
 ### Phase 9: Performance And Verification
 
@@ -608,6 +608,34 @@ Add a new entry after every graphics-overhaul session:
 - Blockers: none. Notes: Vite still warns that the main bundle is over 500 kB.
 - Next recommended step: add an equally small bounce/contact floor effect,
   gated by quality and tuned so it never competes with the neon ball or trail.
+
+### 2026-07-01 - Phase 8 Contact And Net Juice
+
+- Phase worked on: Phase 8.
+- Completed checklist items: added a bounce/contact floor effect; added a
+  net-hit effect; added small serve camera polish; added subtle point winner
+  reaction hops; confirmed effects remain readable and performance-safe.
+- Files changed: `src/game.js`, `GRAPHICS_ROADMAP.md`.
+- Tests/checks run: `npm test` passed 29 assertions; `npm run build` passed and
+  copied assets/music into `dist/` with the existing over-500 kB bundle warning;
+  focused Playwright/Vite probe confirmed serve camera shake, bounce effect,
+  net effect, point reaction, and low-quality fallback with no effects created;
+  `npm run shots` passed and verified the serve/rally/point loop.
+- Screenshots inspected: `phase8-effects.png`, `court.png`,
+  `court-night.png`, `rally-0.png`, and `mobile-check.png`.
+- Gameplay risks noticed: no pure gameplay modules were changed; `HIT`, shot
+  profiles, physics/rules/AI modules, hit dispatch, poaching, ATP/Erne,
+  two-bounce/kitchen behavior, and the 4-shot pattern were left untouched. The
+  primitive rig still owns swing timing, `contactT`, paddle/contact timing,
+  gameplay contact, and `paddleWorld`; the new effects are triggered only from
+  existing visual/audio event hooks after gameplay events have already occurred.
+  Visual-only risk: the net sprite draws above depth like the paddle-hit pop,
+  but lasts only `0.22s`, stays below the ball ghost render order, and is
+  skipped on low quality.
+- Blockers: none. Notes: Vite still warns that the main bundle is over 500 kB.
+- Next recommended step: begin Phase 9 with a broader verification pass,
+  including a headed AI-vs-AI match when feasible and final mobile/build/static
+  deployment checks.
 
 ## Resume Prompt
 
