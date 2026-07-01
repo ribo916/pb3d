@@ -27,6 +27,20 @@ export function makeInput(el, joyEl, joyKnob) {
   var keys = {};
   var joy = { active: false, id: null, ox: 0, oy: 0, x: 0, y: 0, rect: null, knobQueued: false, knobX: 0, knobY: 0 };
   var rightTouch = { active: false, id: null, sx: 0, sy: 0, lastx: 0, lasty: 0, t0: 0 };
+  var IS_TOUCH = (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0) ||
+                 (typeof window !== 'undefined' && 'ontouchstart' in window);
+
+  // Park the joystick at a resting anchor on the lower-left so touch players can
+  // see it before they touch. onStart floats it to the thumb; this returns it.
+  function restJoystick() {
+    if (!joyEl) return;
+    var w = (typeof window !== 'undefined') ? window.innerWidth : 0;
+    var h = (typeof window !== 'undefined') ? window.innerHeight : 0;
+    joyEl.style.display = 'block';
+    joyEl.style.left = Math.max(90, w * 0.14) + 'px';
+    joyEl.style.top = (h - 130) + 'px';
+    queueKnob(0, 0);
+  }
 
   // --- keyboard --- Space = power swing, V = touch swing, B = lob.
   window.addEventListener('keydown', function (e) {
@@ -110,20 +124,24 @@ export function makeInput(el, joyEl, joyKnob) {
     if (joy.active && t.identifier === joy.id) {
       joy.active = false; joy.rect = null;
       state.move.x = 0; state.move.z = 0; state.usingJoystick = false; state.joystickReleased = true;
-      if (joyEl) joyEl.style.display = 'none';
-      queueKnob(0, 0);
+      if (IS_TOUCH) restJoystick();
+      else { if (joyEl) joyEl.style.display = 'none'; queueKnob(0, 0); }
     } else if (rightTouch.active && t.identifier === rightTouch.id) {
       rightTouch.active = false;
       var swung = state.aim < -0.25 ? 'bh' : 'fh';
-      // Classify the gesture: a strong upward flick = lob; otherwise a long or
-      // fast horizontal swipe = power, a short/slow one = touch.
+      // Direction picks the shot: a committed vertical flick UP = drive, DOWN =
+      // lob; a short/soft swipe = drop; a committed horizontal swipe = drive.
+      // (Horizontal drag also sets aim continuously in onMove.)
       var dx = rightTouch.lastx - rightTouch.sx, dy = rightTouch.lasty - rightTouch.sy;
       var now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
       var ms = Math.max(1, now - rightTouch.t0);
       var dist = dist2D(dx, dy), speed = dist / ms; // px per ms
-      if (dy < -55 && -dy > Math.abs(dx)) { queueSwing(swung, 'touch', 'lob'); return; }
-      var power = (dist > 70 || speed > 0.7) ? 'power' : 'touch';
-      queueSwing(swung, power);
+      var committed = dist > 55 || speed > 0.6;     // a deliberate swipe vs a soft tap
+      if (!committed) { queueSwing(swung, 'touch'); return; }        // small/soft = DROP
+      var vertical = Math.abs(dy) > Math.abs(dx);
+      if (vertical && dy < 0) { queueSwing(swung, 'power'); return; }        // UP  = DRIVE
+      if (vertical && dy > 0) { queueSwing(swung, 'touch', 'lob'); return; } // DOWN = LOB
+      queueSwing(swung, 'power');                                            // committed horizontal = DRIVE
     }
   }
 
@@ -190,6 +208,15 @@ export function makeInput(el, joyEl, joyKnob) {
   function consumeCamCycle() {
     if (state.camCycleQueued) { state.camCycleQueued = false; return true; }
     return false;
+  }
+
+  // Touch devices: show the joystick at rest immediately, and keep its resting
+  // anchor sensible across orientation/viewport changes (only while idle).
+  if (IS_TOUCH) {
+    restJoystick();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', function () { if (!joy.active) restJoystick(); });
+    }
   }
 
   return { state: state, poll: poll, consumeSwing: consumeSwing, consumeServe: consumeServe, consumeCamCycle: consumeCamCycle };

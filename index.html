@@ -721,6 +721,8 @@
     #joy { display: none; position: fixed; width: 120px; height: 120px; margin: -60px 0 0 -60px;
       border-radius: 50%; border: 2px solid rgba(255,255,255,0.25); background: rgba(255,255,255,0.06);
       z-index: 15; pointer-events: none; }
+    /* on touch devices the joystick rests on the lower-left so players see it */
+    body.touch-device #joy { display: block; }
     #joyKnob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px;
       border-radius: 50%; background: rgba(255,255,255,0.35); }
   </style>
@@ -842,11 +844,11 @@
       <div class="info-section info-mobile">
         <div class="info-label">TOUCH</div>
         <p>
-          <strong>Left thumb</strong> — virtual joystick to move<br>
-          <strong>Right thumb swipe</strong> — swing &amp; aim<br>
-          &nbsp;&nbsp;Hard / long swipe = <em>drive</em> (power)<br>
+          <strong>Left thumb</strong> — joystick to move (bottom-left)<br>
+          <strong>Right thumb</strong> — swing &amp; aim<br>
+          &nbsp;&nbsp;Flick <em>up</em> = drive (power)<br>
+          &nbsp;&nbsp;Flick <em>down</em> = lob<br>
           &nbsp;&nbsp;Short / gentle swipe = <em>drop / dink</em><br>
-          &nbsp;&nbsp;Flick upward = <em>lob</em><br>
           Drag right thumb left/right to aim cross-court<br>
           <strong>SERVE button</strong> — tap to serve
         </p>

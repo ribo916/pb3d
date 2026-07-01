@@ -13,7 +13,8 @@
       "Bash(node tools/shoot.mjs)",
       "Bash(SPEED=12 MAXSEC=45 node tools/play.mjs)",
       "Bash(SPEED=8 MAXSEC=25 MATCHES=1 timeout 60 node tools/play.mjs)",
-      "Bash(SPEED=8 MAXSEC=20 MATCHES=1 node tools/play.mjs)"
+      "Bash(SPEED=8 MAXSEC=20 MATCHES=1 node tools/play.mjs)",
+      "Bash(node --check src/input.js)"
     ],
     "additionalDirectories": [
       "/Users/ribo/Dev/pb3d/tools/shots"
