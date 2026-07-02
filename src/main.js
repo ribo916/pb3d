@@ -20,6 +20,10 @@ let paused  = false;
 let starting = false;
 
 const MENU_META = {
+  mode: {
+    doubles: { label: 'Doubles' },
+    singles: { label: 'Singles' }
+  },
   venue: {
     park: { label: 'Park' },
     indoor: { label: 'Indoor' },
@@ -49,6 +53,7 @@ function checkedValue(name, fallback) {
 function readMenuConfig() {
   var venue = checkedValue('venue', 'park');
   return {
+    mode: checkedValue('mode', 'doubles'),
     venue: venue,
     courtPalette: checkedValue('palette', 'blue'),
     timeOfDay: venue === 'indoor' ? 'day' : checkedValue('tod', 'day'),
@@ -78,13 +83,14 @@ function syncTimeOfDayUI() {
 
 function syncMenuSummary() {
   var cfg = syncTimeOfDayUI();
+  var mode = MENU_META.mode[cfg.mode] || MENU_META.mode.doubles;
   var venue = MENU_META.venue[cfg.venue] || MENU_META.venue.park;
   var palette = MENU_META.palette[cfg.courtPalette] || MENU_META.palette.blue;
   var tod = MENU_META.tod[cfg.timeOfDay] || MENU_META.tod.day;
   var diff = MENU_META.difficulty[cfg.difficulty] || MENU_META.difficulty['4.0'];
   var camLabels = { follow: 'Follow', broadcast: 'Broadcast', topdown: 'Top-Down' };
   var cam = camLabels[cfg.cameraMode] || 'Follow';
-  $('menuSummary').textContent = venue.label + ' · ' + tod.label + ' · ' + palette.label + ' · ' + cam + ' · ' + diff.label;
+  $('menuSummary').textContent = mode.label + ' · ' + venue.label + ' · ' + tod.label + ' · ' + palette.label + ' · ' + cam + ' · ' + diff.label;
   return cfg;
 }
 
@@ -244,6 +250,7 @@ async function startMatch(difficulty, config) {
     difficulty: difficulty,
     audio: audio,
     isMobile: IS_TOUCH_DEVICE,
+    mode: config.mode,
     venue: config.venue,
     courtPalette: config.courtPalette,
     timeOfDay: config.timeOfDay,
@@ -272,7 +279,7 @@ async function startMatch(difficulty, config) {
   requestAnimationFrame(loop);
 }
 
-document.querySelectorAll('input[name="venue"], input[name="palette"], input[name="tod"], input[name="difficulty"], input[name="cameraMode"]').forEach(function (el) {
+document.querySelectorAll('input[name="mode"], input[name="venue"], input[name="palette"], input[name="tod"], input[name="difficulty"], input[name="cameraMode"]').forEach(function (el) {
   el.addEventListener('change', syncMenuSummary);
 });
 document.querySelectorAll('input[name="musicStart"]').forEach(function (el) {

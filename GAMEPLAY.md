@@ -302,7 +302,7 @@ When `maxIntent` returns `'smash'`, **both human and AI execute a dedicated stee
 
 ## Dink Battle
 
-Triggered when **all four players are in the kitchen zone** (`|z| < KITCHEN + 0.5`)
+Triggered when **all active players are in the kitchen zone** (`|z| < KITCHEN + 0.5`)
 **and** the ball height is ≤ `POWER_CAP.NET_H`.
 
 `Shots.dinkBattleTarget(playerPos, ballPos, fwd)` returns P2:
@@ -341,7 +341,9 @@ Implemented in `rules.js` (pure, no Three.js).
 |---|---|
 | Two-bounce rule | Serve + return must bounce before being struck (`rally.bouncesSinceHit < 1`) |
 | Kitchen volley | Volleying while `inKitchen = true` during open play = fault |
+| Match mode | Doubles uses four players; singles uses one player per side |
 | Doubles serve rotation | `serverNum 1/2`, `serverSlot 0/1`, starts `0-0-2` |
+| Singles serve rotation | One server per side; side out immediately when receiver wins |
 | Side-out scoring | Only serving team scores; game to 11 win-by-2 |
 | Diagonal serve | `Rules.serveCourt()` checks landing `x`-sign vs required diagonal |
 
@@ -396,6 +398,12 @@ Lane-aware doubles positioning:
 
 `AI.predict` fast-path: if `ball.spline` is set, returns `P2` directly (exact, O(1)).
 Otherwise falls back to ballistic integration.
+
+Singles positioning:
+- Each side has one player, so `_responsibleSlot()` always resolves to slot 0.
+- The CPU covers the full side instead of a left/right lane.
+- Serve formation places only the server and receiver behind their diagonal courts.
+- Poaching is disabled because there is no net partner.
 
 ---
 
@@ -471,7 +479,7 @@ Real pickleball's strategic rhythm is the first four shots. Each shot is charted
 
 **Variance is intentional.** The Stability Index means none of these shots is free: a rushed drop produces a float or popup (attackable); a shanked return goes short and lets the server's team stay back. AI difficulty scales how consistently each team executes the pattern (`smart` and `err` levers).
 
-**All four players at the kitchen.** After a successful exchange through shots 1–4, both teams are typically at the kitchen line. The game enters the dink battle mode (see Dink Battle section) waiting for someone to float a ball high enough to speed up or smash.
+**Both teams at the kitchen.** After a successful exchange through shots 1–4, both teams are typically at the kitchen line. The game enters the dink battle mode (see Dink Battle section) waiting for someone to float a ball high enough to speed up or smash.
 
 ---
 

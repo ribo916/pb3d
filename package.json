@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Standalone Three.js doubles pickleball game (gameplay ported from Picklelife's 3D match).",
+  "description": "Standalone Three.js pickleball game (gameplay ported from Picklelife's 3D match).",
   "scripts": {
     "test": "node test/logic.test.mjs",
     "dev": "vite --host 127.0.0.1",

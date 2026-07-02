@@ -15,8 +15,9 @@
 
 ## What This Is
 
-A standalone **Three.js doubles pickleball game**. You (`players[0]`) + a CPU
-partner take on two CPUs. Real rules (diagonal serve, two-bounce rule, non-volley
+A standalone **Three.js pickleball game** with doubles and singles modes. In
+doubles, you (`players[0]`) + a CPU partner take on two CPUs; in singles, you
+face one CPU opponent. Real rules (diagonal serve, two-bounce rule, non-volley
 "kitchen", side-out scoring to 11 win-by-2), arcade-tuned physics, three
 difficulties, desktop + mobile controls.
 
@@ -91,7 +92,7 @@ src/
   constants.js    court geometry + ALL tuning (physics/shots/AI/camera/hit) — single source of truth
   physics.js      ball integration, net-aware launch() solver, clearsNet()    (pure)
   shots.js        5 shot types + intent/zone classification (THE shot tuning) (pure)
-  rules.js        doubles side-out scoring + rally state machine               (pure)
+  rules.js        side-out scoring + rally state machine                       (pure)
   ai.js           opponent predict/chooseMovement/chooseShot, difficulty LEVELS (pure)
   utils.js        clamp/dist2D/lerp                                            (pure)
   input.js        desktop (WASD/mouse/keys) + dual-thumb touch controls
@@ -99,8 +100,8 @@ src/
   scene.js        court, net, lighting, ball + trail, fence, trees            (Three)
   players.js      Mii-style rig + cross-body swing animation                  (Three)
   camera.js       broadcast camera + follow/shake                             (Three)
-  game.js         orchestrator: STATE machine, hit model, doubles movement, aim marker, HUD wiring
-  hud.js          DOM HUD (score, serve dots, doubles callout, banner, shot tag, SERVE button)
+  game.js         orchestrator: STATE machine, hit model, movement, aim marker, HUD wiring
+  hud.js          DOM HUD (score, serve dots, callout, banner, shot tag, SERVE button)
   main.js         bootstrap: difficulty picker -> Game -> requestAnimationFrame loop
 music/
   active/         drop genre folders with playable audio files here
@@ -144,12 +145,13 @@ intent, ballHigh)` maps a swing *intent* (`power`/`touch`/`lob`) + court zone +
 ball height to a concrete shot. `aimDepth()` applies momentum-aim depth. **All shot
 numbers live here** — never scatter them into `game.js` or `ai.js`.
 
-**`rules.js`** — doubles rally state machine + side-out scoring. Phases
+**`rules.js`** — rally state machine + side-out scoring. Phases
 `serve → return → open`. Models diagonal serve validation (`serveFault`), the
-two-bounce rule, kitchen-volley fault, and the doubles serve rotation (serverNum
-1/2, serverSlot 0/1, the 0-0-2 start). `onFloor()` is the single floor-contact
-source of truth (1st bounce = placement check, 2nd = no-return). Geometry is
-injected via `setGeometry()` so the module stays dependency-free.
+two-bounce rule, kitchen-volley fault, doubles serve rotation (serverNum 1/2,
+serverSlot 0/1, the 0-0-2 start), and singles serve rotation (one server per
+side). `onFloor()` is the single floor-contact source of truth (1st bounce =
+placement check, 2nd = no-return). Geometry is injected via `setGeometry()` so
+the module stays dependency-free.
 
 **`ai.js`** — opponent brain. `LEVELS` (family/easy/normal/hard) tune speed,
 reaction, error scatter, "smart" shot selection, aggression, and unforced-error
@@ -159,10 +161,10 @@ smash (high ball) → return-of-serve (shots=2, always power) → 3rd-shot drop
 (shots=3, skill-scaled high probability) → power cap → normal intent selection.
 
 **`game.js`** — the orchestrator. Owns the `STATE` machine
-(`MENU/SERVE/RALLY/POINT/OVER`), the doubles roster, sub-stepped physics, the
+(`MENU/SERVE/RALLY/POINT/OVER`), the mode-specific roster, sub-stepped physics, the
 **hit model** (a swing opens a ~0.3s timing window; the hit fires when the ball
 enters the strike zone during the window), momentum aiming (`_aimTarget`), the
-aim-marker ring, doubles lane responsibility / movement, and HUD wiring. The hit
+aim-marker ring, doubles lane or singles full-court movement, and HUD wiring. The hit
 tail `_executeSplineShot` snaps the ball to the contact point and builds the
 Bezier arc. Smash overrides apply in both `_hit()` (human) and `_cpuHit()` (CPU)
 before the normal shot-selection path, producing a steep low-apex arc when the
@@ -269,9 +271,8 @@ The important implementation contract:
   [`PLAYER-IMPORT.md`](PLAYER-IMPORT.md) (download flow +
   `tools/build-player-model.mjs` + wiring), with [`GRAPHICS.md`](GRAPHICS.md) and
   `assets/README.md` for the adapter contract.
-- **Singles mode** — the rules/movement are doubles-specific; a singles variant
-  would simplify the serve rotation (no serverNum 1/2, no partner) and movement
-  (one player per side). Architect via an `opts.mode` on `Game`.
+- **Singles mode** — implemented via `opts.mode` on `Game`; it uses one player
+  per side, immediate receiver side-outs, and a two-number HUD callout.
 - **Difficulty/venue gating, pre-match cards, rankings** — layer above `main.js`;
   the `Game` already accepts `difficulty`, `partnerDiff`, and an `onMatchOver` hook.
 

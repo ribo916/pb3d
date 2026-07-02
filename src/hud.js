@@ -1,5 +1,5 @@
 /* ============================================================================
- * hud.js — DOM HUD overlay: scores, serve-side dots, doubles score callout,
+ * hud.js — DOM HUD overlay: scores, serve-side dots, score callout,
  * center banner (messages), transient shot-name tag, difficulty badge, and the
  * SERVE button (visible only on the human's serve).
  * ==========================================================================*/
@@ -18,9 +18,7 @@ export function makeHUD(refs, onServe) {
     refs.scoreFar.textContent = s.scores.far;
     refs.dotNear.style.opacity = s.server === 'near' ? '1' : '0.15';
     refs.dotFar.style.opacity = s.server === 'far' ? '1' : '0.15';
-    // doubles callout (serving team's perspective): server–receiver–serverNum
-    var sv = s.server, rv = sv === 'near' ? 'far' : 'near';
-    refs.callout.textContent = s.scores[sv] + '–' + s.scores[rv] + '–' + s.serverNum;
+    refs.callout.textContent = s.callout || '';
 
     if (s.msg) {
       refs.banner.textContent = s.msg;

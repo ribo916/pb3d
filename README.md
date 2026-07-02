@@ -1,7 +1,8 @@
 # Pickleball 3D
 
-A self-contained **Three.js doubles pickleball game**. You and a CPU partner take on
-two CPUs, with real pickleball rules, arcade-tuned physics, and a real track-based
+A self-contained **Three.js pickleball game** with doubles and singles modes. You
+and a CPU partner can take on two CPUs, or you can play one-on-one, with real
+pickleball rules, arcade-tuned physics, and a real track-based
 music picker that supports genre folders such as `KPOP`, `RAP`, `COUNTRY`, and `POP`.
 
 It started life as the 3D match inside a larger browser game and was extracted into
@@ -35,8 +36,9 @@ npm run preview        # preview the production build
 
 ## How to play
 
-You control the **orange** player (marked by a pulsing ground ring). Your partner is
-**teal**; the opponents are **red** and **pink**.
+You control the **orange** player (marked by a pulsing ground ring). In doubles,
+your partner is **teal** and the opponents are **red** and **pink**. In singles,
+you face the red opponent one-on-one.
 
 **Desktop**
 | Action | Key |
@@ -66,7 +68,7 @@ ring on the opponents' court previews where your held direction will place the b
 
 ## Rules modeled
 
-Full doubles pickleball:
+Full pickleball rules:
 - **Diagonal serve** that must clear the kitchen and land in the correct service box.
 - **Two-bounce rule** — the serve and the return must each bounce before being hit.
 - **Non-volley zone ("kitchen")** — you can't volley (hit before a bounce) while
@@ -75,6 +77,8 @@ Full doubles pickleball:
 - **Doubles serve rotation** — first/second server per side, partners swap courts on
   each point, and the standard **0-0-2** start (the first serving team gets only its
   second server).
+- **Singles serve rotation** — one server per side; the receiver winning a rally is
+  an immediate side out and the HUD shows two-number scoring.
 
 Three difficulties (Beginner / Intermediate / Advanced) scale movement speed,
 reaction time, shot smarts, aggression, and unforced-error rate.
@@ -93,14 +97,14 @@ src/
   constants.js    court geometry + ALL tuning (physics/shots/AI/camera/hit)  ← single source of truth
   physics.js      ball integration, net-aware launch() solver, clearsNet()    (pure, no Three)
   shots.js        5 shot types + intent/zone classification                   (pure)  ← THE shot tuning
-  rules.js        doubles side-out scoring + rally state machine               (pure)
+  rules.js        side-out scoring + rally state machine                       (pure)
   ai.js           opponent predict / movement / shot selection (4 levels)     (pure)
   utils.js        clamp / dist2D / lerp                                        (pure)
   input.js        desktop (WASD/mouse/keys) + dual-thumb touch controls
   scene.js        court, net, lighting, ball + trail, fence, trees            (Three)
   players.js      Mii-style rig + cross-body swing animation                  (Three)
   camera.js       broadcast camera + follow/shake                             (Three)
-  game.js         orchestrator: state machine, hit model, doubles movement, aim marker
+  game.js         orchestrator: state machine, hit model, movement, aim marker
   hud.js          DOM HUD (score, serve dots, callout, banner, shot tag)
   main.js         bootstrap: difficulty picker -> Game -> requestAnimationFrame loop
 music/
@@ -190,6 +194,6 @@ The most likely additions all have clean seams, documented in detail in
 - **Character models** — replace the generated POC with real authored character
   assets using the adapter contracts in [`GRAPHICS.md`](GRAPHICS.md) and
   `assets/README.md`.
-- **Singles mode** — simplify serve rotation + movement via an `opts.mode` on `Game`.
+- **Singles mode** — available from the main menu via `opts.mode` on `Game`.
 - **Rankings / pre-match cards / venue gating** — layer above `main.js`; `Game`
   already accepts `difficulty`, `partnerDiff`, and an `onMatchOver` hook.

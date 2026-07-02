@@ -52,7 +52,7 @@ expect(menuCheck.disabledPark === false, 'park selection did not restore time-of
 
 async function selectOption(name, value) {
   await page.check('input[name="' + name + '"][value="' + value + '"]', { force: true });
-  if (name === 'venue') await page.evaluate(() => window.__pb3dMenu.syncMenuSummary());
+  await page.evaluate(() => window.__pb3dMenu.syncMenuSummary());
 }
 
 async function captureMatch(cfg) {
@@ -108,6 +108,32 @@ async function captureRosterCloseup(cfg) {
   await page.screenshot({ path: path.join(OUT, cfg.shot) });
 }
 
+async function captureSinglesSmoke() {
+  await page.reload({ waitUntil: 'networkidle' });
+  await selectOption('mode', 'singles');
+  await selectOption('venue', 'park');
+  await selectOption('palette', 'blue');
+  await selectOption('tod', 'day');
+  await page.check('input[name="difficulty"][value="4.5"]', { force: true });
+  await page.click('#startBtn');
+  await page.waitForTimeout(900);
+  const snap = await page.evaluate(() => {
+    const g = window.__game;
+    const callout = document.getElementById('callout');
+    return {
+      mode: g && g.mode,
+      players: g && g.players && g.players.length,
+      state: g && g.state,
+      callout: callout && callout.textContent
+    };
+  });
+  expect(snap.mode === 'singles', 'singles match did not boot in singles mode');
+  expect(snap.players === 2, 'singles match did not create exactly two players');
+  expect(snap.state === 'serve', 'singles match did not reach serve state');
+  expect(/^\d+–\d+$/.test(snap.callout), 'singles HUD did not use two-number scoring');
+  await page.screenshot({ path: path.join(OUT, 'singles-court.png') });
+}
+
 await captureMatch({ venue: 'park', palette: 'blue', tod: 'day', menuShot: 'menu-day.png', courtShot: 'court.png', wait: 850 });
 await captureMatch({ venue: 'park', palette: 'green', tod: 'night', menuShot: 'menu-park-green-night.png', courtShot: 'court-night.png', wait: 950 });
 await captureMatch({ venue: 'tropical', palette: 'blue', tod: 'day', menuShot: 'menu-tropical-day.png', courtShot: 'court-tropical-day.png', wait: 850 });
@@ -115,8 +141,10 @@ await captureMatch({ venue: 'tropical', palette: 'green', tod: 'night', menuShot
 await captureMatch({ venue: 'indoor', palette: 'blue', menuShot: 'menu-indoor-blue.png', courtShot: 'court-indoor-blue.png', wait: 850 });
 await captureMatch({ venue: 'indoor', palette: 'green', menuShot: 'menu-indoor-green.png', courtShot: 'court-indoor-green.png', wait: 850 });
 await captureRosterCloseup({ venue: 'park', palette: 'blue', tod: 'day', shot: 'roster-closeup.png' });
+await captureSinglesSmoke();
 
 await page.reload({ waitUntil: 'networkidle' });
+await selectOption('mode', 'doubles');
 await selectOption('venue', 'park');
 await selectOption('palette', 'blue');
 await selectOption('tod', 'day');

@@ -2,8 +2,8 @@
  * game.js — Orchestrator. Wires Three.js rendering to the pure logic layer,
  * runs the match state machine, camera, players, ball and HUD.
  * Ported from the original Picklelife js/game.js (ESM). Audio, character
- * skinning, venues/night mode and the 2D-shell hooks are dropped; the doubles
- * gameplay, hit model, momentum aim and camera are preserved 1:1.
+ * skinning, venues/night mode and the 2D-shell hooks are dropped; the core
+ * gameplay feel, hit model, momentum aim and camera are preserved 1:1.
  * ==========================================================================*/
 'use strict';
 
@@ -106,6 +106,10 @@ function normalizeDifficulty(d) {
   return 'normal';
 }
 
+function normalizeMode(m) {
+  return m === 'singles' ? 'singles' : 'doubles';
+}
+
 export function Game(opts) {
   this.opts = opts || {};
   this.canvas = opts.canvas;
@@ -113,6 +117,7 @@ export function Game(opts) {
   this.audio = opts.audio || null;
   this.assets = opts.assets || null;
   this.difficulty = normalizeDifficulty(opts.difficulty);
+  this.mode = normalizeMode(opts.mode);
   this.levelMeta = DIFFICULTY_META[this.difficulty] || DIFFICULTY_META.normal;
   this.venue = opts.venue || 'park';
   this.courtPalette = opts.courtPalette || 'blue';
@@ -181,8 +186,8 @@ Game.prototype._initWorld = function () {
   this._syncOverhead(); // honor an initial Top-Down camMode
   this.ball = Physics.makeBall();
 
-  // DOUBLES roster: near team = human (slot 0) + CPU partner (slot 1);
-  // far team = two CPUs. Fixed team palettes so all four read apart.
+  // Roster: doubles keeps the classic four-player setup; singles uses the
+  // human plus the existing male opponent visual slot.
   var palettes = {
     nearYou: {
       jersey: 0xff7a1f, shorts: 0x20283c, paddle: 0x2bd4ff, shoe: 0xf6f8ff,
@@ -220,13 +225,20 @@ Game.prototype._initWorld = function () {
       ai: isHuman ? null : AI.makeAI(self.difficulty), aiSwingTimer: 0
     };
   }
-  this.players = [
-    entry('near', 0, true,  palettes.nearYou),
-    entry('near', 1, false, palettes.nearMate),
-    entry('far',  0, false, palettes.farA),
-    entry('far',  1, false, palettes.farB)
-  ];
-  if (this.partnerDiff) this.players[1].ai = AI.makeAI(this.partnerDiff);
+  if (this.mode === 'singles') {
+    this.players = [
+      entry('near', 0, true,  palettes.nearYou),
+      entry('far',  0, false, palettes.farA)
+    ];
+  } else {
+    this.players = [
+      entry('near', 0, true,  palettes.nearYou),
+      entry('near', 1, false, palettes.nearMate),
+      entry('far',  0, false, palettes.farA),
+      entry('far',  1, false, palettes.farB)
+    ];
+  }
+  if (this.partnerDiff && this.mode === 'doubles') this.players[1].ai = AI.makeAI(this.partnerDiff);
   this.human = this.players[0].mesh; this.humanPos = this.players[0].pos; this.humanVel = this.players[0].vel;
 
   // "This is YOU" — a subtle ring on the ground under players[0].
@@ -312,7 +324,7 @@ Game.prototype._initWorld = function () {
     this.netFx = { mesh: netFx, age: 0, dur: 0.22 };
   }
 
-  this.match = Rules.makeMatch({ server: 'near' });
+  this.match = Rules.makeMatch({ server: 'near', mode: this.mode });
   this.lastHitCooldown = 0;
   this.swingWindow = 0; this.swingUsed = false; this.swingType = 'fh'; this.swingAim = 0;
   this.swingPower = 'power'; this.swingShot = null;
@@ -330,14 +342,31 @@ Game.prototype._player = function (team, slot) {
   return null;
 };
 
+Game.prototype._teamPlayers = function (team) {
+  var out = [];
+  for (var i = 0; i < this.players.length; i++) {
+    if (this.players[i].team === team) out.push(this.players[i]);
+  }
+  return out;
+};
+
+Game.prototype._opponentsFor = function (team) {
+  var opp = this._teamPlayers(team === 'near' ? 'far' : 'near');
+  var first = opp[0] || null;
+  var second = opp[1] || first;
+  return { a: first, b: second };
+};
+
 // The world-x lane sign a player currently covers (depends on its service court).
 Game.prototype._laneSign = function (p) {
+  if (this.mode === 'singles') return 0;
   var side = (p.slot === Rules.rightSlot(this.match, p.team)) ? 'R' : 'L';
   return Rules.sideX(p.team, side);
 };
 
 // The slot on a team responsible for a given x-lane ("yours/mine").
 Game.prototype._responsibleSlot = function (team, atX) {
+  if (this.mode === 'singles') return 0;
   var sgn = ((atX !== undefined ? atX : this.ball.pos.x) >= 0) ? 1 : -1;
   for (var slot = 0; slot < 2; slot++) {
     var side = (slot === Rules.rightSlot(this.match, team)) ? 'R' : 'L';
@@ -346,13 +375,20 @@ Game.prototype._responsibleSlot = function (team, atX) {
   return 0;
 };
 
-// Doubles starting formation.
+// Starting serve formation.
 Game.prototype._formationServe = function () {
   var srv = Rules.currentServer(this.match);
   var rcv = Rules.currentReceiver(this.match);
   for (var i = 0; i < this.players.length; i++) {
     var p = this.players[i];
     var fwd = (p.team === 'near') ? 1 : -1;       // +z near, -z far
+    if (this.mode === 'singles') {
+      var info = p.team === srv.team ? srv : rcv;
+      p.pos.x = Rules.sideX(p.team, info.side) * (C.HALF_W * 0.5);
+      p.pos.z = fwd * (C.HALF_L + 0.45);
+      p.vel.x = 0; p.vel.z = 0;
+      continue;
+    }
     var laneX = this._laneSign(p) * (C.HALF_W * 0.5);
     var z;
     if (p.team === srv.team && p.slot === srv.slot) {
@@ -730,10 +766,14 @@ Game.prototype._moveCPU = function (p, dt) {
   var advance = advanceAllowed ? clamp(p.ai.cfg.smart * 1.6 - 0.2, 0, 1) : 0;
   var tx = laneX, tz = fwd * (backZ + (upZ - backZ) * advance);
 
+  if (this.mode === 'singles') {
+    tx = 0;
+  }
+
   // Only the player whose LANE the ball is heading into goes for it.
   var incoming = this.ball.live && (this.ball.vel.z * fwd > 0);
   var pred = incoming ? AI.predict(this.ball) : null;
-  if (pred && p.slot === this._responsibleSlot(team, pred.x)) {
+  if (pred && (this.mode === 'singles' || p.slot === this._responsibleSlot(team, pred.x))) {
     // Pop-up arc (high apex): stay near kitchen to intercept overhead rather than
     // retreating all the way to the baseline landing point.
     var isPopup = this.ball.spline && this.ball.spline.P1.y >= 2.0;
@@ -743,7 +783,7 @@ Game.prototype._moveCPU = function (p, dt) {
 
   var spd = p.ai.cfg.speed;
   this._stepToward(p.pos, p.vel, tx, tz, spd, dt);
-  this._clampToSide(p.pos, team, lane);
+  this._clampToSide(p.pos, team, this.mode === 'singles' ? null : lane);
 };
 
 /* --------------------------- ball contact ----------------------------- */
@@ -760,6 +800,7 @@ Game.prototype._checkContacts = function (dt) {
   var team = (this.ball.pos.z > 0) ? 'near' : 'far';
   if (rally.lastHitter === team) return;            // our own shot still outgoing
   var p = this._player(team, this._responsibleSlot(team));
+  if (!p) return;
   // Human poach: the human may take a ball assigned to their partner by
   // stepping in front and timing a swing while within reach.
   var human = this.players[0];
@@ -806,7 +847,7 @@ Game.prototype._aimTarget = function (p, intentOverride) {
   return { aim: aim, x: aim * C.HALF_W * 0.92, z: -fwd * landZ, type: sr.type, sp: sr.sp };
 };
 
-// True when all four players are within kitchen zone (|z| < KITCHEN + 0.5).
+// True when every active player is within kitchen zone (|z| < KITCHEN + 0.5).
 Game.prototype._allPlayersAtKitchen = function () {
   for (var i = 0; i < this.players.length; i++) {
     if (Math.abs(this.players[i].pos.z) >= C.KITCHEN + 0.5) return false;
@@ -828,9 +869,10 @@ Game.prototype._computeStability = function (p) {
 
 // Return the player on the opposing team who is furthest from the net.
 Game.prototype._deeperOpponent = function (hitterTeam) {
-  var oppTeam = hitterTeam === 'near' ? 'far' : 'near';
-  var a = this._player(oppTeam, 0), b = this._player(oppTeam, 1);
-  return (Math.abs(a.pos.z) >= Math.abs(b.pos.z)) ? a : b;
+  var opponents = this._opponentsFor(hitterTeam);
+  if (!opponents.a) return null;
+  if (!opponents.b) return opponents.a;
+  return (Math.abs(opponents.a.pos.z) >= Math.abs(opponents.b.pos.z)) ? opponents.a : opponents.b;
 };
 
 // True if player p is outside the sideline far enough for an ATP shot (Pro only).
@@ -950,8 +992,10 @@ Game.prototype._hit = function (p, swingType) {
   var targetX = blend * C.HALF_W * 0.92;
   if (Math.abs(blend) < 0.15) {
     var deeper = this._deeperOpponent(p.team);
-    var awaySign = deeper.pos.x >= 0 ? -1 : 1;
-    targetX = clamp(deeper.pos.x + awaySign * 0.6, -C.HALF_W * 0.92, C.HALF_W * 0.92);
+    if (deeper) {
+      var awaySign = deeper.pos.x >= 0 ? -1 : 1;
+      targetX = clamp(deeper.pos.x + awaySign * 0.6, -C.HALF_W * 0.92, C.HALF_W * 0.92);
+    }
   }
 
   // Smash: ball at or above smash height — steep overhead arc matching the AI path.
@@ -988,12 +1032,9 @@ Game.prototype._cpuHit = function (p) {
     return;
   }
 
-  // Build opponents object for deeper-target strategy (opposing near team).
-  var oppTeam = p.team === 'far' ? 'near' : 'far';
-  var opponents = {
-    a: this._player(oppTeam, 0),
-    b: this._player(oppTeam, 1)
-  };
+  // Build opponents object for deeper-target strategy. Singles duplicates the
+  // lone opponent so the existing AI strategy can stay unchanged.
+  var opponents = this._opponentsFor(p.team);
 
   var shot = AI.chooseShot(p.ai, this.ball, this.match, false, opponents, pos);
   if (shot.isSmash || shot.type === 'erne') visualSwingType = 'smash';
@@ -1029,6 +1070,7 @@ Game.prototype._cpuHit = function (p) {
 // opponents. Checks if the net-partner on the receiving team can intercept.
 // If so, deflects the ball mid-spline toward open court on the hitter's side.
 Game.prototype._checkPoach = function (hitterTeam) {
+  if (this.mode === 'singles') return;
   if (!this.ball.spline) return;
   var sp = this.ball.spline;
   var receivingTeam = hitterTeam === 'near' ? 'far' : 'near';
@@ -1277,6 +1319,8 @@ Game.prototype._updateHUD = function () {
     scores: this.match.scores,
     server: this.match.server,
     serverNum: this.match.serverNum,
+    mode: this.mode,
+    callout: Rules.scoreCallout(this.match),
     msg: this.msgTimer > 0 ? this._msg : null,
     msgOpacity: Math.min(1, this.msgTimer * 2),
     shotName: this.shotTimer > 0 ? this._shotName : null,

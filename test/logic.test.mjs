@@ -156,6 +156,48 @@ test('serve into the wrong (non-diagonal) court faults', () => {
   assert.ok(r.reason === 'serve-wrong-court' || r.reason === 'serve-fault', 'serve fault flagged');
 });
 
+test('singles score callout uses two numbers', () => {
+  const m = Rules.makeMatch({ mode: 'singles', server: 'near' });
+  assert.equal(m.serverNum, 1);
+  assert.equal(Rules.scoreCallout(m), '0–0');
+});
+
+test('singles serving side scores and keeps serve', () => {
+  const m = Rules.makeMatch({ mode: 'singles', server: 'near' });
+  Rules.startRally(m);
+  Rules.onPaddleHit(m, 'near', { volley: false });
+  Rules.onFloor(m, { inBounds: true, x: -C.HALF_W * 0.5, z: -C.HALF_L * 0.74, side: -1 });
+  const r = Rules.onFloor(m, { inBounds: true, x: 0, z: -3, side: -1 });
+  assert.equal(r.point, 'near');
+  assert.equal(r.scored, true);
+  assert.equal(m.scores.near, 1);
+  assert.equal(m.server, 'near');
+  assert.equal(m.serverNum, 1);
+  assert.equal(Rules.scoreCallout(m), '1–0');
+});
+
+test('singles receiver win is immediate side out', () => {
+  const m = Rules.makeMatch({ mode: 'singles', server: 'near' });
+  Rules.startRally(m);
+  const r = Rules.awardRally(m, 'far', 'out-of-bounds');
+  assert.equal(r.sideOut, true);
+  assert.equal(r.secondServer, false);
+  assert.equal(m.server, 'far');
+  assert.equal(m.serverNum, 1);
+  assert.equal(m.serverSlot, 0);
+  assert.equal(Rules.scoreCallout(m), '0–0');
+});
+
+test('singles service side follows serving score parity', () => {
+  const m = Rules.makeMatch({ mode: 'singles', server: 'near' });
+  assert.equal(Rules.currentServer(m).side, 'R');
+  Rules.awardRally(m, 'near', 'no-return');
+  assert.equal(Rules.currentServer(m).side, 'L');
+  Rules.awardRally(m, 'far', 'out-of-bounds');
+  assert.equal(m.server, 'far');
+  assert.equal(Rules.currentServer(m).side, 'R');
+});
+
 /* ---------------------------- ai ---------------------------- */
 test('AI difficulty levels are monotonic on key levers', () => {
   assert.ok(AI.LEVELS.hard.smart > AI.LEVELS.normal.smart);

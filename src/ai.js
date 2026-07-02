@@ -6,6 +6,7 @@
 
 import { COURT, GRAVITY, bezierPoint } from './physics.js';
 import * as Shots from './shots.js';
+import * as Rules from './rules.js';
 import { SPECIALTY, POWER_CAP } from './constants.js';
 
 const C = COURT;
@@ -151,11 +152,8 @@ export function chooseShot(ai, ball, match, isServe, opponents, hitterPos) {
 
   if (isServe) {
     // diagonal deep serve into correct box
-    var sc = (match.scores.far % 2 === 0); // even -> from right (far perspective)
-    // far server's right is -x; diagonal lands in near-left of screen
-    var rightX = -1;
-    var targetXSign = sc ? -rightX : rightX;
-    aim = { x: targetXSign * (C.HALF_W * 0.5), z: (C.HALF_L * 0.75) };
+    var rcv = Rules.currentReceiver(match);
+    aim = { x: Rules.sideX(rcv.team, rcv.side) * (C.HALF_W * 0.5), z: (C.HALF_L * 0.75) };
     apex = 2.4; spin.x = 2.0; type = 'serve'; // light topspin
   } else {
     // Pro Erne/ATP — check hitter position before normal shot logic.

@@ -1,5 +1,5 @@
 /* ============================================================================
- * rules.js — Pickleball rules + rally state machine (doubles, side-out scoring)
+ * rules.js — Pickleball rules + rally state machine (side-out scoring)
  * Pure logic. Drives points from discrete rally events.
  * Ported from the original Picklelife js/rules.js (ESM).
  *
@@ -13,6 +13,7 @@
  *   - Into the net / out of bounds = fault on the hitter.
  *   - Side-out scoring: only the serving side scores. Game to 11, win by 2.
  *   - Doubles serve rotation with serverNum 1/2, serverSlot 0/1, 0-0-2 start.
+ *   - Singles serve rotation with one server per side and two-number scoring.
  * ==========================================================================*/
 'use strict';
 
@@ -22,14 +23,16 @@ export function other(s) { return s === NEAR ? FAR : NEAR; }
 
 export function makeMatch(opts) {
   opts = opts || {};
+  var mode = opts.mode === 'singles' ? 'singles' : 'doubles';
   return {
+    mode: mode,
     scores: { near: 0, far: 0 },
     server: opts.server || NEAR,    // serving TEAM (near/far)
     // Doubles serve rotation. serverNum 1|2 = first/second server of the team's
     // turn; serverSlot 0|1 = which of the team's two players is serving. The
     // start-of-game exception: the first serving team gets only its 2nd server
     // (one fault ends their turn) — the standard "0-0-2" rule.
-    serverNum: opts.serverNum || 2,
+    serverNum: opts.serverNum || (mode === 'singles' ? 1 : 2),
     serverSlot: (opts.serverSlot != null) ? opts.serverSlot : 0,
     pointTo: 11,
     winBy: 2,
@@ -41,6 +44,8 @@ export function makeMatch(opts) {
     history: []
   };
 }
+
+export function isSingles(match) { return match && match.mode === 'singles'; }
 
 // Which slot (0/1) of a team is on its RIGHT/even service court. Slot 0 starts
 // on the right at score 0; teammates swap each point, so this tracks parity.
@@ -56,6 +61,9 @@ export function sideX(team, side) {
 // The current server: team, slot, and which court side it's on.
 export function currentServer(match) {
   var team = match.server, slot = match.serverSlot;
+  if (isSingles(match)) {
+    return { team: team, slot: 0, side: (match.scores[team] % 2 === 0) ? 'R' : 'L', num: 1 };
+  }
   var side = (slot === rightSlot(match, team)) ? 'R' : 'L';
   return { team: team, slot: slot, side: side, num: match.serverNum };
 }
@@ -65,6 +73,7 @@ export function currentServer(match) {
 export function currentReceiver(match) {
   var srv = currentServer(match);
   var team = other(match.server);
+  if (isSingles(match)) return { team: team, slot: 0, side: srv.side };
   var rs = rightSlot(match, team);
   var slot = (srv.side === 'R') ? rs : (1 - rs);
   return { team: team, slot: slot, side: srv.side };
@@ -106,17 +115,17 @@ export function awardRally(match, winner, reason) {
     // rightSlot() flips and currentServer()'s side flips (game.js repositions).
     match.scores[winner] += 1;
     r.point = winner; r.scored = true;
-  } else if (match.serverNum === 1) {
+  } else if (!isSingles(match) && match.serverNum === 1) {
     // First server faulted: the team's SECOND server gets a turn (no point, no swap).
     match.serverNum = 2;
     match.serverSlot = 1 - match.serverSlot; // partner serves
     r.secondServer = true;
   } else {
-    // Second server faulted: SIDE OUT — serve passes to the other team, whose
-    // right/even player serves first as their first server.
+    // SIDE OUT — in doubles this follows the second-server fault; in singles
+    // there is no partner handoff, so any receiver rally win passes the serve.
     match.server = winner;
     match.serverNum = 1;
-    match.serverSlot = rightSlot(match, winner);
+    match.serverSlot = isSingles(match) ? 0 : rightSlot(match, winner);
     r.sideOut = true;
   }
   if (match.rally) match.rally.live = false;
@@ -131,6 +140,12 @@ export function awardRally(match, winner, reason) {
   match.history.push({ winner: winner, reason: reason, score: { near: a, far: b } });
   match.lastEvent = r;
   return r;
+}
+
+export function scoreCallout(match) {
+  var sv = match.server, rv = other(sv);
+  var base = match.scores[sv] + '–' + match.scores[rv];
+  return isSingles(match) ? base : (base + '–' + match.serverNum);
 }
 
 // A paddle strikes the ball. hitter = 'near'|'far'.
