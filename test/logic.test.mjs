@@ -6,8 +6,9 @@ import * as Physics from '../src/physics.js';
 import * as Shots from '../src/shots.js';
 import * as Rules from '../src/rules.js';
 import * as AI from '../src/ai.js';
+import * as Movement from '../src/movement.js';
 import { buildMusicCatalog, sanitizeMusicState } from '../src/audio.js';
-import { STABILITY, POWER_CAP, SPECIALTY } from '../src/constants.js';
+import { STABILITY, POWER_CAP, SPECIALTY, MOVEMENT, HIT } from '../src/constants.js';
 
 const C = Physics.COURT;
 let passed = 0;
@@ -342,6 +343,45 @@ test('AI predict uses spline endpoint when ball.spline is set', () => {
   const pred = AI.predict(ball);
   assert.ok(Math.abs(pred.x - 1.5) < 1e-9 && Math.abs(pred.z - -4.2) < 1e-9,
     'predict returns P2 directly when spline is active');
+});
+
+/* ------------------------- movement helpers ---------------------------- */
+test('movement drive accelerates toward analog input without exceeding max speed', () => {
+  const pos = { x: 0, z: 0 };
+  const vel = { x: 0, z: 0 };
+  Movement.drive(pos, vel, { x: 1, z: 0 }, HIT.HUMAN_SPEED, 1 / 60, {
+    accel: MOVEMENT.HUMAN_ACCEL,
+    decel: MOVEMENT.HUMAN_DECEL,
+    deadzone: MOVEMENT.DEADZONE
+  });
+  assert.ok(vel.x > 0, 'accelerated laterally');
+  assert.ok(Math.hypot(vel.x, vel.z) <= HIT.HUMAN_SPEED + 1e-9, 'within max speed');
+});
+
+test('movement seek brakes as it reaches the target', () => {
+  const pos = { x: 0, z: 0 };
+  const vel = { x: 0, z: 0 };
+  const far = Movement.seek(pos, vel, { x: 4, z: 0 }, 5, 1 / 60, {
+    accel: 100,
+    decel: 100,
+    arrive: 1,
+    stop: 0.01
+  });
+  assert.ok(far.desiredSpeed > 4.9, 'far target requests full speed');
+  pos.x = 0.8; vel.x = 0; vel.z = 0;
+  const near = Movement.seek(pos, vel, { x: 1, z: 0 }, 5, 1 / 60, {
+    accel: 100,
+    decel: 100,
+    arrive: 1,
+    stop: 0.01
+  });
+  assert.ok(near.desiredSpeed < far.desiredSpeed, 'near target requests a slower arrival speed');
+});
+
+test('movement visual classifier distinguishes shuffle and backpedal', () => {
+  assert.equal(Movement.classifyVisual({ side: 3, forward: 0.5 }, 3.04, true), 'shuffle');
+  assert.equal(Movement.classifyVisual({ side: 0.2, forward: -2 }, 2.01, true), 'backpedal');
+  assert.equal(Movement.classifyVisual({ side: 0, forward: 0 }, 0, true), 'ready');
 });
 
 /* ---------------------------- audio helpers ---------------------------- */

@@ -18,6 +18,7 @@ import * as THREE from 'three';
 import { cloneModelScene } from './assets.js';
 
 function pivot() { return new THREE.Object3D(); }
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
 function sphere(r, mat, sx, sy, sz) {
   var m = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 14), mat);
   if (sx !== undefined) m.scale.set(sx, sy, sz);
@@ -198,6 +199,11 @@ function configureAuthoredModel(model, item) {
 
 function clipKey(name) {
   name = String(name || '').toLowerCase();
+  if (/shuffle|strafe|side/.test(name)) return 'shuffle';
+  if (/backpedal|backward|back/.test(name)) return 'backpedal';
+  if (/lunge|reach/.test(name)) return 'lunge';
+  if (/split/.test(name)) return 'split';
+  if (/plant|brace/.test(name)) return 'plant';
   if (/ready/.test(name)) return 'ready';
   if (/idle|stand/.test(name)) return 'idle';
   if (/run|jog|walk|move/.test(name)) return 'run';
@@ -311,7 +317,9 @@ function installAuthoredModel(api, opts) {
   var baseSwing = api.swing;
 
   function playLoop(name) {
-    var action = actions[name];
+    var fallback = (name === 'shuffle' || name === 'backpedal' || name === 'lunge') ? 'run' :
+      ((name === 'split' || name === 'plant') ? 'ready' : name);
+    var action = actions[name] || actions[fallback];
     if (!action || api.authored.locomotion === action) return;
     action.reset().setLoop(THREE.LoopRepeat, Infinity).fadeIn(0.12).play();
     if (api.authored.locomotion) api.authored.locomotion.fadeOut(0.12);
@@ -344,7 +352,8 @@ function installAuthoredModel(api, opts) {
           this.authored.active = null;
           this.authored.activeName = '';
         }
-        playLoop(st && st.speed > 0.15 ? 'run' : ((st && st.ready && actions.ready) ? 'ready' : 'idle'));
+        var visualMove = st && st.visualMove;
+        playLoop(visualMove || (st && st.speed > 0.15 ? 'run' : ((st && st.ready && actions.ready) ? 'ready' : 'idle')));
       }
       syncAuthoredArms(this);
       if (this.authored.usesPaddleSocket && this.rig && this.rig.paddleBlade) {
@@ -516,6 +525,8 @@ export function makePrimitivePlayer(opts) {
     st = st || {};
     this._t += dt;
     var speed = st.speed || 0, moving = speed > 0.15, t = this._t;
+    var visualMove = st.visualMove || (moving ? 'run' : (st.ready ? 'ready' : 'idle'));
+    var localSide = st.localSide || 0, localForward = st.localForward || 0;
 
     if (st.facing !== undefined) {
       this._facing += angDelta(this._facing, st.facing) * Math.min(1, dt * 10);
@@ -524,19 +535,63 @@ export function makePrimitivePlayer(opts) {
 
     // Distance-based stride: the leg cycle advances with ground actually
     // covered (not wall-clock time), so the feet never "run in place".
-    this._stride += speed * dt * 2.9;
+    this._stride += speed * dt * (visualMove === 'shuffle' ? 4.1 : 2.9);
     var gait = moving ? Math.sin(this._stride) : Math.sin(t * 2) * 0.1;
     var amp = moving ? Math.min(0.85, 0.3 + speed * 0.12) : 0.06;
     // a small vertical bounce timed to each footfall (twice per cycle)
     var bob = Math.sin(t * 2) * 0.012;
-    pelvis.position.y = 0.62 + bob + (moving ? Math.abs(Math.sin(this._stride)) * 0.035 : 0);
-    legL.hip.rotation.x = gait * amp;
-    legR.hip.rotation.x = -gait * amp;
-    legL.knee.rotation.x = Math.max(0, -gait) * amp * 1.3 + 0.08;
-    legR.knee.rotation.x = Math.max(0, gait) * amp * 1.3 + 0.08;
-    armL.shoulder.rotation.x = -gait * amp * 0.7;
+    var splitHop = visualMove === 'split' ? Math.sin(Math.max(0, st.split || 0) / 0.20 * Math.PI) * 0.035 : 0;
+    pelvis.position.y = 0.62 + bob + splitHop + (moving ? Math.abs(Math.sin(this._stride)) * 0.035 : 0);
+    pelvis.rotation.x = 0;
+    pelvis.rotation.z = 0;
+    legL.hip.rotation.z = 0; legR.hip.rotation.z = 0;
+    legL.knee.rotation.z = 0; legR.knee.rotation.z = 0;
+
+    if (visualMove === 'shuffle') {
+      var sideSign = localSide >= 0 ? 1 : -1;
+      pelvis.position.y -= 0.025;
+      pelvis.rotation.z = -sideSign * Math.min(0.12, Math.abs(localSide) * 0.025);
+      legL.hip.rotation.x = 0.10 + gait * amp * 0.16;
+      legR.hip.rotation.x = 0.10 - gait * amp * 0.16;
+      legL.hip.rotation.z = -sideSign * (0.20 + Math.max(0, gait) * 0.10);
+      legR.hip.rotation.z = -sideSign * (0.20 + Math.max(0, -gait) * 0.10);
+      legL.knee.rotation.x = 0.22 + Math.max(0, -gait) * amp * 0.55;
+      legR.knee.rotation.x = 0.22 + Math.max(0, gait) * amp * 0.55;
+    } else if (visualMove === 'backpedal') {
+      pelvis.rotation.x = 0.08;
+      legL.hip.rotation.x = -gait * amp * 0.74;
+      legR.hip.rotation.x = gait * amp * 0.74;
+      legL.knee.rotation.x = Math.max(0, gait) * amp * 1.1 + 0.12;
+      legR.knee.rotation.x = Math.max(0, -gait) * amp * 1.1 + 0.12;
+    } else if (visualMove === 'plant' || visualMove === 'split') {
+      pelvis.position.y -= visualMove === 'plant' ? 0.045 : 0.025;
+      pelvis.rotation.x = -0.04;
+      legL.hip.rotation.x = 0.18;
+      legR.hip.rotation.x = 0.18;
+      legL.hip.rotation.z = -0.18;
+      legR.hip.rotation.z = 0.18;
+      legL.knee.rotation.x = 0.34;
+      legR.knee.rotation.x = 0.34;
+    } else if (visualMove === 'lunge') {
+      var reachSign = ((st.ballX || 0) - root3.position.x) >= 0 ? 1 : -1;
+      pelvis.position.y -= 0.060;
+      pelvis.rotation.z = -reachSign * 0.18;
+      legL.hip.rotation.x = 0.22;
+      legR.hip.rotation.x = 0.22;
+      legL.hip.rotation.z = reachSign > 0 ? -0.28 : -0.04;
+      legR.hip.rotation.z = reachSign > 0 ? 0.04 : 0.28;
+      legL.knee.rotation.x = reachSign > 0 ? 0.46 : 0.18;
+      legR.knee.rotation.x = reachSign > 0 ? 0.18 : 0.46;
+    } else {
+      legL.hip.rotation.x = gait * amp;
+      legR.hip.rotation.x = -gait * amp;
+      legL.knee.rotation.x = Math.max(0, -gait) * amp * 1.3 + 0.08;
+      legR.knee.rotation.x = Math.max(0, gait) * amp * 1.3 + 0.08;
+      pelvis.rotation.x = moving ? (localForward < -0.1 ? 0.07 : -0.08) : 0;
+    }
+    armL.shoulder.rotation.x = -gait * amp * (visualMove === 'shuffle' ? 0.25 : 0.7);
     armL.shoulder.rotation.z = 0.18; armL.elbow.rotation.x = -0.5; // off arm splays out (+x); elbow flexes FORWARD (-x rot)
-    pelvis.rotation.x = moving ? -0.08 : 0;
+    neck.rotation.y = clamp(((st.ballX || 0) - root3.position.x) * 0.08, -0.25, 0.25);
 
     if (this._swing > 0) {
       this._swing -= dt;
@@ -582,9 +637,10 @@ export function makePrimitivePlayer(opts) {
     } else {
       // ready: paddle up & forward, body square
       upper.rotation.y += (0 - upper.rotation.y) * Math.min(1, dt * 12);
-      armR.shoulder.rotation.x = -0.85 - (moving ? -gait * amp * 0.3 : 0);
-      armR.shoulder.rotation.z = -0.18;  // paddle held up in front, slightly right
-      armR.elbow.rotation.x = -1.05;     // elbow flexes FORWARD so the paddle is in front
+      var brace = (visualMove === 'plant' || visualMove === 'split' || visualMove === 'lunge') ? 1 : 0;
+      armR.shoulder.rotation.x = -0.85 - (moving ? -gait * amp * 0.3 : 0) - brace * 0.10;
+      armR.shoulder.rotation.z = -0.18 - brace * 0.08;  // paddle held up in front, slightly right
+      armR.elbow.rotation.x = -1.05 + brace * 0.10;     // elbow flexes FORWARD so the paddle is in front
     }
 
     bladeRef.getWorldPosition(this.paddleWorld);

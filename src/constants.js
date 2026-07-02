@@ -80,6 +80,23 @@ export const HIT = {
   HUMAN_SPEED: 5.2
 };
 
+// Player movement tuning. Top speeds remain sourced from HIT/AI difficulty;
+// these values shape how players accelerate, brake, recover, and visually plant.
+export const MOVEMENT = {
+  HUMAN_ACCEL: 28.0,
+  HUMAN_DECEL: 34.0,
+  CPU_ACCEL: 18.0,
+  CPU_DECEL: 24.0,
+  CPU_ARRIVE: 0.55,
+  CPU_STOP: 0.08,
+  DEADZONE: 0.05,
+  PLANT_SPEED: 2.8,
+  PLANT_TURN_DOT: 0.15,
+  LUNGE_DIST: 1.15,
+  SPLIT_STEP_TIME: 0.20,
+  RECOVER_SHADE_X: 0.45
+};
+
 // Stability Index tuning — controls hit quality based on player position + velocity at contact.
 // Sweet-spot radius (m) scales with DUPR: low DUPR = tight zone, Pro = generous buffer.
 export const STABILITY = {
