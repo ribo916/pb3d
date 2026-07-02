@@ -51,13 +51,15 @@ export const ASSET_MANIFEST = {
     {
       key: 'player-human-v1',
       label: 'Player 1 authored human model',
-      url: '',
+      url: '/assets/models/players/player-human-v1.glb',
       scope: 'player',
       fallbackKey: 'player-poc',
       playerScale: 1,
       playerOffset: [0, 0, 0],
       playerRotation: [0, 0, 0],
       paddleSocketOffset: [0, 0, 0],
+      paddleSocketRotation: [Math.PI, 0, 0],
+      syncPrimitiveArms: false,
       optional: true
     },
     {

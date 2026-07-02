@@ -2,6 +2,39 @@
  * Usage:
  *   node tools/validate-player-glb.mjs assets/models/players/player-poc.glb
  */
+
+/* Headless texture shims: real authored character GLBs embed compressed
+ * textures (PNG/WebP). three's GLTFLoader decodes images via the DOM
+ * (Image / createObjectURL / fetch / createImageBitmap), which is absent in
+ * Node. These no-op shims let the loader PARSE a textured GLB so we can
+ * inspect geometry, nodes, materials, and clips. Pixels are not needed here. */
+if (typeof globalThis.self === 'undefined') globalThis.self = globalThis;
+if (typeof globalThis.createImageBitmap === 'undefined') {
+  globalThis.createImageBitmap = async () => ({ width: 1, height: 1, close() {} });
+}
+if (typeof globalThis.Image === 'undefined') {
+  globalThis.Image = class {
+    constructor() { this.width = 1; this.height = 1; }
+    set src(_v) { queueMicrotask(() => { if (this.onload) this.onload(); }); }
+  };
+}
+if (typeof globalThis.URL.createObjectURL !== 'function') {
+  const __blobUrls = new Map();
+  let __blobId = 0;
+  globalThis.URL.createObjectURL = (blob) => {
+    const url = 'blob:pb3d/' + (++__blobId);
+    __blobUrls.set(url, blob);
+    return url;
+  };
+  globalThis.URL.revokeObjectURL = (url) => __blobUrls.delete(url);
+  const __nativeFetch = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => (
+    typeof url === 'string' && __blobUrls.has(url)
+      ? new Response(__blobUrls.get(url))
+      : __nativeFetch(url, opts)
+  );
+}
+
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -105,7 +138,20 @@ root.traverse((node) => {
   });
 });
 
-const box = new THREE.Box3().setFromObject(root);
+// Bounds from geometry positions in world space. THREE.Box3.setFromObject
+// collapses SkinnedMesh bounds in the unposed bind state, so compute directly
+// from POSITION attributes (correct for both skinned and static meshes).
+const box = new THREE.Box3();
+const vtx = new THREE.Vector3();
+root.traverse((node) => {
+  if (!node.isMesh || !node.geometry || !node.geometry.attributes.position) return;
+  node.updateWorldMatrix(true, false);
+  const pos = node.geometry.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    vtx.fromBufferAttribute(pos, i).applyMatrix4(node.matrixWorld);
+    box.expandByPoint(vtx);
+  }
+});
 const size = new THREE.Vector3();
 box.getSize(size);
 

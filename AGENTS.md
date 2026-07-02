@@ -261,10 +261,13 @@ The important implementation contract:
 - **Night mode** — add a `nightMode` flag to `scene.build` and lerp sky/fog/light
   intensities + the ball's `emissiveIntensity` (the original raised it to ~1.2 at
   night so the ball stays visible).
-- **Character models** — the branch has an authored-player adapter and generated
-  POC, but the POC is not final art. Keep the primitive rig as gameplay authority
-  and use [`GRAPHICS.md`](GRAPHICS.md) plus `assets/README.md` before replacing
-  player assets.
+- **Character models** — the branch has an authored-player adapter. Player 1
+  (`player-human-v1`) is now a real CC0 Quaternius humanoid; the partner and
+  opponents still use the generated POC. Keep the primitive rig as gameplay
+  authority. To import/replace a player, follow
+  [`PLAYER-IMPORT.md`](PLAYER-IMPORT.md) (download flow +
+  `tools/build-player-model.mjs` + wiring), with [`GRAPHICS.md`](GRAPHICS.md) and
+  `assets/README.md` for the adapter contract.
 - **Singles mode** — the rules/movement are doubles-specific; a singles variant
   would simplify the serve rotation (no serverNum 1/2, no partner) and movement
   (one player per side). Architect via an `opts.mode` on `Game`.

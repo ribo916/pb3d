@@ -6,6 +6,11 @@ with the procedural fallback when any of these files are absent.
 For the broader graphics-overhaul state, visual verification baseline, and next
 character-model priorities, see [`../GRAPHICS.md`](../GRAPHICS.md).
 
+To import a real CC0 humanoid into a `player-*` slot (download flow, the
+`tools/build-player-model.mjs` pipeline, and the traps), see
+[`../PLAYER-IMPORT.md`](../PLAYER-IMPORT.md). `player-human-v1` was built this
+way.
+
 ## Structure
 
 ```text

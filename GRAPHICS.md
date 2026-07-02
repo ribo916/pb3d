@@ -19,8 +19,10 @@ The game now has:
 - Instanced/shared-material repeated props for selected procedural scenery.
 - A generated player-model POC (`assets/models/players/player-poc.glb`) loaded
   through the authored-player adapter.
-- A reserved Player 1 import slot (`player-human-v1`) with fallback to the POC
-  until real licensed/authored character art is provided.
+- Player 1 (`player-human-v1`) filled with a real CC0 Quaternius humanoid
+  (skinned, textured, real idle/ready/run/swing clips) built via
+  `tools/build-player-model.mjs`; see `PLAYER-IMPORT.md`. It still falls back to
+  the POC if the GLB is absent. The partner and two opponents still use the POC.
 - Authored-player identity hooks for color slots, scale/build, hair/headwear
   variants, paddle socket, and animation clip names.
 - Visual-only idle/ready/run/forehand/backhand/serve/smash animation blending.
@@ -114,7 +116,10 @@ Important contracts:
 - Keep music discovery data-driven through `music/catalog.js`; do not introduce
   browser-side folder enumeration.
 
-See `assets/README.md` for the detailed player-model adapter contract.
+See `assets/README.md` for the detailed player-model adapter contract, and
+`PLAYER-IMPORT.md` for the Quaternius CC0 download + `tools/build-player-model.mjs`
+pipeline used to build `player-human-v1` (and to extend to the rest of the
+roster).
 
 ## Current Player POC Reality Check
 
