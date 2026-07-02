@@ -1,7 +1,7 @@
 # Importing Authored Player Models (Quaternius CC0)
 
-How Player 1 (`player-human-v1`) was built, and how to build the remaining
-roster slots (`player-partner-v1`, `player-opponent-a-v1`,
+How Player 1 (`player-human-v1`) and the CPU partner (`player-partner-v1`) were
+built, and how to build the remaining roster slots (`player-opponent-a-v1`,
 `player-opponent-b-v1`). This is the durable record of the download +
 optimization pipeline and the non-obvious traps in it.
 
@@ -109,8 +109,9 @@ swing**:
 
 ## Wiring a partner / opponent slot (not Player 1)
 
-Player 1 is already wired. The other three roster members are **hardcoded to
-`player-poc`** and need TWO edits, not just a manifest URL:
+Player 1 and the CPU partner (`nearMate`) are already wired. The two opponents
+(`farA`/`farB`) are still **hardcoded to `player-poc`** and need TWO edits, not
+just a manifest URL, to add each:
 
 1. **Add a manifest entry** in `assets/manifest.js` `models[]`, copying the
    `player-human-v1` block. Give it a stable key
@@ -127,23 +128,37 @@ The roster `palette` also carries `skin`/`hair`/`build`/`height`; those still
 tint the eyebrows (`hair` slot) and scale the authored model, but the free
 body's single suit material is **not** recolored (see the team-color trap).
 
-### Female partner specifics
+### Female partner specifics (done — `player-partner-v1`)
 
 - Body: `Superhero_Female_FullBody.gltf` (same UE rig, same clip map, faces +Z).
 - The female base is **also bald** — only eyebrows, no hair mesh. A bald
-  muscular female may not read clearly as female. To add hair you must merge one
-  of the pack's hairstyle meshes (`Hairstyles/Rigged to Head Bone/glTF (Godot
-  -Unreal)/Hair_Long.gltf`, `Hair_Buns.gltf`, etc.) parented to the `Head` bone.
-  **The current script does not do this** — it merges body + animations only.
-  Adding a hairstyle is extra gltf-transform work (merge the hair doc, parent
-  its mesh node to `Head`, keep/skin appropriately) and should be added to
-  `build-player-model.mjs` (e.g. a `hairMesh` config field) when first needed.
+  muscular female didn't read clearly as female, so `player-partner-v1` merges
+  a hairstyle mesh via the `hairMesh` config field (added to
+  `build-player-model.mjs` for this): it reads a second glTF (e.g.
+  `Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_Long.gltf`),
+  **retargets its skin onto the base skeleton by bone name** — the same
+  by-name-matching trick used for animation channels above, not a static parent
+  to the `Head` bone, since the hairstyle ships pre-rigged to the shared UE
+  rig — disposes the hair doc's now-unreferenced duplicate skeleton copy, and
+  tags the merged mesh `variantGroup: 'hair'` / `variantValue: '<hairVariantValue>'`
+  so the adapter shows it only for roster members with a matching `hairStyle`.
+  Reuse `hairMesh` (e.g. `Hair_Buns.gltf`) for either opponent if they need hair.
+
+config.json (the tool only accepts a JSON file path when `hairMesh` is needed,
+not the quick 3-arg form):
+
+```json
+{
+  "base": "<pack>/Base Characters/Godot - UE/Superhero_Female_FullBody.gltf",
+  "anim": "<pack>/Unreal-Godot/UAL1_Standard.glb",
+  "hairMesh": "<pack>/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_Long.gltf",
+  "hairVariantValue": "long",
+  "out": "assets/models/players/player-partner-v1.glb"
+}
+```
 
 ```bash
-node tools/build-player-model.mjs \
-  "<pack>/Base Characters/Godot - UE/Superhero_Female_FullBody.gltf" \
-  "<pack>/Unreal-Godot/UAL1_Standard.glb" \
-  assets/models/players/player-partner-v1.glb
+node tools/build-player-model.mjs config.json
 ```
 
 ## Per-player checklist

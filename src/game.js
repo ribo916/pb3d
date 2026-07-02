@@ -193,7 +193,7 @@ Game.prototype._initWorld = function () {
     nearMate: {
       jersey: 0x21bdb0, shorts: 0x20283c, paddle: 0xffa53c, shoe: 0xf8fbff,
       skin: 0xe8c3ab, hair: 0x5b3724, height: 'medium', build: 'average',
-      hairStyle: 'long', headwear: 'none', playerModelKey: 'player-poc'
+      hairStyle: 'long', headwear: 'none', playerModelKey: 'player-partner-v1'
     },
     farA: {
       jersey: 0xf14668, shorts: 0x30111e, paddle: 0x36d399, shoe: 0xf9fbff,

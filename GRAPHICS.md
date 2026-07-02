@@ -19,10 +19,13 @@ The game now has:
 - Instanced/shared-material repeated props for selected procedural scenery.
 - A generated player-model POC (`assets/models/players/player-poc.glb`) loaded
   through the authored-player adapter.
-- Player 1 (`player-human-v1`) filled with a real CC0 Quaternius humanoid
-  (skinned, textured, real idle/ready/run/swing clips) built via
-  `tools/build-player-model.mjs`; see `PLAYER-IMPORT.md`. It still falls back to
-  the POC if the GLB is absent. The partner and two opponents still use the POC.
+- Player 1 (`player-human-v1`) and the CPU partner (`player-partner-v1`) filled
+  with real CC0 Quaternius humanoids (skinned, textured, real idle/ready/run/
+  swing clips) built via `tools/build-player-model.mjs`; see `PLAYER-IMPORT.md`.
+  The partner also merges a pre-rigged hair mesh onto the base skeleton (a
+  reusable `hairMesh` config field on the build tool) since the free female
+  body ships bald. Both still fall back to the POC if their GLB is absent. The
+  two opponents still use the POC.
 - Authored-player identity hooks for color slots, scale/build, hair/headwear
   variants, paddle socket, and animation clip names.
 - Visual-only idle/ready/run/forehand/backhand/serve/smash animation blending.
@@ -91,6 +94,8 @@ assets/
   models/
     players/
       player-poc.glb
+      player-human-v1.glb
+      player-partner-v1.glb
     venues/
       park-props.glb
       tropical-props.glb
@@ -103,8 +108,10 @@ assets/
 Important contracts:
 
 - `assets/manifest.js` is the runtime slot map.
-- `player-human-v1` is the Player 1-only authored character slot. Its URL is
-  empty until real art is available and it falls back to `player-poc`.
+- `player-human-v1` (Player 1) and `player-partner-v1` (CPU partner/`nearMate`)
+  are filled authored character slots; both fall back to `player-poc` if their
+  GLB is absent or fails to load. `player-opponent-a-v1` / `player-opponent-b-v1`
+  are not yet added — those roster members still use `player-poc` directly.
 - `src/assets.js` loads optional GLB assets and provides fallback-safe access.
 - Optional entries should stay optional until their procedural fallback has been
   replaced and verified.
@@ -192,13 +199,16 @@ contract is:
 
 ### Future Roster-Wide Players
 
-After Player 1 reaches the target quality bar, extend the same visual-only
-authored-model concept to the full doubles roster. Add stable optional manifest
-slots such as `player-partner-v1`, `player-opponent-a-v1`, and
-`player-opponent-b-v1`, each with `fallbackKey: 'player-poc'` until real art is
-available. Keep the primitive rig authoritative for every player, reuse the same
-socket/material/clip contract, and expand the Player 1 screenshot workflow into
-a roster comparison pass before replacing the visible POC for all four players.
+Extend the same visual-only authored-model concept to the rest of the doubles
+roster. `player-partner-v1` (the `nearMate` CPU partner, female Quaternius body
++ merged `Hair_Long` hairstyle) is done. `player-opponent-a-v1` and
+`player-opponent-b-v1` (the `farA`/`farB` CPU slots) still need stable optional
+manifest entries with `fallbackKey: 'player-poc'` until their real art is added.
+Keep the primitive rig authoritative for every player, reuse the same
+socket/material/clip contract, and use `tools/build-player-model.mjs`'s
+`hairMesh` config field (e.g. `Hair_Buns.gltf`) if either opponent needs hair.
+`roster-closeup.png` (via `npm run shots`) is the roster comparison shot — check
+it after adding either remaining slot.
 
 ## Rendering And Visual Priorities
 
@@ -311,7 +321,8 @@ Screenshots inspected included:
 Do not spend the next pass on minor procedural crispness. The visual bottleneck
 is player quality.
 
-Recommended next checkpoint:
+Player 1 (`player-human-v1`) and the CPU partner (`player-partner-v1`) are done
+using this workflow:
 
 1. Decide whether the target is premium stylized or genuinely photoreal.
 2. Pick a real character asset source/workflow.
@@ -320,11 +331,12 @@ Recommended next checkpoint:
 5. Verify paddle socket, contact frame, `paddleWorld`, and gameplay readability.
 6. Compare close-up and gameplay-camera screenshots against the current POC.
 
-After Player 1 is credible, add separate optional roster slots for the partner
-and two opponents and verify them with a roster-wide screenshot workflow. Do not
-replace all four players at once before Player 1 has proven the asset source,
-socket alignment, animation contact frame, mobile budget, and gameplay-camera
-readability.
+The two remaining CPU opponents (`farA`/`farB`) still use the POC. Add
+`player-opponent-a-v1` and `player-opponent-b-v1` the same way — one at a time,
+verified with `roster-closeup.png` — rather than replacing both at once. Do not
+replace the last POC slots before each has proven the asset source, socket
+alignment, animation contact frame, mobile budget, and gameplay-camera
+readability, same as Player 1 and the partner did.
 
-Only after the player quality bar is credible should broader venue/material
-polish resume.
+Only after the full roster is credible should broader venue/material polish
+resume.
