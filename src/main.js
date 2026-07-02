@@ -44,6 +44,39 @@ const MENU_META = {
   }
 };
 
+// Keep in sync with the player-scoped entries in assets/manifest.js.
+const CHARACTER_CATALOG = [
+  { key: 'player-human-v1', label: 'Player 1', portrait: '/assets/images/characters/player-human-v1.png' },
+  { key: 'player-partner-v1', label: 'Partner', portrait: '/assets/images/characters/player-partner-v1.png' },
+  { key: 'player-opponent-a-v1', label: 'Opponent A', portrait: '/assets/images/characters/player-opponent-a-v1.png' },
+  { key: 'player-opponent-b-v1', label: 'Opponent B', portrait: '/assets/images/characters/player-opponent-b-v1.png' }
+];
+
+const ALL_POSITIONS = ['nearYou', 'nearMate', 'farA', 'farB'];
+const POSITION_LABELS = { nearYou: 'You', nearMate: 'Partner', farA: 'Opponent A', farB: 'Opponent B' };
+
+const DEFAULT_ROSTER = {
+  nearYou: 'player-human-v1',
+  nearMate: 'player-partner-v1',
+  farA: 'player-opponent-a-v1',
+  farB: 'player-opponent-b-v1'
+};
+
+function characterByKey(key) {
+  return CHARACTER_CATALOG.find(function (c) { return c.key === key; }) || CHARACTER_CATALOG[0];
+}
+
+// Doubles uses all four slots; singles only plays nearYou vs farA
+// (see the mode-conditional roster build in src/game.js _initWorld).
+function activePositions() {
+  return checkedValue('mode', 'doubles') === 'singles' ? ['nearYou', 'farA'] : ALL_POSITIONS;
+}
+
+function positionLabel(position) {
+  if (position === 'farA' && checkedValue('mode', 'doubles') === 'singles') return 'Opponent';
+  return POSITION_LABELS[position] || position;
+}
+
 const IS_TOUCH_DEVICE = navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
 
 function checkedValue(name, fallback) {
@@ -59,7 +92,13 @@ function readMenuConfig() {
     timeOfDay: venue === 'indoor' ? 'day' : checkedValue('tod', 'day'),
     difficulty: checkedValue('difficulty', '4.0'),
     musicStart: checkedValue('musicStart', 'muted'),
-    cameraMode: checkedValue('cameraMode', 'follow')
+    cameraMode: checkedValue('cameraMode', 'follow'),
+    roster: {
+      nearYou: checkedValue('char-nearYou', DEFAULT_ROSTER.nearYou),
+      nearMate: checkedValue('char-nearMate', DEFAULT_ROSTER.nearMate),
+      farA: checkedValue('char-farA', DEFAULT_ROSTER.farA),
+      farB: checkedValue('char-farB', DEFAULT_ROSTER.farB)
+    }
   };
 }
 
@@ -255,6 +294,7 @@ async function startMatch(difficulty, config) {
     courtPalette: config.courtPalette,
     timeOfDay: config.timeOfDay,
     cameraMode: config.cameraMode,
+    roster: config.roster,
     assets: assetPack
   });
   input = makeInput($('game'), $('joy'), $('joyKnob'));
@@ -388,6 +428,60 @@ $('musicVolume').addEventListener('input', function () {
   audio.music.setVolume(Number($('musicVolume').value) / 100);
   updateAudioUI();
 });
+
+function updateCharactersSummary() {
+  $('menuCharactersSummary').textContent = activePositions().map(function (position) {
+    var key = checkedValue('char-' + position, DEFAULT_ROSTER[position]);
+    return characterByKey(key).label;
+  }).join(' · ');
+}
+
+function renderCharacterModal() {
+  $('characterBody').innerHTML = activePositions().map(function (position) {
+    var currentKey = checkedValue('char-' + position, DEFAULT_ROSTER[position]);
+    var cards = CHARACTER_CATALOG.map(function (c) {
+      return '<button class="character-card' + (c.key === currentKey ? ' active' : '') + '" data-position="' + position + '" data-char="' + c.key + '">' +
+        '<img src="' + c.portrait + '" alt="' + c.label + '">' +
+        '<span>' + c.label + '</span>' +
+        '</button>';
+    }).join('');
+    return '<div class="character-position-block">' +
+      '<div class="character-position-label">' + positionLabel(position) + '</div>' +
+      '<div class="character-grid">' + cards + '</div>' +
+      '</div>';
+  }).join('');
+}
+
+function openCharacterModal() {
+  renderCharacterModal();
+  $('characterModal').classList.add('active');
+}
+
+function closeCharacterModal() {
+  $('characterModal').classList.remove('active');
+  updateCharactersSummary();
+}
+
+updateCharactersSummary();
+document.querySelectorAll('input[name="mode"]').forEach(function (el) {
+  el.addEventListener('change', updateCharactersSummary);
+});
+
+$('menuCharactersBtn').addEventListener('click', function (e) { e.preventDefault(); openCharacterModal(); });
+$('menuCharactersBtn').addEventListener('touchstart', function (e) { e.preventDefault(); openCharacterModal(); }, { passive: false });
+
+$('characterBody').addEventListener('click', function (e) {
+  var btn = e.target.closest('[data-char]');
+  if (!btn) return;
+  var position = btn.getAttribute('data-position');
+  var input = document.querySelector('input[name="char-' + position + '"][value="' + btn.getAttribute('data-char') + '"]');
+  if (input) input.checked = true;
+  renderCharacterModal();
+});
+
+$('characterCloseBtn').addEventListener('click', function (e) { e.preventDefault(); closeCharacterModal(); });
+$('characterDoneBtn').addEventListener('click', function (e) { e.preventDefault(); closeCharacterModal(); });
+$('characterModal').addEventListener('click', function (e) { if (e.target === $('characterModal')) closeCharacterModal(); });
 
 $('infoBtn').addEventListener('click', function (e) { e.preventDefault(); $('infoModal').classList.add('active'); });
 $('infoBtn').addEventListener('touchstart', function (e) { e.preventDefault(); $('infoModal').classList.add('active'); }, { passive: false });

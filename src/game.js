@@ -124,6 +124,7 @@ export function Game(opts) {
   this.courtPalette = opts.courtPalette || 'blue';
   this.timeOfDay = this.venue === 'indoor' ? 'day' : (opts.timeOfDay || 'day');
   this.partnerDiff = opts.partnerDiff || null;
+  this.roster = opts.roster || {};
   this.onMatchOver = opts.onMatchOver || null;
   this.isMobile = !!opts.isMobile;
   this.state = STATE.MENU;
@@ -189,30 +190,52 @@ Game.prototype._initWorld = function () {
 
   // Roster: doubles keeps the classic four-player setup; singles uses the
   // human plus the existing male opponent visual slot.
-  var palettes = {
-    nearYou: {
+  //
+  // Cosmetics (colors, hairStyle, headwear) are keyed by CHARACTER, not by
+  // slot: each authored GLB only has hair/headwear variant nodes for the
+  // look it shipped with, so a slot's opts must travel with whichever
+  // character the picker assigns there, or a swapped-in character can end
+  // up hairless/mismatched (e.g. forcing hairStyle:'short' onto a model
+  // that only has a 'long' hair node hides its hair entirely).
+  var CHARACTERS = {
+    'player-human-v1': {
       jersey: 0xff7a1f, shorts: 0x20283c, paddle: 0x2bd4ff, shoe: 0xf6f8ff,
       skin: 0xe4bf9f, hair: 0x241814, height: 'tall', build: 'average',
       hairStyle: 'short', headwear: 'headband', headband: 0x2bd4ff,
       playerModelKey: 'player-human-v1'
     },
-    nearMate: {
+    'player-partner-v1': {
       jersey: 0x21bdb0, shorts: 0x20283c, paddle: 0xffa53c, shoe: 0xf8fbff,
       skin: 0xe8c3ab, hair: 0x5b3724, height: 'medium', build: 'average',
       hairStyle: 'long', headwear: 'none', playerModelKey: 'player-partner-v1'
     },
-    farA: {
+    'player-opponent-a-v1': {
       jersey: 0xf14668, shorts: 0x30111e, paddle: 0x36d399, shoe: 0xf9fbff,
       skin: 0xf0cbb2, hair: 0xd5bb58, height: 'tower', build: 'slim',
       hairStyle: 'short', headwear: 'cap', headband: 0xf4f5f6,
       playerModelKey: 'player-opponent-a-v1'
     },
-    farB: {
+    'player-opponent-b-v1': {
       jersey: 0xff7aa8, shorts: 0x55233a, paddle: 0xc8ff65, shoe: 0xfffbff,
       skin: 0xedc6b0, hair: 0x4a2b22, height: 'medium', build: 'average',
       hairStyle: 'ponytail', headwear: 'none', headband: 0xffd166,
       playerModelKey: 'player-opponent-b-v1'
     }
+  };
+  var DEFAULT_ROSTER = {
+    nearYou: 'player-human-v1', nearMate: 'player-partner-v1',
+    farA: 'player-opponent-a-v1', farB: 'player-opponent-b-v1'
+  };
+  var roster = this.roster;
+  function characterFor(position) {
+    var key = roster[position] || DEFAULT_ROSTER[position];
+    return CHARACTERS[key] || CHARACTERS[DEFAULT_ROSTER[position]];
+  }
+  var palettes = {
+    nearYou: characterFor('nearYou'),
+    nearMate: characterFor('nearMate'),
+    farA: characterFor('farA'),
+    farB: characterFor('farB')
   };
   this.youColor = palettes.nearYou.jersey;
 

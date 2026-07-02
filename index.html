@@ -355,6 +355,8 @@
       flex-shrink: 0;
     }
     .menu-music-btn:active { opacity: 0.78; }
+    /* Hidden state radios backing the character picker modal */
+    .menu-char-radio { position: absolute; opacity: 0; pointer-events: none; width: 0; height: 0; }
     /* Actions */
     .menu-actions { display: flex; flex-direction: column; gap: 10px; }
     #startBtn {
@@ -696,6 +698,58 @@
       }
     }
 
+    /* ---- Character picker modal (reuses .music-panel chrome) ---- */
+    #characterModal { display: none; position: fixed; inset: 0; z-index: 45;
+      background: rgba(5, 14, 25, 0.78); backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px); align-items: center; justify-content: center;
+      padding: 18px; }
+    #characterModal.active { display: flex; }
+    .character-position-block + .character-position-block { margin-top: 16px; }
+    .character-position-label {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      color: rgba(232, 244, 255, 0.48);
+      margin-bottom: 8px;
+    }
+    .character-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+      gap: 10px;
+    }
+    .character-card {
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.03);
+      color: #fff;
+      cursor: pointer;
+      font-family: inherit;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items: center;
+    }
+    .character-card img {
+      width: 100%;
+      aspect-ratio: 3 / 4;
+      object-fit: cover;
+      object-position: 50% 8%;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.05);
+    }
+    .character-card span {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.6px;
+    }
+    .character-card.active {
+      border-color: rgba(54,208,111,0.66);
+      background: rgba(54,208,111,0.11);
+      box-shadow: inset 0 0 0 1px rgba(54,208,111,0.24);
+    }
+
     /* ---- Info / controls modal ---- */
     #infoModal { display: none; position: fixed; inset: 0; z-index: 40;
       background: rgba(6,18,31,0.75); backdrop-filter: blur(12px);
@@ -819,6 +873,24 @@
           <input id="musicVolume" type="range" min="0" max="100" step="1" value="72" />
         </div>
         <button class="music-ctrl" id="musicDoneBtn">DONE</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Character picker modal -->
+  <div id="characterModal">
+    <div class="music-panel">
+      <div class="music-panel-head">
+        <div>
+          <h2>CHARACTERS</h2>
+          <p>Pick who plays each position.</p>
+        </div>
+        <button class="music-close" id="characterCloseBtn" aria-label="Close character picker">✕</button>
+      </div>
+      <div id="characterBody"></div>
+      <div class="music-footer">
+        <div></div>
+        <button class="music-ctrl" id="characterDoneBtn">DONE</button>
       </div>
     </div>
   </div>
@@ -988,6 +1060,33 @@
               <div class="menu-swatch swatch-green"><strong>Green</strong></div>
             </label>
           </div>
+        </div>
+
+        <div class="menu-compact-row">
+          <div class="menu-row-label">Players</div>
+          <div class="menu-row-music">
+            <div class="menu-music-copy">
+              <strong>Characters</strong>
+              <span id="menuCharactersSummary">Player 1 · Partner · Opponent A · Opponent B</span>
+            </div>
+            <button id="menuCharactersBtn" class="menu-music-btn" type="button">Choose</button>
+          </div>
+          <input class="menu-char-radio" type="radio" name="char-nearYou" value="player-human-v1" checked>
+          <input class="menu-char-radio" type="radio" name="char-nearYou" value="player-partner-v1">
+          <input class="menu-char-radio" type="radio" name="char-nearYou" value="player-opponent-a-v1">
+          <input class="menu-char-radio" type="radio" name="char-nearYou" value="player-opponent-b-v1">
+          <input class="menu-char-radio" type="radio" name="char-nearMate" value="player-human-v1">
+          <input class="menu-char-radio" type="radio" name="char-nearMate" value="player-partner-v1" checked>
+          <input class="menu-char-radio" type="radio" name="char-nearMate" value="player-opponent-a-v1">
+          <input class="menu-char-radio" type="radio" name="char-nearMate" value="player-opponent-b-v1">
+          <input class="menu-char-radio" type="radio" name="char-farA" value="player-human-v1">
+          <input class="menu-char-radio" type="radio" name="char-farA" value="player-partner-v1">
+          <input class="menu-char-radio" type="radio" name="char-farA" value="player-opponent-a-v1" checked>
+          <input class="menu-char-radio" type="radio" name="char-farA" value="player-opponent-b-v1">
+          <input class="menu-char-radio" type="radio" name="char-farB" value="player-human-v1">
+          <input class="menu-char-radio" type="radio" name="char-farB" value="player-partner-v1">
+          <input class="menu-char-radio" type="radio" name="char-farB" value="player-opponent-a-v1">
+          <input class="menu-char-radio" type="radio" name="char-farB" value="player-opponent-b-v1" checked>
         </div>
 
         <div class="menu-compact-row">
