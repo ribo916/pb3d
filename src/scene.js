@@ -16,13 +16,13 @@ const COURT_PALETTES = {
     court: '#1a4a8a',
     kitchen: '#4a9fd8',
     surround: 0x0a2a1e,
-    indoorSurround: 0x24466f
+    indoorSurround: 0x17375f
   },
   green: {
     court: '#1d6a3a',
     kitchen: '#6fbe78',
     surround: 0x4a874f,
-    indoorSurround: 0x4a874f
+    indoorSurround: 0x17375f
   }
 };
 
@@ -84,10 +84,10 @@ const VENUE_PRESETS = {
     ballEmissive: 0x429900, ballEmissiveInt: 0.42,
     ballGlow: 0x7dff36, ballGlowOpacity: 0.12,
     trail: 0x70e529, trailOpacity: 0.42,
-    apron: 0xcad2d8,
-    hallFloor: 0xa6b3bc,
-    wallLower: 0xd6dde4,
-    wallUpper: 0xf3f7fb,
+    apron: 0x17375f,
+    hallFloor: 0x102742,
+    wallLower: 0x17375f,
+    wallUpper: 0x24466f,
     steel: 0x7d8c98,
     curtain: 0x2d4e73,
     ceiling: 0xdfe6ed,
