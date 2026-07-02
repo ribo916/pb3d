@@ -22,10 +22,11 @@ The game now has:
 - Player 1 (`player-human-v1`) and the CPU partner (`player-partner-v1`) filled
   with real CC0 Quaternius humanoids (skinned, textured, real idle/ready/run/
   swing clips) built via `tools/build-player-model.mjs`; see `PLAYER-IMPORT.md`.
-  The partner also merges a pre-rigged hair mesh onto the base skeleton (a
-  reusable `hairMesh` config field on the build tool) since the free female
-  body ships bald. Both still fall back to the POC if their GLB is absent. The
-  two opponents still use the POC.
+  Both merge a pre-rigged hair mesh onto the base skeleton (a reusable
+  `hairMesh` config field on the build tool) since the free bodies ship bald:
+  Player 1 gets `Hair_SimpleParted`, the partner gets `Hair_Long`. Both still
+  fall back to the POC if their GLB is absent. The two opponents still use the
+  POC.
 - Authored-player identity hooks for color slots, scale/build, hair/headwear
   variants, paddle socket, and animation clip names.
 - Visual-only idle/ready/run/forehand/backhand/serve/smash animation blending.
