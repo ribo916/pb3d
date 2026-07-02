@@ -161,24 +161,24 @@ function courtTexture(colors) {
     g.lineTo(X(x2), Z(z2));
     g.stroke();
   }
+  line(0, -C.HALF_L, 0, -C.KITCHEN);
+  line(0, C.KITCHEN, 0, C.HALF_L);
   line(-C.HALF_W, -C.HALF_L, C.HALF_W, -C.HALF_L);
   line(-C.HALF_W, C.HALF_L, C.HALF_W, C.HALF_L);
   line(-C.HALF_W, -C.HALF_L, -C.HALF_W, C.HALF_L);
   line(C.HALF_W, -C.HALF_L, C.HALF_W, C.HALF_L);
   line(-C.HALF_W, -C.KITCHEN, C.HALF_W, -C.KITCHEN);
   line(-C.HALF_W, C.KITCHEN, C.HALF_W, C.KITCHEN);
-  line(0, -C.HALF_L, 0, -C.KITCHEN);
-  line(0, C.KITCHEN, 0, C.HALF_L);
   g.strokeStyle = '#f8fbff';
   g.lineWidth = 7;
+  line(0, -C.HALF_L, 0, -C.KITCHEN);
+  line(0, C.KITCHEN, 0, C.HALF_L);
   line(-C.HALF_W, -C.HALF_L, C.HALF_W, -C.HALF_L);
   line(-C.HALF_W, C.HALF_L, C.HALF_W, C.HALF_L);
   line(-C.HALF_W, -C.HALF_L, -C.HALF_W, C.HALF_L);
   line(C.HALF_W, -C.HALF_L, C.HALF_W, C.HALF_L);
   line(-C.HALF_W, -C.KITCHEN, C.HALF_W, -C.KITCHEN);
   line(-C.HALF_W, C.KITCHEN, C.HALF_W, C.KITCHEN);
-  line(0, -C.HALF_L, 0, -C.KITCHEN);
-  line(0, C.KITCHEN, 0, C.HALF_L);
   g.globalCompositeOperation = 'overlay';
   for (var i = 0; i < 5200; i++) {
     var a = rng() * 0.05;
@@ -186,17 +186,6 @@ function courtTexture(colors) {
     g.fillRect(rng() * W, rng() * H, 1 + rng() * 2, 1 + rng() * 2);
   }
   g.globalCompositeOperation = 'source-over';
-  for (var j = 0; j < 110; j++) {
-    var x = rng() * W;
-    var y = rng() * H;
-    var len = 18 + rng() * 90;
-    g.strokeStyle = 'rgba(255,255,255,' + (0.035 + rng() * 0.055) + ')';
-    g.lineWidth = 1 + rng() * 2;
-    g.beginPath();
-    g.moveTo(x, y);
-    g.lineTo(x + len * (rng() > 0.5 ? 1 : -1), y + (rng() - 0.5) * 10);
-    g.stroke();
-  }
   for (var k = 0; k < 24; k++) {
     var sx = X((rng() * 2 - 1) * C.HALF_W * 0.86);
     var sz = Z((rng() * 2 - 1) * C.HALF_L * 0.86);
@@ -617,19 +606,6 @@ function addCourtAccents(scene, p) {
   rail(2 * C.HALF_W + 0.26, 0.08, 0, -C.HALF_L - 0.11);
   rail(0.08, 2 * C.HALF_L + 0.26, C.HALF_W + 0.11, 0);
   rail(0.08, 2 * C.HALF_L + 0.26, -C.HALF_W - 0.11, 0);
-
-  var badgeMat = new THREE.MeshStandardMaterial({
-    color: p.venueKey === 'indoor' ? 0xffffff : 0xf5fbff,
-    roughness: 0.65,
-    transparent: true,
-    opacity: 0.34
-  });
-  [-1, 1].forEach(function (s) {
-    var badge = new THREE.Mesh(new THREE.PlaneGeometry(1.05, 0.16), badgeMat);
-    badge.rotation.x = -Math.PI / 2;
-    badge.position.set(0, 0.018, s * (C.HALF_L - 0.38));
-    scene.add(badge);
-  });
 }
 
 function addNet(scene) {

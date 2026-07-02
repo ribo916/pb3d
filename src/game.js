@@ -391,7 +391,7 @@ Game.prototype._serverEntry = function () {
 };
 
 Game.prototype.isHumanServe = function () {
-  return this.state === STATE.SERVE && this._serverEntry().isHuman;
+  return this.state === STATE.SERVE && !this.pendingServe && this._serverEntry().isHuman;
 };
 
 Game.prototype.start = function () {
@@ -411,25 +411,55 @@ Game.prototype._clearServeInput = function () {
 Game.prototype._placeServe = function () {
   this._formationServe();
   var s = Rules.currentServer(this.match);
-  var sp = this._player(s.team, s.slot).pos;
-  var fwd = (s.team === 'near') ? 1 : -1;
-  // hold the ball at the server's paddle, just in front toward the net
+  var srvEntry = this._player(s.team, s.slot);
   this.ball.live = false;
-  this.ball.pos = Physics.vec(sp.x + (s.team === 'near' ? 0.3 : -0.3), 0.9, sp.z - fwd * 0.2);
+  this.ball.spline = null;
+  this.ball.pos = this._serveContactPoint(srvEntry);
   this.ball.vel = Physics.vec(0, 0, 0);
   this.ball.spin = Physics.vec(0, 0, 0);
+  this.pendingServe = null;
   this.serveChecked = false;
   this._clearServeInput();
 };
 
 Game.prototype._doServe = function () {
+  if (this.pendingServe) return;
+  var srvEntry = this._serverEntry();
+  var swingDur = srvEntry.mesh._swingDur || 0.44;
+  var contactT = srvEntry.mesh.contactT || 0.5;
+  this.pendingServe = { elapsed: 0, contactDelay: swingDur * contactT };
+  this.ball.live = false;
+  this.ball.spline = null;
+  this.ball.vel = Physics.vec(0, 0, 0);
+  this.ball.spin = Physics.vec(0, 0, 0);
+  this.ball.pos = this._serveContactPoint(srvEntry);
+  srvEntry.mesh.swing('serve');
+};
+
+Game.prototype._serveContactPoint = function (srvEntry) {
+  var fwd = (srvEntry.team === 'near') ? 1 : -1;
+  var rightHandX = (srvEntry.team === 'near') ? 0.3 : -0.3;
+  return Physics.vec(srvEntry.pos.x + rightHandX, 0.88, srvEntry.pos.z - fwd * 0.24);
+};
+
+Game.prototype._servePaddlePoint = function (srvEntry) {
+  var pw = srvEntry.mesh && srvEntry.mesh.paddleWorld;
+  if (pw && Number.isFinite(pw.x) && Number.isFinite(pw.y) && Number.isFinite(pw.z)) {
+    var dx = pw.x - srvEntry.pos.x, dz = pw.z - srvEntry.pos.z;
+    if (Math.abs(dx) < 1.4 && Math.abs(dz) < 1.4 && pw.y > 0.2) {
+      return Physics.vec(pw.x, clamp(pw.y, 0.5, 1.25), pw.z);
+    }
+  }
+  return this._serveContactPoint(srvEntry);
+};
+
+Game.prototype._launchServe = function () {
   Rules.startRally(this.match);
   var s = Rules.currentServer(this.match);
   var rcv = Rules.currentReceiver(this.match);
   var srvEntry = this._player(s.team, s.slot);
-  var sp = srvEntry.pos;
   var fwd = (s.team === 'near') ? 1 : -1;
-  var p0 = Physics.vec(sp.x, 0.85, sp.z - fwd * 0.3);
+  var p0 = this._servePaddlePoint(srvEntry);
   // diagonal target into the correct (cross-court) service box, beyond kitchen
   var targetX = Rules.sideX(rcv.team, rcv.side) * (C.HALF_W * 0.5);
   var targetZ = -fwd * (C.HALF_L * 0.74);
@@ -441,10 +471,10 @@ Game.prototype._doServe = function () {
   this.ball.spline = { P0: p0, P1: P1serve, P2: target, duration: T, elapsed: 0 };
   this.ball.spin = serveSpin; this.ball.live = true; this.ball.pos = Physics.clone(p0);
   Rules.onPaddleHit(this.match, this.match.server, { volley: false });
-  srvEntry.mesh.swing('serve');
   if (this.audio) this.audio.sfx.serve();
   this.cameraShake = Math.max(this.cameraShake, 0.05);
   this._triggerHitEffect();
+  this.pendingServe = null;
   this.state = STATE.RALLY;
   this.lastHitCooldown = HIT.COOLDOWN_SERVE;
 };
@@ -536,15 +566,20 @@ Game.prototype.update = function (dt) {
 Game.prototype._tickServe = function (dt) {
   var s = Rules.currentServer(this.match);
   var srvEntry = this._player(s.team, s.slot);
-  var sp = srvEntry.pos;
-  var fwd = (s.team === 'near') ? 1 : -1;
-  // keep ball glued to the server's paddle
-  this.ball.pos = Physics.vec(sp.x + (s.team === 'near' ? 0.3 : -0.3),
-    0.9 + Math.sin(performance.now() / 200) * 0.03, sp.z - fwd * 0.2);
+  var hold = this._serveContactPoint(srvEntry);
+  if (this.pendingServe) {
+    this.pendingServe.elapsed += dt;
+    this.ball.pos = this._servePaddlePoint(srvEntry);
+    if (this.pendingServe.elapsed >= this.pendingServe.contactDelay) this._launchServe();
+    return;
+  }
+  // keep the ball held at the paddle-side contact point until the serve swing starts
+  this.ball.pos = Physics.vec(hold.x, hold.y + Math.sin(performance.now() / 200) * 0.03, hold.z);
   if (srvEntry.isHuman) {
     if (this.input && this.input.consumeServe()) {
       this.input.consumeSwing();
       // Must be behind the baseline on the server's own side to serve.
+      var fwd = (s.team === 'near') ? 1 : -1;
       if (srvEntry.pos.z * fwd >= C.HALF_L - C.SERVE_LINE_TOL) this._doServe();
       else this._message('Move behind the baseline to serve', 1.2);
     }

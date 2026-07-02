@@ -86,6 +86,9 @@ entries are safe and do not produce missing-file requests.
   prefer `ready` when available and fall back to `idle`. Swing clips are scaled
   to the primitive swing duration, while the primitive rig remains the gameplay
   timing source.
+- Optional manifest field `swingClipOverrides` can remap a requested swing type
+  to another available clip, e.g. `{ serve: 'fh' }` for imported characters whose
+  temporary serve source animation is not a paddle swing.
 - Swing clips should place paddle contact at 50% of a 0.44 s swing clip so they
   line up with `contactT = 0.5`. Do not change gameplay timing to fit the art.
 - Player 1 high-quality target budget is roughly 30k-60k triangles, optimized

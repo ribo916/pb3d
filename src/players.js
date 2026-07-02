@@ -320,7 +320,9 @@ function installAuthoredModel(api, opts) {
   }
 
   function playOnce(name) {
-    var action = actions[name] || actions.fh;
+    var swingOverrides = (record.item && record.item.swingClipOverrides) || {};
+    var actionName = swingOverrides[name] || name;
+    var action = actions[actionName] || actions.fh;
     if (!action) return;
     var clip = action.getClip && action.getClip();
     var dur = api._swingDur || 0.44;
@@ -328,7 +330,7 @@ function installAuthoredModel(api, opts) {
     action.reset().setLoop(THREE.LoopOnce, 1).setEffectiveTimeScale(scale).fadeIn(0.04).play();
     if (api.authored.active && api.authored.active !== action) api.authored.active.fadeOut(0.05);
     api.authored.active = action;
-    api.authored.activeName = actions[name] ? name : 'fh';
+    api.authored.activeName = actions[actionName] ? actionName : 'fh';
     api.authored.lastSwingScale = scale;
   }
 

@@ -59,6 +59,7 @@ export const ASSET_MANIFEST = {
       playerRotation: [0, 0, 0],
       paddleSocketOffset: [0, 0, 0],
       paddleSocketRotation: [Math.PI, 0, 0],
+      swingClipOverrides: { serve: 'fh' },
       syncPrimitiveArms: false,
       optional: true
     },
@@ -73,6 +74,7 @@ export const ASSET_MANIFEST = {
       playerRotation: [0, 0, 0],
       paddleSocketOffset: [0, 0, 0],
       paddleSocketRotation: [Math.PI, 0, 0],
+      swingClipOverrides: { serve: 'fh' },
       syncPrimitiveArms: false,
       optional: true
     },
