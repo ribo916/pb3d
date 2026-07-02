@@ -16,11 +16,12 @@ import * as Physics from './physics.js';
 import * as Rules from './rules.js';
 import * as AI from './ai.js';
 import * as Shots from './shots.js';
+import * as Movement from './movement.js';
 import * as Scene from './scene.js';
 import { makePlayer } from './players.js';
 import { makeCamera, updateCamera } from './camera.js';
 import { clamp, dist2D } from './utils.js';
-import { HIT, PHYS, STABILITY, POWER_CAP, SPECIALTY } from './constants.js';
+import { HIT, PHYS, STABILITY, POWER_CAP, SPECIALTY, MOVEMENT } from './constants.js';
 
 const C = Physics.COURT;
 Rules.setGeometry(C.KITCHEN, C.HALF_W);
@@ -222,6 +223,7 @@ Game.prototype._initWorld = function () {
     return {
       team: team, slot: slot, isHuman: isHuman, mesh: mesh,
       pos: { x: 0, z: 0 }, vel: { x: 0, z: 0 },
+      move: { kind: 'ready', target: { x: 0, z: 0 }, split: 0, plant: 0, lunge: 0 },
       ai: isHuman ? null : AI.makeAI(self.difficulty), aiSwingTimer: 0
     };
   }
@@ -387,6 +389,7 @@ Game.prototype._formationServe = function () {
       p.pos.x = Rules.sideX(p.team, info.side) * (C.HALF_W * 0.5);
       p.pos.z = fwd * (C.HALF_L + 0.45);
       p.vel.x = 0; p.vel.z = 0;
+      p.move.kind = 'ready'; p.move.split = 0; p.move.plant = 0; p.move.lunge = 0;
       continue;
     }
     var laneX = this._laneSign(p) * (C.HALF_W * 0.5);
@@ -401,6 +404,7 @@ Game.prototype._formationServe = function () {
       z = fwd * (C.KITCHEN + 0.25);                // receiver's partner: up at the kitchen line
     }
     p.pos.x = laneX; p.pos.z = z; p.vel.x = 0; p.vel.z = 0;
+    p.move.kind = 'ready'; p.move.split = 0; p.move.plant = 0; p.move.lunge = 0;
   }
 };
 
@@ -712,33 +716,43 @@ Game.prototype._clampToSide = function (pos, team, lane) {
 
 // Move pos toward (tx, tz) at speed spd, updating vel for animation.
 Game.prototype._stepToward = function (pos, vel, tx, tz, spd, dt) {
-  var dx = tx - pos.x, dz = tz - pos.z;
-  var d = dist2D(dx, dz) || 1;
-  var step = Math.min(d, spd * dt);
-  vel.x = (dx / d) * (step / (dt || 1));
-  vel.z = (dz / d) * (step / (dt || 1));
-  pos.x += (dx / d) * step;
-  pos.z += (dz / d) * step;
+  Movement.seek(pos, vel, { x: tx, z: tz }, spd, dt, {
+    accel: MOVEMENT.CPU_ACCEL,
+    decel: MOVEMENT.CPU_DECEL,
+    arrive: MOVEMENT.CPU_ARRIVE,
+    stop: MOVEMENT.CPU_STOP
+  });
 };
 
 /* ------------------------- player movement ---------------------------- */
 Game.prototype._updateHuman = function (dt, inp) {
   var spd = HIT.HUMAN_SPEED;
   var mx = inp ? inp.move.x : 0, mz = inp ? inp.move.z : 0;
-  var tvx = mx * spd, tvz = mz * spd;
   if (inp && inp.joystickReleased) {
     this.humanVel.x = 0; this.humanVel.z = 0;
     inp.joystickReleased = false;
   } else if (inp && inp.usingJoystick) {
-    this.humanVel.x = tvx; this.humanVel.z = tvz;
+    Movement.drive(this.humanPos, this.humanVel, { x: mx, z: mz }, spd, dt, {
+      accel: MOVEMENT.HUMAN_ACCEL * 1.35,
+      decel: MOVEMENT.HUMAN_DECEL * 1.2,
+      deadzone: MOVEMENT.DEADZONE
+    });
   } else {
-    this.humanVel.x += (tvx - this.humanVel.x) * Math.min(1, dt * 12);
-    this.humanVel.z += (tvz - this.humanVel.z) * Math.min(1, dt * 12);
+    Movement.drive(this.humanPos, this.humanVel, { x: mx, z: mz }, spd, dt, {
+      accel: MOVEMENT.HUMAN_ACCEL,
+      decel: MOVEMENT.HUMAN_DECEL,
+      deadzone: MOVEMENT.DEADZONE
+    });
   }
-  this.humanPos.x += this.humanVel.x * dt;
-  this.humanPos.z += this.humanVel.z * dt;
   this.humanPos.x = clamp(this.humanPos.x, -C.HALF_W - 1.5, C.HALF_W + 1.5);
   this.humanPos.z = clamp(this.humanPos.z, 0.3, C.HALF_L + 2.0);
+  var speed = Math.hypot(this.humanVel.x, this.humanVel.z);
+  var active = Math.hypot(mx || 0, mz || 0) > MOVEMENT.DEADZONE;
+  var move = this.players[0].move;
+  move.kind = active ? 'drive' : (speed > 0.25 ? 'recover' : 'ready');
+  move.target.x = this.humanPos.x; move.target.z = this.humanPos.z;
+  move.plant = Math.max(0, move.plant - dt);
+  move.lunge = Math.max(0, move.lunge - dt);
 };
 
 Game.prototype._updateCPUs = function (dt) {
@@ -765,25 +779,66 @@ Game.prototype._moveCPU = function (p, dt) {
     (!isServingTeam || shotsCompleted >= 3);
   var advance = advanceAllowed ? clamp(p.ai.cfg.smart * 1.6 - 0.2, 0, 1) : 0;
   var tx = laneX, tz = fwd * (backZ + (upZ - backZ) * advance);
+  var kind = advanceAllowed ? 'recover' : 'hold';
 
   if (this.mode === 'singles') {
     tx = 0;
+    lane = null;
   }
 
   // Only the player whose LANE the ball is heading into goes for it.
   var incoming = this.ball.live && (this.ball.vel.z * fwd > 0);
   var pred = incoming ? AI.predict(this.ball) : null;
-  if (pred && (this.mode === 'singles' || p.slot === this._responsibleSlot(team, pred.x))) {
+  var responsible = pred && (this.mode === 'singles' || p.slot === this._responsibleSlot(team, pred.x));
+  if (pred && responsible) {
     // Pop-up arc (high apex): stay near kitchen to intercept overhead rather than
     // retreating all the way to the baseline landing point.
     var isPopup = this.ball.spline && this.ball.spline.P1.y >= 2.0;
-    if (!isPopup) { tx = pred.x; tz = pred.z; }
+    if (!isPopup) {
+      tx = pred.x;
+      // Set up a small step behind the bounce/contact point so the player looks
+      // braced instead of standing directly under the ball.
+      tz = pred.z + fwd * 0.25;
+    }
     // If popup: keep the default advance target so they can volley it overhead.
+    var dist = dist2D(tx - p.pos.x, tz - p.pos.z);
+    var timeLeft = this.ball.spline ? Math.max(0, this.ball.spline.duration - this.ball.spline.elapsed) : 0.65;
+    var reachable = p.ai.cfg.speed * (timeLeft + p.ai.cfg.react + 0.16);
+    kind = dist > reachable + 0.6 ? 'emergency' : 'intercept';
+    if (isPopup) {
+      if (p.move.kind !== 'split') p.move.split = Math.max(p.move.split || 0, MOVEMENT.SPLIT_STEP_TIME);
+      kind = 'split';
+    }
+    if (dist > MOVEMENT.LUNGE_DIST && timeLeft < 0.36) {
+      p.move.lunge = Math.max(p.move.lunge || 0, 0.18);
+    }
+  } else if (pred && incoming) {
+    // The non-responsible doubles partner shades middle and split-steps when the
+    // ball is incoming. It reads like "ready to poach" without stealing lane duty.
+    tx += -lane * MOVEMENT.RECOVER_SHADE_X;
+    if (p.move.kind !== 'split') p.move.split = Math.max(p.move.split || 0, MOVEMENT.SPLIT_STEP_TIME);
+    kind = 'split';
   }
 
   var spd = p.ai.cfg.speed;
-  this._stepToward(p.pos, p.vel, tx, tz, spd, dt);
+  var beforeX = p.vel.x, beforeZ = p.vel.z;
+  Movement.seek(p.pos, p.vel, { x: tx, z: tz }, spd, dt, {
+    accel: MOVEMENT.CPU_ACCEL,
+    decel: MOVEMENT.CPU_DECEL,
+    arrive: kind === 'intercept' || kind === 'emergency' ? 0.35 : MOVEMENT.CPU_ARRIVE,
+    stop: MOVEMENT.CPU_STOP
+  });
+  var was = Math.hypot(beforeX, beforeZ), now = Math.hypot(p.vel.x, p.vel.z);
+  var dot = was > 0.01 && now > 0.01 ? (beforeX * p.vel.x + beforeZ * p.vel.z) / (was * now) : 1;
+  if (was > MOVEMENT.PLANT_SPEED && dot < MOVEMENT.PLANT_TURN_DOT) {
+    p.move.plant = Math.max(p.move.plant || 0, 0.16);
+  }
   this._clampToSide(p.pos, team, this.mode === 'singles' ? null : lane);
+  p.move.kind = kind;
+  p.move.target.x = tx; p.move.target.z = tz;
+  p.move.split = Math.max(0, (p.move.split || 0) - dt);
+  p.move.plant = Math.max(0, (p.move.plant || 0) - dt);
+  p.move.lunge = Math.max(0, (p.move.lunge || 0) - dt);
 };
 
 /* --------------------------- ball contact ----------------------------- */
@@ -1223,11 +1278,26 @@ Game.prototype._syncMeshes = function (dt) {
     var base = (pl.team === 'near') ? Math.PI : 0;
     var yaw = clamp((this.ball.pos.x - pl.pos.x) * 0.16, -0.6, 0.6);
     if (v > 0.4) yaw = clamp(pl.vel.x * 0.18, -0.7, 0.7);
+    var facing = base + yaw;
+    var local = Movement.localVelocity(pl.vel, facing);
+    var move = pl.move || {};
+    var visualOverride = move.lunge > 0 ? 'lunge' : (move.plant > 0 ? 'plant' : (move.split > 0 ? 'split' : ''));
+    var visualMove = Movement.classifyVisual(local, v, this.state === STATE.SERVE || this.state === STATE.RALLY, visualOverride);
     pl.mesh.object.position.set(pl.pos.x, this._reactionOffset(pl.team), pl.pos.z);
     pl.mesh.update(dt, {
       speed: v,
-      facing: base + yaw,
-      ready: this.state === STATE.SERVE || this.state === STATE.RALLY
+      facing: facing,
+      ready: this.state === STATE.SERVE || this.state === STATE.RALLY,
+      localForward: local.forward,
+      localSide: local.side,
+      moveKind: move.kind || '',
+      visualMove: visualMove,
+      split: move.split || 0,
+      plant: move.plant || 0,
+      lunge: move.lunge || 0,
+      target: move.target || null,
+      ballX: this.ball.pos.x,
+      ballZ: this.ball.pos.z
     });
   }
 
