@@ -205,13 +205,13 @@ Game.prototype._initWorld = function () {
       jersey: 0xf14668, shorts: 0x30111e, paddle: 0x36d399, shoe: 0xf9fbff,
       skin: 0xf0cbb2, hair: 0xd5bb58, height: 'tower', build: 'slim',
       hairStyle: 'short', headwear: 'cap', headband: 0xf4f5f6,
-      playerModelKey: 'player-poc'
+      playerModelKey: 'player-opponent-a-v1'
     },
     farB: {
       jersey: 0xff7aa8, shorts: 0x55233a, paddle: 0xc8ff65, shoe: 0xfffbff,
       skin: 0xedc6b0, hair: 0x4a2b22, height: 'medium', build: 'average',
       hairStyle: 'ponytail', headwear: 'none', headband: 0xffd166,
-      playerModelKey: 'player-poc'
+      playerModelKey: 'player-opponent-b-v1'
     }
   };
   this.youColor = palettes.nearYou.jersey;

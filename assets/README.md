@@ -96,10 +96,10 @@ entries are safe and do not produce missing-file requests.
   clothes, and shoes. Provide a lower LOD or rely on the existing POC/primitive
   fallback for mobile if needed.
 - Roster-wide replacement uses separate optional slots. `player-partner-v1`
-  (the `nearMate` CPU partner) is filled; `player-opponent-a-v1` and
-  `player-opponent-b-v1` still fall back to `player-poc` until each is
-  imported and verified. Keep the same visual-only primitive-rig contract for
-  all four players.
+  (the `nearMate` CPU partner), `player-opponent-a-v1` (`farA`), and
+  `player-opponent-b-v1` (`farB`) are all filled; each still falls back to
+  `player-poc` if its GLB is absent or fails to load. Keep the same
+  visual-only primitive-rig contract for all four players.
 
 Validate a candidate player GLB without rendering:
 

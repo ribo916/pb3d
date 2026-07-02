@@ -79,6 +79,36 @@ export const ASSET_MANIFEST = {
       optional: true
     },
     {
+      key: 'player-opponent-a-v1',
+      label: 'Opponent A authored human model',
+      url: '/assets/models/players/player-opponent-a-v1.glb',
+      scope: 'player',
+      fallbackKey: 'player-poc',
+      playerScale: 1,
+      playerOffset: [0, 0, 0],
+      playerRotation: [0, 0, 0],
+      paddleSocketOffset: [0, 0, 0],
+      paddleSocketRotation: [Math.PI, 0, 0],
+      swingClipOverrides: { serve: 'fh' },
+      syncPrimitiveArms: false,
+      optional: true
+    },
+    {
+      key: 'player-opponent-b-v1',
+      label: 'Opponent B authored human model',
+      url: '/assets/models/players/player-opponent-b-v1.glb',
+      scope: 'player',
+      fallbackKey: 'player-poc',
+      playerScale: 1,
+      playerOffset: [0, 0, 0],
+      playerRotation: [0, 0, 0],
+      paddleSocketOffset: [0, 0, 0],
+      paddleSocketRotation: [Math.PI, 0, 0],
+      swingClipOverrides: { serve: 'fh' },
+      syncPrimitiveArms: false,
+      optional: true
+    },
+    {
       key: 'player-poc',
       label: 'Human player visual POC',
       url: '/assets/models/players/player-poc.glb',

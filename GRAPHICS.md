@@ -25,8 +25,11 @@ The game now has:
   Both merge a pre-rigged hair mesh onto the base skeleton (a reusable
   `hairMesh` config field on the build tool) since the free bodies ship bald:
   Player 1 gets `Hair_SimpleParted`, the partner gets `Hair_Long`. Both still
-  fall back to the POC if their GLB is absent. The two opponents still use the
-  POC.
+  fall back to the POC if their GLB is absent. The two CPU opponents
+  (`farA`/`farB`, `player-opponent-a-v1` / `player-opponent-b-v1`) are now
+  filled with the free Male/Female Ranger outfits from Quaternius's
+  "Modular Character Outfits - Fantasy" pack, built the same way; see
+  `PLAYER-IMPORT.md`.
 - Authored-player identity hooks for color slots, scale/build, hair/headwear
   variants, paddle socket, and animation clip names.
 - Visual-only idle/ready/run/forehand/backhand/serve/smash animation blending.
@@ -109,10 +112,10 @@ assets/
 Important contracts:
 
 - `assets/manifest.js` is the runtime slot map.
-- `player-human-v1` (Player 1) and `player-partner-v1` (CPU partner/`nearMate`)
-  are filled authored character slots; both fall back to `player-poc` if their
-  GLB is absent or fails to load. `player-opponent-a-v1` / `player-opponent-b-v1`
-  are not yet added — those roster members still use `player-poc` directly.
+- `player-human-v1` (Player 1), `player-partner-v1` (CPU partner/`nearMate`),
+  `player-opponent-a-v1` (`farA`), and `player-opponent-b-v1` (`farB`) are all
+  filled authored character slots; each falls back to `player-poc` if its GLB
+  is absent or fails to load.
 - `src/assets.js` loads optional GLB assets and provides fallback-safe access.
 - Optional entries should stay optional until their procedural fallback has been
   replaced and verified.
@@ -200,16 +203,15 @@ contract is:
 
 ### Future Roster-Wide Players
 
-Extend the same visual-only authored-model concept to the rest of the doubles
-roster. `player-partner-v1` (the `nearMate` CPU partner, female Quaternius body
-+ merged `Hair_Long` hairstyle) is done. `player-opponent-a-v1` and
-`player-opponent-b-v1` (the `farA`/`farB` CPU slots) still need stable optional
-manifest entries with `fallbackKey: 'player-poc'` until their real art is added.
-Keep the primitive rig authoritative for every player, reuse the same
-socket/material/clip contract, and use `tools/build-player-model.mjs`'s
-`hairMesh` config field (e.g. `Hair_Buns.gltf`) if either opponent needs hair.
+The full doubles roster now has an authored model. `player-partner-v1` (the
+`nearMate` CPU partner, female Quaternius body + merged `Hair_Long` hairstyle),
+`player-opponent-a-v1` (`farA`, Male Ranger outfit), and `player-opponent-b-v1`
+(`farB`, Female Ranger outfit) are all done; see `PLAYER-IMPORT.md` for how the
+opponent outfits were built and sourced. Keep the primitive rig authoritative
+for every player and reuse the same socket/material/clip contract for any
+future replacement or upgrade of these slots.
 `roster-closeup.png` (via `npm run shots`) is the roster comparison shot — check
-it after adding either remaining slot.
+it after touching any player slot.
 
 ## Rendering And Visual Priorities
 
@@ -322,8 +324,9 @@ Screenshots inspected included:
 Do not spend the next pass on minor procedural crispness. The visual bottleneck
 is player quality.
 
-Player 1 (`player-human-v1`) and the CPU partner (`player-partner-v1`) are done
-using this workflow:
+All four roster slots (`player-human-v1`, `player-partner-v1`,
+`player-opponent-a-v1`, `player-opponent-b-v1`) now have an authored model
+behind the adapter, built with this workflow:
 
 1. Decide whether the target is premium stylized or genuinely photoreal.
 2. Pick a real character asset source/workflow.
@@ -332,12 +335,13 @@ using this workflow:
 5. Verify paddle socket, contact frame, `paddleWorld`, and gameplay readability.
 6. Compare close-up and gameplay-camera screenshots against the current POC.
 
-The two remaining CPU opponents (`farA`/`farB`) still use the POC. Add
-`player-opponent-a-v1` and `player-opponent-b-v1` the same way — one at a time,
-verified with `roster-closeup.png` — rather than replacing both at once. Do not
-replace the last POC slots before each has proven the asset source, socket
-alignment, animation contact frame, mobile budget, and gameplay-camera
-readability, same as Player 1 and the partner did.
+The two opponents currently wear generic fantasy "Ranger" outfits (hood +
+leather gear, one of only two complete-head outfits available in the free
+tier of the pack used — the other, "Peasant", ships with no head mesh at all)
+— thematically mismatched with a pickleball court. A future pass should
+replace them with sport-appropriate authored models or clothing once a
+suitable CC0/licensed source is found; the adapter/manifest/build pipeline
+does not need to change, only the source GLBs.
 
-Only after the full roster is credible should broader venue/material polish
-resume.
+Only after the full roster reads as premium/appropriate should broader
+venue/material polish resume.

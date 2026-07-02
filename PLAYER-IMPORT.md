@@ -182,6 +182,65 @@ not the quick 3-arg form):
 node tools/build-player-model.mjs config.json
 ```
 
+## Opponent A / Opponent B (done — `player-opponent-a-v1` / `player-opponent-b-v1`)
+
+Unlike Player 1 and the partner (Universal Base Characters + separate hair
+meshes), the two CPU opponents (`farA`/`farB`) use fully-clothed outfit
+exports from a different free Quaternius pack:
+<https://quaternius.itch.io/modular-character-outfits-fantasy> (CC0).
+
+- **Only 2 of the 12 listed outfits are in the free "Standard" tier zip.**
+  The page advertises "12 Outfits, 62 Parts", but the other 10 are Source-tier
+  only ($20+). The free `[Standard].zip` (~280 MB) contains exactly **Ranger**
+  and **Peasant**, each as Male/Female variants, under
+  `Exports/glTF (Godot-Unreal)/Outfits/{Male,Female}_{Peasant,Ranger}.gltf`.
+  Check the actual zip contents (or the itch.io download-page file list)
+  before planning around a specific outfit name — don't trust the page copy.
+- Used **Male_Ranger.gltf → `player-opponent-a-v1`** and
+  **Female_Ranger.gltf → `player-opponent-b-v1`**, matching the existing
+  male/female-coded roster hair hints (`farA` short hair/cap, `farB`
+  ponytail).
+- Each `Outfits/*.gltf` is a **complete, self-contained skinned character**
+  (body + clothing meshes together, own skin/cloth textures) — unlike the
+  Superhero base bodies, no separate base-body pack or hair merge is needed.
+  **Trap: the free zip's `Peasant` outfit (Male/Female) ships with NO head
+  mesh at all** — its mesh list is only `Arms`/`Body`/`Feet`/`Legs`. The itch
+  page notes the pack "works with Universal Base Character heads", meaning
+  Peasant expects a head from a separate pack we don't have; wired as-is it
+  renders as a headless torso, and naively scaling it up to match the
+  roster's height (see below) just makes the headless torso bigger. `Ranger`
+  (the pack's other free outfit) ships a `Head_Hood` mesh and reads as a
+  complete character — always check a candidate outfit's mesh list
+  (`python3 -c "import json; print([m['name'] for m in json.load(open(f))['meshes']])"`
+  on the `.gltf`) for a head/hood part before committing to it, don't assume
+  every outfit in a modular pack is headwear-complete.
+- Same UE-mannequin rig as the Universal Base Characters / Universal
+  Animation Library packs (`root/pelvis/spine_*/clavicle_*/hand_*`, fingers,
+  `thigh/calf/foot`) — `tools/build-player-model.mjs`'s by-bone-name
+  retargeting worked unmodified against `UAL1_Standard.glb`
+  (8385/8385 channels retargeted, 0 missed, for both outfits). No config
+  overrides needed beyond `base`/`anim`/`out`.
+- Facing is local **+Z**, same as the other roster models (verified via
+  `ball_r`/`foot_r` world-position Z, not guessed) — `playerRotation: [0,0,0]`.
+- Raw GLB height (`node tools/validate-player-glb.mjs <out.glb>`, the `bounds`
+  line) for the **Ranger** outfits came out 1.87 m (opponent A) / 1.80 m
+  (opponent B) — closely matching `player-human-v1` (1.85 m) /
+  `player-partner-v1` (1.79 m), so `playerScale: 1` (no correction) is
+  correct. The Peasant outfits measured ~1.53-1.56 m raw, which looked like a
+  real height deficit at first — it wasn't; it was the missing head. Don't
+  paper over a suspiciously short `bounds` reading with a `playerScale`
+  correction before checking whether geometry (like a head) is simply absent.
+- config.json used for each (quick 3-arg form also works since neither needs
+  `hairMesh`):
+
+```json
+{
+  "base": "<pack>/Exports/glTF (Godot-Unreal)/Outfits/Male_Ranger.gltf",
+  "anim": "<pack>/Unreal-Godot/UAL1_Standard.glb",
+  "out": "assets/models/players/player-opponent-a-v1.glb"
+}
+```
+
 ## Per-player checklist
 
 1. Download + unzip both packs (see flow above); apply the texture-name copies.
