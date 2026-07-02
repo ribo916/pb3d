@@ -8,8 +8,8 @@ character-model priorities, see [`../GRAPHICS.md`](../GRAPHICS.md).
 
 To import a real CC0 humanoid into a `player-*` slot (download flow, the
 `tools/build-player-model.mjs` pipeline, and the traps), see
-[`../PLAYER-IMPORT.md`](../PLAYER-IMPORT.md). `player-human-v1` was built this
-way.
+[`../PLAYER-IMPORT.md`](../PLAYER-IMPORT.md). `player-human-v1` and
+`player-partner-v1` were built this way.
 
 ## Structure
 
@@ -92,10 +92,11 @@ entries are safe and do not produce missing-file requests.
   GLB, and 1k-2k PBR textures where they materially improve face, skin, hair,
   clothes, and shoes. Provide a lower LOD or rely on the existing POC/primitive
   fallback for mobile if needed.
-- Later roster-wide replacement should use separate optional slots, for example
-  `player-partner-v1`, `player-opponent-a-v1`, and `player-opponent-b-v1`, each
-  falling back to `player-poc` until that character is imported and verified.
-  Keep the same visual-only primitive-rig contract for all four players.
+- Roster-wide replacement uses separate optional slots. `player-partner-v1`
+  (the `nearMate` CPU partner) is filled; `player-opponent-a-v1` and
+  `player-opponent-b-v1` still fall back to `player-poc` until each is
+  imported and verified. Keep the same visual-only primitive-rig contract for
+  all four players.
 
 Validate a candidate player GLB without rendering:
 

@@ -27,6 +27,15 @@
  *   textureSize                max px, square (default 1024)
  *   textureQuality             WebP quality 1-100 (default 88)
  *   resampleTolerance          keyframe resample tolerance (default 1e-3)
+ *   hairMesh                   path to a Quaternius "Rigged to Head Bone" hair
+ *                              .gltf (e.g. Hair_Long.gltf). Its skin is
+ *                              retargeted onto the base skeleton by bone name
+ *                              (same trick as the animation clips) and the
+ *                              mesh node is tagged as a `hair` variant so the
+ *                              adapter shows it only when roster `hairStyle`
+ *                              matches `hairVariantValue`.
+ *   hairVariantValue           variant value for the merged hair (default
+ *                              'long')
  *
  * See PLAYER-IMPORT.md for the itch.io download flow, the texture-filename
  * fix-ups the base pack needs, and the gltf-transform gotchas baked in here.
@@ -139,6 +148,66 @@ for (const anim of root.listAnimations()) {
   anim.setName(key);
 }
 console.log('kept clips:', root.listAnimations().map((a) => a.getName()).join(', ') || '(none)');
+
+// --- optional: merge a pre-rigged hairstyle mesh, retargeting its skin onto
+//     the base skeleton by bone name (same trick as the animation channels
+//     above). Quaternius ships these hair meshes specifically for this. ---
+if (cfg.hairMesh) {
+  const preNodes = new Set(root.listNodes());
+  const preMeshes = new Set(root.listMeshes());
+  const preSkins = new Set(root.listSkins());
+  const preMaterials = new Set(root.listMaterials());
+  const preScenes = new Set(root.listScenes());
+
+  const hairDoc = await io.read(cfg.hairMesh);
+  mergeDocuments(doc, hairDoc);
+
+  const hairMeshNodes = root.listNodes().filter((n) => !preNodes.has(n) && n.getMesh());
+  if (!hairMeshNodes.length) throw new Error('no mesh node found in hairMesh doc: ' + cfg.hairMesh);
+
+  for (const node of hairMeshNodes) {
+    const oldSkin = node.getSkin();
+    if (oldSkin) {
+      const newSkin = doc.createSkin(oldSkin.getName());
+      for (const j of oldSkin.listJoints()) {
+        const baseJoint = baseNodesByName.get(j.getName());
+        if (!baseJoint) throw new Error('hair joint not found on base skeleton: ' + j.getName());
+        newSkin.addJoint(baseJoint);
+      }
+      newSkin.setInverseBindMatrices(oldSkin.getInverseBindMatrices());
+      const skRoot = oldSkin.getSkeleton();
+      if (skRoot) {
+        const baseSkRoot = baseNodesByName.get(skRoot.getName());
+        if (baseSkRoot) newSkin.setSkeleton(baseSkRoot);
+      }
+      node.setSkin(newSkin);
+      oldSkin.dispose();
+    }
+    // hair node ships with an identity local transform in its own doc; drop
+    // it onto the base scene directly (its pose comes entirely from the
+    // retargeted skin, not this node's transform).
+    node.setTranslation([0, 0, 0]).setRotation([0, 0, 0, 1]).setScale([1, 1, 1]);
+    node.setExtras({ variantGroup: 'hair', variantValue: cfg.hairVariantValue || 'long' });
+    baseScene.addChild(node);
+  }
+
+  for (const m of root.listMeshes()) if (!preMeshes.has(m)) baseMeshes.add(m);
+  for (const s of root.listSkins()) if (!preSkins.has(s)) baseSkins.add(s);
+  for (const m of root.listMaterials()) if (!preMaterials.has(m)) baseMaterials.add(m);
+
+  // dispose the hair doc's own duplicate skeleton copy (now unreferenced —
+  // the mesh node above was already reparented off of it).
+  function disposeTree(n) {
+    for (const c of n.listChildren()) disposeTree(c);
+    n.dispose();
+  }
+  for (const s of root.listScenes()) {
+    if (preScenes.has(s)) continue;
+    for (const n of s.listChildren()) disposeTree(n);
+    s.dispose();
+  }
+  console.log('merged hair mesh:', hairMeshNodes.map((n) => n.getName()).join(', '));
+}
 
 // --- drop merged-in scenes / skins / meshes / materials that aren't base ---
 for (const s of root.listScenes()) if (!baseScenes.has(s)) s.dispose();
