@@ -2,3 +2,4 @@ tools/shots/
 node_modules/
 dist/
 .claude/settings.local.json
+.claude/settings.json
