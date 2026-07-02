@@ -44,13 +44,13 @@ Offline tool (deps not in `package.json`, like the raw music helpers):
 npm i @gltf-transform/core @gltf-transform/extensions \
       @gltf-transform/functions sharp
 
-# quick form (all defaults; reproduces player-human-v1 byte-for-byte)
+# quick form (all defaults, no hair mesh)
 node tools/build-player-model.mjs \
   "<pack>/Base Characters/Godot - UE/Superhero_Male_FullBody.gltf" \
   "<pack>/Unreal-Godot/UAL1_Standard.glb" \
   assets/models/players/player-human-v1.glb
 
-# config form (per-player overrides)
+# config form (per-player overrides; player-human-v1 now needs this to add hair)
 node tools/build-player-model.mjs path/to/config.json
 ```
 
@@ -106,6 +106,27 @@ swing**:
   for the texture-less POC; it now includes DOM/texture shims + skinned-mesh-safe
   bounds so it can load real textured/skinned GLBs in Node (three's GLTFLoader
   otherwise throws `Image is not defined` and mis-measures skinned height).
+
+### Player 1 hair (done — `player-human-v1`)
+
+Player 1's base body (`Superhero_Male_FullBody.gltf`) is also bald aside from
+eyebrows. `player-human-v1.glb` now merges the `Hair_SimpleParted.gltf`
+hairstyle mesh the same way the partner does (see "Female partner specifics"
+below for the mechanics), tagged `hairVariantValue: 'short'` to match the
+`nearYou` roster's `hairStyle: 'short'`. config.json used:
+
+```json
+{
+  "base": "<pack>/Base Characters/Godot - UE/Superhero_Male_FullBody.gltf",
+  "anim": "<pack>/Unreal-Godot/UAL1_Standard.glb",
+  "hairMesh": "<pack>/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_SimpleParted.gltf",
+  "hairVariantValue": "short",
+  "out": "assets/models/players/player-human-v1.glb"
+}
+```
+
+The pack also ships `Hair_Buzzed.gltf` (shorter/buzzed) and `Hair_Beard.gltf`
+(a separate beard mesh, mergeable the same way) if a different look is wanted.
 
 ## Wiring a partner / opponent slot (not Player 1)
 
