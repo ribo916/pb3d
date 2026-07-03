@@ -136,6 +136,29 @@ test('volley before the two-bounce rule is a fault', () => {
   assert.ok(r.point || r.sideOut || r.secondServer, 'rally awarded against the volleyer');
 });
 
+test('serving team cannot volley the return before it bounces', () => {
+  const m = Rules.makeMatch({ server: 'near' });
+  Rules.startRally(m);
+  Rules.onPaddleHit(m, 'near', { volley: false });   // serve
+  Rules.onFloor(m, { inBounds: true, x: -1, z: -4, side: -1 }); // serve bounces
+  Rules.onPaddleHit(m, 'far', { volley: false, inKitchen: false }); // return
+  const r = Rules.onPaddleHit(m, 'near', { volley: true, inKitchen: false });
+  assert.equal(r.reason, 'volley-before-double-bounce');
+});
+
+test('serving team may volley after the return bounce if outside kitchen', () => {
+  const m = Rules.makeMatch({ server: 'near' });
+  Rules.startRally(m);
+  Rules.onPaddleHit(m, 'near', { volley: false });   // serve
+  Rules.onFloor(m, { inBounds: true, x: -1, z: -4, side: -1 }); // serve bounces
+  Rules.onPaddleHit(m, 'far', { volley: false, inKitchen: false }); // return
+  Rules.onFloor(m, { inBounds: true, x: 1, z: 4, side: 1 }); // return bounces
+  const r = Rules.onPaddleHit(m, 'near', { volley: true, inKitchen: false });
+  assert.equal(r.point, null);
+  assert.equal(r.illegal, false);
+  assert.equal(m.rally.doubleBounceOpen, true);
+});
+
 test('kitchen volley is a fault in open play', () => {
   const m = Rules.makeMatch({ server: 'near' });
   Rules.startRally(m);

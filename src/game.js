@@ -533,7 +533,7 @@ Game.prototype._resultMessage = function (r) {
   var reasons = {
     'out-of-bounds': 'OUT!', 'into-net': 'INTO THE NET',
     'no-return': 'NO RETURN', 'kitchen-volley': 'KITCHEN VOLLEY!',
-    'volley-before-double-bounce': 'TWO-BOUNCE RULE', 'serve-fault': 'SERVE FAULT',
+    'volley-before-double-bounce': 'MUST BOUNCE ON 2ND/3RD HIT', 'serve-fault': 'SERVE FAULT',
     'serve-wrong-court': 'WRONG COURT'
   };
   var tag = reasons[r.reason] || '';
@@ -856,9 +856,6 @@ Game.prototype._checkContacts = function (dt) {
     p = human;
   }
   if (!this._reachOK(p.pos)) return;
-  // two-bounce rule: serve & return must bounce before being struck
-  var mustBounce = (rally.phase === 'serve' || rally.phase === 'return');
-  if (mustBounce && rally.bouncesSinceHit < 1) return;
 
   if (p.isHuman) {
     if (this.swingWindow <= 0 || this.swingUsed) return; // human must time a swing

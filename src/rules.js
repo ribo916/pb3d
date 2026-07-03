@@ -94,6 +94,7 @@ export function startRally(match) {
     lastHitter: match.server,
     shots: 0,                // total paddle contacts this rally
     bouncesSinceHit: 0,
+    doubleBounceOpen: false, // opens only after the return has bounced
     serverInfo: info,
     live: true,
     faulted: false
@@ -155,8 +156,9 @@ export function onPaddleHit(match, hitter, ctx) {
   var r = match.rally;
   if (!r || !r.live) return { point: null, illegal: false };
 
-  // Double-bounce rule: first two shots (serve + return) cannot be volleys.
-  if ((r.phase === 'serve' || r.phase === 'return') && ctx.volley) {
+  // Double-bounce rule: volley play stays locked until both serve and return
+  // have bounced legally.
+  if (!r.doubleBounceOpen && ctx.volley) {
     return awardRally(match, other(hitter), 'volley-before-double-bounce');
   }
 
@@ -217,6 +219,11 @@ export function onFloor(match, ev) {
     var fault = serveFault(match, ev);
     if (fault) return awardRally(match, other(match.server), fault);
     return { point: null, serveGood: true, firstBounce: true };
+  }
+
+  // The return's first legal bounce completes the opening two-bounce sequence.
+  if (r.shots === 2 && !r.doubleBounceOpen && ev.inBounds) {
+    r.doubleBounceOpen = true;
   }
 
   // Second (or later) bounce since the last hit -> receiver failed to return.

@@ -195,6 +195,12 @@ the partner's lane does not steal the ball (the partner AI still plays it). All
 downstream gates (two-bounce rule, cooldown) still apply to the poached hit, and
 `_hit` sets `rally.lastHitter`, so the partner can't double-hit afterward.
 
+The opening two-bounce gate is tracked explicitly on the rally state, not just
+by `phase`: normal volley play stays locked until the return has also bounced.
+If a player swings at the serve or return before that bounce happens, the rally
+is awarded immediately as a `volley-before-double-bounce` fault rather than the
+attempt being silently ignored.
+
 ### Cooldowns
 
 - After a serve: `HIT.COOLDOWN_SERVE = 0.25 s`
@@ -339,7 +345,7 @@ Implemented in `rules.js` (pure, no Three.js).
 
 | Rule | Enforcement |
 |---|---|
-| Two-bounce rule | Serve + return must bounce before being struck (`rally.bouncesSinceHit < 1`) |
+| Two-bounce rule | Serve + return must bounce before being struck; play stays bounce-locked until `rally.doubleBounceOpen` |
 | Kitchen volley | Volleying while `inKitchen = true` during open play = fault |
 | Match mode | Doubles uses four players; singles uses one player per side |
 | Doubles serve rotation | `serverNum 1/2`, `serverSlot 0/1`, starts `0-0-2` |
