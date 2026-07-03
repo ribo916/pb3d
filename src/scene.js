@@ -6,7 +6,7 @@
 'use strict';
 
 import * as THREE from 'three';
-import { COURT } from './constants.js';
+import { COURT, PRACTICE } from './constants.js';
 import { cloneModelScene } from './assets.js';
 
 const C = COURT;
@@ -760,6 +760,9 @@ function addBall(scene, handles, p, shadowOpacity) {
   ballMesh.add(glow);
   scene.add(ballMesh);
   handles.ballMesh = ballMesh;
+  handles.ballBaseColor = 0x73ff26;
+  handles.ballBaseEmissive = p.ballEmissive;
+  handles.ballBaseGlow = p.ballGlow;
 
   // "Ghost" ball — a faint marker drawn ON TOP of everything (depthTest off) so
   // the ball is never lost behind your own player mesh. In Follow mode the low,
@@ -830,6 +833,60 @@ function addLoadedVenueAssets(scene, handles, cfg, assets) {
   handles.assetFallback = loaded.length === 0;
 }
 
+function addPracticeMachine(scene, handles) {
+  var baseX = PRACTICE.MACHINE_X;
+  var baseZ = -C.HALF_L + PRACTICE.MACHINE_Z_INSET;
+  var group = new THREE.Group();
+
+  var body = new THREE.Mesh(
+    new THREE.BoxGeometry(0.92, 0.62, 0.92),
+    new THREE.MeshStandardMaterial({ color: 0x58616f, roughness: 0.44, metalness: 0.42 })
+  );
+  body.position.y = 0.58;
+  body.castShadow = true;
+  body.receiveShadow = true;
+  group.add(body);
+
+  var hopper = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.32, 0.42, 0.5, 18),
+    new THREE.MeshStandardMaterial({ color: 0x1d232d, roughness: 0.62, metalness: 0.22 })
+  );
+  hopper.position.y = 1.08;
+  hopper.castShadow = true;
+  group.add(hopper);
+
+  var nozzle = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.08, 0.1, 0.42, 16),
+    new THREE.MeshStandardMaterial({ color: 0xe4ecef, roughness: 0.25, metalness: 0.7 })
+  );
+  nozzle.rotation.x = Math.PI / 2.7;
+  nozzle.position.set(0, PRACTICE.RELEASE_Y - 0.05, PRACTICE.RELEASE_Z_OFFSET - 0.06);
+  nozzle.castShadow = true;
+  group.add(nozzle);
+
+  var logo = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.4, 0.16),
+    new THREE.MeshBasicMaterial({ color: 0x9ce73b })
+  );
+  logo.position.set(0, 0.63, 0.462);
+  group.add(logo);
+
+  for (var i = 0; i < 4; i++) {
+    var wheel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.11, 0.11, 0.06, 16),
+      new THREE.MeshStandardMaterial({ color: 0x11171f, roughness: 0.82 })
+    );
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.set(i < 2 ? -0.32 : 0.32, 0.14, i % 2 ? 0.28 : -0.28);
+    wheel.castShadow = true;
+    group.add(wheel);
+  }
+
+  group.position.set(baseX, 0, baseZ);
+  scene.add(group);
+  handles.practiceMachine = group;
+}
+
 export function build(scene, opts) {
   var cfg = resolveOptions(opts);
   var p = resolvePreset(cfg);
@@ -849,6 +906,7 @@ export function build(scene, opts) {
   }
 
   addLoadedVenueAssets(scene, handles, cfg, opts && opts.assets);
+  if (opts && opts.mode === 'practice') addPracticeMachine(scene, handles);
 
   if (cfg.venue === 'indoor') {
     var indoorSurround = new THREE.Mesh(

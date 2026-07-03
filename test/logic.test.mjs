@@ -7,10 +7,12 @@ import * as Shots from '../src/shots.js';
 import * as Rules from '../src/rules.js';
 import * as AI from '../src/ai.js';
 import * as Movement from '../src/movement.js';
+import * as Practice from '../src/practice.js';
 import * as SinglesStrategy from '../src/strategies/singles.js';
 import * as DoublesStrategy from '../src/strategies/doubles.js';
+import { normalizeMode } from '../src/modes.js';
 import { buildMusicCatalog, sanitizeMusicState } from '../src/audio.js';
-import { STABILITY, POWER_CAP, SPECIALTY, MOVEMENT, HIT } from '../src/constants.js';
+import { STABILITY, POWER_CAP, SPECIALTY, MOVEMENT, HIT, PRACTICE } from '../src/constants.js';
 
 const C = Physics.COURT;
 let passed = 0;
@@ -323,6 +325,63 @@ test('AI dispatcher selects the correct movement strategy by mode', () => {
   });
   assert.equal(singles.kind, 'intercept');
   assert.equal(doubles.kind, 'split');
+});
+
+test('normalizeMode accepts practice as a first-class mode', () => {
+  assert.equal(normalizeMode('practice'), 'practice');
+  assert.equal(normalizeMode('singles'), 'singles');
+  assert.equal(normalizeMode('weird'), 'doubles');
+});
+
+test('practice feed targets stay on the near side inside the tuned drill band', () => {
+  const left = Practice.randomFeedTarget(() => 0);
+  const right = Practice.randomFeedTarget(() => 1);
+  assert.equal(left.x, -PRACTICE.TARGET_X_MAX);
+  assert.equal(left.z, PRACTICE.TARGET_Z_MIN);
+  assert.equal(right.x, PRACTICE.TARGET_X_MAX);
+  assert.equal(right.z, PRACTICE.TARGET_Z_MAX);
+});
+
+test('practice opening feed starts deep up the middle', () => {
+  const opening = Practice.openingFeedTarget();
+  assert.equal(opening.x, 0);
+  assert.equal(opening.z, PRACTICE.OPENING_TARGET_Z);
+});
+
+test('practice timing score prefers mid-window contact', () => {
+  const perfect = Practice.scoreTiming(-0.18);
+  const late = Practice.scoreTiming(0.62);
+  assert.equal(perfect.grade, 'perfect');
+  assert.equal(late.grade, 'late');
+});
+
+test('practice feedback prefers centered stable contact over stretched contact', () => {
+  const timing = { grade: 'perfect' };
+  const centered = Practice.scoreContact(0.12, 0.86, timing, 'contact');
+  const stretched = Practice.scoreContact(1.2, 0.18, timing, 'contact');
+  assert.equal(centered.key, 'perfect');
+  assert.ok(stretched.key === 'reach' || stretched.key === 'far');
+});
+
+test('practice clean/perfect thresholds are reachable with a normal sweet-spot swing', () => {
+  const perfect = Practice.scoreContact(0.42, 0.4, { grade: 'clean' }, 'contact');
+  const clean = Practice.scoreContact(0.78, 0.12, { grade: 'good' }, 'contact');
+  assert.equal(perfect.key, 'perfect');
+  assert.equal(clean.key, 'clean');
+});
+
+test('practice live cue turns on before an ideal contact window', () => {
+  assert.equal(Practice.liveCue(0.4, -0.18, 1.0), 'perfect');
+  assert.equal(Practice.liveCue(0.82, -0.05, 1.0), 'perfect');
+  assert.equal(Practice.liveCue(1.45, -0.18, 1.0), 'good');
+  assert.equal(Practice.liveCue(1.7, -0.9, 1.0), 'none');
+});
+
+test('practice miss feedback maps swing misses to early or late buckets', () => {
+  const early = Practice.scoreContact(0.3, 0, { grade: 'early' }, 'whiff');
+  const late = Practice.scoreContact(0.3, 0, { grade: 'late' }, 'whiff');
+  assert.equal(early.key, 'early');
+  assert.equal(late.key, 'late');
 });
 
 /* ----------------------- spline / bezier helpers ----------------------- */

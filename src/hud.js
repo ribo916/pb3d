@@ -14,10 +14,11 @@ export function makeHUD(refs, onServe) {
   }
 
   function update(s) {
-    refs.scoreNear.textContent = s.scores.near;
-    refs.scoreFar.textContent = s.scores.far;
-    refs.dotNear.style.opacity = s.server === 'near' ? '1' : '0.15';
-    refs.dotFar.style.opacity = s.server === 'far' ? '1' : '0.15';
+    var practice = s.mode === 'practice';
+    refs.scoreNear.textContent = practice ? '--' : s.scores.near;
+    refs.scoreFar.textContent = practice ? '--' : s.scores.far;
+    refs.dotNear.style.opacity = practice ? '0.15' : (s.server === 'near' ? '1' : '0.15');
+    refs.dotFar.style.opacity = practice ? '0.15' : (s.server === 'far' ? '1' : '0.15');
     refs.callout.textContent = s.callout || '';
 
     if (s.msg) {
@@ -37,7 +38,7 @@ export function makeHUD(refs, onServe) {
     refs.levelBadge.textContent = s.level.label;
     refs.levelBadge.style.background = s.level.tint;
 
-    refs.serveBtn.style.display = s.isHumanServe ? 'block' : 'none';
+    refs.serveBtn.style.display = (!practice && s.isHumanServe) ? 'block' : 'none';
   }
 
   return { update: update };

@@ -36,6 +36,9 @@ The game now has:
 - Player GLB validation and Player 1 comparison screenshot tooling.
 - Visual-only paddle-hit, bounce/contact, net-hit, serve camera shake, and point
   reaction effects.
+- A procedural Titan-style ball-machine prop for practice mode.
+- Practice-only visual coaching aids: machine-feed ball color cue, return
+  landing marker, and visual-only overlapping return balls.
 - Compact mobile HUD fixes for portrait and short landscape viewports.
 
 The result is crisper and more presentable than the original primitive-only
@@ -68,6 +71,7 @@ Graphics work must not change the feel contract:
 - Keep tuning numbers in `src/constants.js` and `src/shots.js`; do not scatter
   gameplay constants into render modules.
 - Ball readability beats visual richness.
+- Practice-mode coaching cues must stay legible from gameplay camera distance.
 - The primitive rig remains the gameplay source unless a deliberate gameplay
   migration is planned, tested, and explicitly documented.
 
@@ -227,6 +231,9 @@ Priority order:
 Effects should be short-lived, low-opacity, and quality-gated when appropriate.
 Low quality should skip nonessential effects. Night/indoor/tropical variants
 must stay visually distinct without hiding the neon ball.
+
+Practice-mode additions should follow the same rule: make the contact cue
+obvious enough to read in motion, but do not bury the ball under decorative FX.
 
 ## Verification Commands
 

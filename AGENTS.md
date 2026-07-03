@@ -15,11 +15,13 @@
 
 ## What This Is
 
-A standalone **Three.js pickleball game** with doubles and singles modes. In
-doubles, you (`players[0]`) + a CPU partner take on two CPUs; in singles, you
-face one CPU opponent. Real rules (diagonal serve, two-bounce rule, non-volley
-"kitchen", side-out scoring to 11 win-by-2), arcade-tuned physics, three
-difficulties, desktop + mobile controls.
+A standalone **Three.js pickleball game** with doubles, singles, and a
+single-player practice mode. In doubles, you (`players[0]`) + a CPU partner
+take on two CPUs; in singles, you face one CPU opponent; in practice, a Titan-
+style ball machine on the far baseline feeds one-ball drills to the human side.
+Match play uses real rules (diagonal serve, two-bounce rule, non-volley
+"kitchen", side-out scoring to 11 win-by-2), with arcade-tuned physics, three
+difficulties, and desktop + mobile controls.
 
 The gameplay was ported from a larger project's 3D match and is now fully
 self-contained: **real track-based music, no 2D overworld, no save system** —
@@ -94,6 +96,7 @@ src/
   shots.js        5 shot types + intent/zone classification (THE shot tuning) (pure)
   rules.js        side-out scoring + rally state machine                       (pure)
   ai.js           opponent predict/chooseMovement/chooseShot, difficulty LEVELS (pure)
+  practice.js     practice-mode target generation + timing/contact feedback    (pure)
   utils.js        clamp/dist2D/lerp                                            (pure)
   input.js        desktop (WASD/mouse/keys) + dual-thumb touch controls
   audio.js        Web Audio SFX + HTMLAudioElement music player + persisted music state
@@ -102,6 +105,7 @@ src/
   camera.js       broadcast camera + follow/shake                             (Three)
   game.js         orchestrator: STATE machine, hit model, movement, aim marker, HUD wiring
   hud.js          DOM HUD (score, serve dots, callout, banner, shot tag, SERVE button)
+  modes.js        shared mode normalization (`doubles` / `singles` / `practice`)
   main.js         bootstrap: difficulty picker -> Game -> requestAnimationFrame loop
 music/
   active/         drop genre folders with playable audio files here
@@ -168,8 +172,15 @@ aim-marker ring, doubles lane or singles full-court movement, and HUD wiring. Th
 tail `_executeSplineShot` snaps the ball to the contact point and builds the
 Bezier arc. Smash overrides apply in both `_hit()` (human) and `_cpuHit()` (CPU)
 before the normal shot-selection path, producing a steep low-apex arc when the
-ball is at or above `POWER_CAP.SMASH_H`. The serving team's CPU holds at the
-baseline until `rally.shots >= 3` before advancing to the kitchen.
+ball is at or above `POWER_CAP.SMASH_H`. Practice mode branches separately:
+single human player, auto-fed one-ball machine reps, visual-only return balls,
+landing markers, and practice-only coaching feedback. The serving team's CPU
+holds at the baseline until `rally.shots >= 3` before advancing to the kitchen.
+
+**`practice.js`** — pure helpers for practice mode. Generates opening/random
+feed targets, grades timing/contact feedback (`early` / `late` / `good` /
+`clean` / `perfect`), and defines the live contact-window cue used to tint the
+incoming practice ball.
 
 **`audio.js`** — Web Audio paddle/bounce/net/serve/point/fault SFX plus a
 track-based `HTMLAudioElement` music player. Music tracks are loaded from the
@@ -182,8 +193,11 @@ horizontal cross-body arc from an isolated upper-body twist; the paddle extends
 beyond the hand. Court is dark navy, kitchen a mid-blue band, ball neon green with
 a glow + trail (kept high-contrast on purpose). Camera is a low broadcast angle
 behind the near baseline that gently follows the ball and shakes on points.
-Current graphics-overhaul details, including the generated player POC and why it
-is not final art, live in [`GRAPHICS.md`](GRAPHICS.md).
+Practice mode adds a procedural Titan-style machine prop on the far baseline, a
+landing marker for the previous return, and a strong color cue on the live
+practice feed ball to show good/clean/perfect contact windows. Current
+graphics-overhaul details, including the generated player POC and why it is not
+final art, live in [`GRAPHICS.md`](GRAPHICS.md).
 
 ### The gameplay contract (don't break these)
 - Swing timing window `HIT.SWING_WINDOW = 0.30`; rig swing duration 0.44, contact
@@ -196,6 +210,8 @@ is not final art, live in [`GRAPHICS.md`](GRAPHICS.md).
 - Momentum aim: `move.x` = left/right (blended with `swingAim`), `-move.z` = depth.
 - Side-out scoring: only the serving team scores; game to 11 win-by-2.
 - Spin is flipped by `-fwd` at hit time so Magnus curves correctly for each side.
+- Practice mode is intentionally **not** rules-driven match play; keep its
+  machine-feed/session logic separate from `rules.js`.
 
 ---
 

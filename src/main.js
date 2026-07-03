@@ -10,6 +10,7 @@ import { makeAudio } from './audio.js';
 import { preloadAssetPack, assetStatusSummary } from './assets.js';
 import { CHARACTER_LIST, DEFAULT_ROSTER, characterByKey } from './characters.js';
 import { makeCharacterPreview } from './characterPreview.js';
+import { normalizeMode } from './modes.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -24,7 +25,8 @@ let starting = false;
 const MENU_META = {
   mode: {
     doubles: { label: 'Doubles' },
-    singles: { label: 'Singles' }
+    singles: { label: 'Singles' },
+    practice: { label: 'Practice' }
   },
   venue: {
     park: { label: 'Park' },
@@ -58,11 +60,15 @@ const CHARACTER_SHORT_LABELS = {
 // Doubles uses all four slots; singles only plays nearYou vs farA
 // (see the mode-conditional roster build in src/game.js _initWorld).
 function activePositions() {
-  return checkedValue('mode', 'doubles') === 'singles' ? ['nearYou', 'farA'] : ALL_POSITIONS;
+  var mode = normalizeMode(checkedValue('mode', 'doubles'));
+  if (mode === 'singles') return ['nearYou', 'farA'];
+  if (mode === 'practice') return ['nearYou'];
+  return ALL_POSITIONS;
 }
 
 function positionLabel(position) {
-  if (position === 'farA' && checkedValue('mode', 'doubles') === 'singles') return 'Opponent';
+  var mode = normalizeMode(checkedValue('mode', 'doubles'));
+  if (position === 'farA' && mode === 'singles') return 'Opponent';
   return POSITION_LABELS[position] || position;
 }
 
@@ -75,7 +81,7 @@ function checkedValue(name, fallback) {
 function readMenuConfig() {
   var venue = checkedValue('venue', 'park');
   return {
-    mode: checkedValue('mode', 'doubles'),
+    mode: normalizeMode(checkedValue('mode', 'doubles')),
     venue: venue,
     courtPalette: checkedValue('palette', 'blue'),
     timeOfDay: venue === 'indoor' ? 'day' : checkedValue('tod', 'day'),

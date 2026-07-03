@@ -16,6 +16,7 @@ import * as Physics from './physics.js';
 import * as Rules from './rules.js';
 import * as AI from './ai.js';
 import * as Shots from './shots.js';
+import * as Practice from './practice.js';
 import * as SinglesStrategy from './strategies/singles.js';
 import * as DoublesStrategy from './strategies/doubles.js';
 import * as Movement from './movement.js';
@@ -24,7 +25,8 @@ import { makePlayer } from './players.js';
 import { CHARACTERS, DEFAULT_ROSTER as DEFAULT_CHARACTER_ROSTER } from './characters.js';
 import { makeCamera, updateCamera } from './camera.js';
 import { clamp, dist2D } from './utils.js';
-import { HIT, PHYS, STABILITY, POWER_CAP, SPECIALTY, MOVEMENT } from './constants.js';
+import { HIT, PHYS, STABILITY, POWER_CAP, SPECIALTY, MOVEMENT, PRACTICE } from './constants.js';
+import { normalizeMode } from './modes.js';
 
 const C = Physics.COURT;
 Rules.setGeometry(C.KITCHEN, C.HALF_W);
@@ -110,10 +112,6 @@ function normalizeDifficulty(d) {
   return 'normal';
 }
 
-function normalizeMode(m) {
-  return m === 'singles' ? 'singles' : 'doubles';
-}
-
 function strategyForMode(mode) {
   return mode === 'singles' ? SinglesStrategy : DoublesStrategy;
 }
@@ -190,7 +188,8 @@ Game.prototype._initWorld = function () {
     courtPalette: this.courtPalette,
     timeOfDay: this.timeOfDay,
     quality: this.renderQuality,
-    assets: this.assets
+    assets: this.assets,
+    mode: this.mode
   });
   this._syncOverhead(); // honor an initial Top-Down camMode
   this.ball = Physics.makeBall();
@@ -225,7 +224,11 @@ Game.prototype._initWorld = function () {
       ai: isHuman ? null : AI.makeAI(self.difficulty), aiSwingTimer: 0
     };
   }
-  if (this.mode === 'singles') {
+  if (this.mode === 'practice') {
+    this.players = [
+      entry('near', 0, true, palettes.nearYou)
+    ];
+  } else if (this.mode === 'singles') {
     this.players = [
       entry('near', 0, true,  palettes.nearYou),
       entry('far',  0, false, palettes.farA)
@@ -324,11 +327,16 @@ Game.prototype._initWorld = function () {
     this.netFx = { mesh: netFx, age: 0, dur: 0.22 };
   }
 
-  this.match = Rules.makeMatch({ server: 'near', mode: this.mode });
+  this.practiceReturns = [];
+  if (this.mode === 'practice') this._initPracticeReturnVisuals();
+
+  this.practice = null;
+  this.match = this.mode === 'practice' ? null : Rules.makeMatch({ server: 'near', mode: this.mode });
   this.lastHitCooldown = 0;
   this.swingWindow = 0; this.swingUsed = false; this.swingType = 'fh'; this.swingAim = 0;
   this.swingPower = 'power'; this.swingShot = null;
-  this._placeServe();
+  if (this.mode === 'practice') this._placePracticeFeed();
+  else this._placeServe();
 };
 
 Game.prototype.setInput = function (input) { this.input = input; };
@@ -412,10 +420,15 @@ Game.prototype._serverEntry = function () {
 };
 
 Game.prototype.isHumanServe = function () {
+  if (this.mode === 'practice') return false;
   return this.state === STATE.SERVE && !this.pendingServe && this._serverEntry().isHuman;
 };
 
 Game.prototype.start = function () {
+  if (this.mode === 'practice') {
+    this._startPractice();
+    return;
+  }
   this.state = STATE.SERVE;
   var humanServes = this._serverEntry().isHuman;
   this.serveDelay = humanServes ? 0 : 0.9;
@@ -427,6 +440,76 @@ Game.prototype.start = function () {
 // can't auto-fire the next serve. A fresh press is required each time.
 Game.prototype._clearServeInput = function () {
   if (this.input) { this.input.state.serveQueued = false; this.input.state.swingQueued = false; }
+};
+
+Game.prototype._startPractice = function () {
+  this.state = STATE.SERVE;
+  this.practice = {
+    timer: PRACTICE.FEED_INTERVAL,
+    rep: 0,
+    feedNum: 0,
+    clean: 0,
+    streak: 0,
+    bestStreak: 0,
+    active: false,
+    bounces: 0,
+    target: null,
+    origin: Practice.feedOrigin(),
+    nearestDist: 99,
+    swingAttempted: false,
+    swingSide: 0,
+    feedback: null
+  };
+  this.players[0].pos.x = 0;
+  this.players[0].pos.z = PRACTICE.PLAYER_START_Z;
+  this.players[0].vel.x = 0;
+  this.players[0].vel.z = 0;
+  this.players[0].move.target.x = 0;
+  this.players[0].move.target.z = PRACTICE.PLAYER_START_Z;
+  this._placePracticeFeed();
+  this._message('PRACTICE — BALL MACHINE READY', 2.2);
+};
+
+Game.prototype._placePracticeFeed = function () {
+  if (!this.practice) return;
+  var origin = Practice.feedOrigin();
+  this.practice.origin = origin;
+  this.practice.active = false;
+  this.practice.bounces = 0;
+  this.practice.nearestDist = 99;
+  this.practice.swingAttempted = false;
+  this.practice.swingSide = 0;
+  this.pendingServe = null;
+  this.ball.live = false;
+  this.ball.spline = null;
+  this.ball.pos = Physics.vec(origin.x, origin.y, origin.z);
+  this.ball.vel = Physics.vec(0, 0, 0);
+  this.ball.spin = Physics.vec(0, 0, 0);
+  this.swingWindow = 0;
+  this.swingUsed = false;
+};
+
+Game.prototype._launchPracticeBall = function () {
+  var target = this.practice.feedNum === 0 ? Practice.openingFeedTarget() : Practice.randomFeedTarget();
+  var p0 = Physics.vec(this.practice.origin.x, this.practice.origin.y, this.practice.origin.z);
+  var p2 = Physics.vec(target.x, 0, target.z);
+  var p1 = Physics.computeP1(p0, p2, PRACTICE.FEED_APEX, PRACTICE.FEED_MARGIN);
+  var duration = Physics.splineFlightTime(p0, p2, p1.y);
+  this.practice.target = target;
+  this.practice.active = true;
+  this.practice.feedNum += 1;
+  this.practice.bounces = 0;
+  this.practice.nearestDist = Practice.nearestBallDistance(this.players[0].pos, p0);
+  this.practice.swingAttempted = false;
+  this.practice.swingSide = 0;
+  this.ball.spline = { P0: p0, P1: p1, P2: p2, duration: duration, elapsed: 0 };
+  this.ball.spin = Physics.vec(2.4, (Math.random() - 0.5) * 0.7, 0);
+  this.ball.live = true;
+  this.ball.pos = Physics.clone(p0);
+  this.state = STATE.RALLY;
+  this.lastHitCooldown = 0.04;
+  if (this.audio) this.audio.sfx.serve();
+  this.cameraShake = Math.max(this.cameraShake, 0.04);
 };
 
 Game.prototype._placeServe = function () {
@@ -567,10 +650,15 @@ Game.prototype.update = function (dt) {
       this.swingShot = this.input.state.swingShot || null;
       this.swingWindow = HIT.SWING_WINDOW;
       this.swingUsed = false;
+      if (this.mode === 'practice' && this.practice) {
+        this.practice.swingAttempted = true;
+        this.practice.swingSide = this.ball.pos.z - this.players[0].pos.z;
+      }
     }
   }
 
-  if (this.state === STATE.SERVE) this._tickServe(dt);
+  if (this.mode === 'practice') this._tickPractice(dt);
+  else if (this.state === STATE.SERVE) this._tickServe(dt);
   else if (this.state === STATE.RALLY) this._tickRally(dt);
   else if (this.state === STATE.POINT) {
     this.pointPause -= dt;
@@ -629,6 +717,38 @@ Game.prototype._tickRally = function (dt) {
   }
 };
 
+Game.prototype._tickPractice = function (dt) {
+  if (!this.practice) return;
+  this._updatePracticeReturns(dt);
+  if (this.state === STATE.SERVE) {
+    this.practice.timer -= dt;
+    var hold = this.practice.origin;
+    this.ball.pos = Physics.vec(hold.x, hold.y + Math.sin(performance.now() / 180) * 0.025, hold.z);
+    if (this.practice.timer <= 0) this._launchPracticeBall();
+    return;
+  }
+  if (this.state !== STATE.RALLY) return;
+
+  this.lastHitCooldown = Math.max(0, this.lastHitCooldown - dt);
+  var steps = 4, h = dt / steps;
+  for (var s = 0; s < steps; s++) {
+    if (this.ball.spline) this._stepSpline(h);
+    else {
+      var evs = Physics.step(this.ball, h);
+      for (var i = 0; i < evs.length; i++) this._handlePracticeBallEvent(evs[i]);
+    }
+    this.practice.nearestDist = Math.min(
+      this.practice.nearestDist,
+      Practice.nearestBallDistance(this.players[0].pos, this.ball.pos)
+    );
+    if (this.state !== STATE.RALLY) return;
+  }
+  this._checkPracticeContacts();
+  if (Math.abs(this.ball.pos.z) > C.HALF_L + 8 || Math.abs(this.ball.pos.x) > 12) {
+    this._endPracticeRep(this._scorePracticeRep('whiff'));
+  }
+};
+
 // Advance the active spline by h seconds. Fires a bounce/floor-out event when
 // the ball reaches its landing point (t >= 1 or y <= BALL_R).
 Game.prototype._stepSpline = function (h) {
@@ -657,7 +777,7 @@ Game.prototype._stepSpline = function (h) {
     var inBounds = Math.abs(this.ball.pos.x) <= C.HALF_W + C.BALL_R &&
                    Math.abs(this.ball.pos.z) <= C.HALF_L + C.BALL_R;
     this.ball.lastBounceSide = side;
-    this._handleBallEvent({
+    (this.mode === 'practice' ? this._handlePracticeBallEvent : this._handleBallEvent).call(this, {
       type: inBounds ? 'bounce' : 'floor-out',
       side: side, x: this.ball.pos.x, z: this.ball.pos.z, inBounds: inBounds
     });
@@ -676,6 +796,27 @@ Game.prototype._handleBallEvent = function (e) {
     r = Rules.onNetFault(this.match);
   }
   if (rallyOver(r)) this._endPoint(r);
+};
+
+Game.prototype._handlePracticeBallEvent = function (e) {
+  if (e.type === 'bounce' || e.type === 'floor-out') {
+    if (this.audio) this.audio.sfx.bounce();
+    this._triggerBounceEffect(e.x, e.z);
+  } else if (e.type === 'net') {
+    if (this.audio) this.audio.sfx.net();
+    this._triggerNetEffect();
+    this._endPracticeRep(this._scorePracticeRep('whiff'));
+    return;
+  }
+
+  if (e.type === 'floor-out') {
+    this._endPracticeRep(this._scorePracticeRep('whiff'));
+    return;
+  }
+  if (e.side === 1) {
+    this.practice.bounces += 1;
+    if (this.practice.bounces >= 2) this._endPracticeRep(this._scorePracticeRep('whiff'));
+  }
 };
 
 // A rally ends on a point, a side-out, or a hand-off to the 2nd server.
@@ -832,6 +973,15 @@ Game.prototype._checkContacts = function (dt) {
   }
 };
 
+Game.prototype._checkPracticeContacts = function () {
+  if (this.lastHitCooldown > 0 || !this.practice || !this.practice.active) return;
+  var p = this.players[0];
+  if (!this._reachOK(p.pos)) return;
+  if (this.swingWindow <= 0 || this.swingUsed) return;
+  this._hitPractice(p, this.swingType);
+  this.swingUsed = true;
+};
+
 // Resolve the AIMED shot for a human-controlled player from the held directional
 // input ("momentum aim"): move.x steers left/right, -move.z steers depth.
 // intentOverride optionally forces a specific intent (e.g. 'touch' for power cap).
@@ -918,6 +1068,37 @@ Game.prototype._executeHit = function (targetX, targetZ, apex, margin, spinVec, 
   this.ball.spin = spinVec;
   this.ball.live = true;
   this.lastHitCooldown = HIT.COOLDOWN_RALLY;
+};
+
+Game.prototype._hitPractice = function (p, swingType) {
+  var pos = p.pos, fwd = (p.team === 'near') ? 1 : -1;
+  var maxI = Shots.maxIntent(this.ball.pos.y);
+  var visualSwingType = maxI === 'smash' ? 'smash' : (swingType || 'fh');
+  p.mesh.swing(visualSwingType);
+  if (this.audio) this.audio.sfx.paddle();
+  this._triggerHitEffect();
+  this.cameraShake = Math.max(this.cameraShake, 0.08);
+
+  var stabilityIdx = this._computeStability(p);
+  var quality = Shots.stabilityQuality(stabilityIdx);
+  var at = this._aimTarget(p);
+  if (maxI === 'touch' && at.type !== 'dink' && at.type !== 'drop') at = this._aimTarget(p, 'touch');
+  var timing = Practice.scoreTiming(this.ball.pos.z - pos.z);
+  var contactDist = dist2D(this.ball.pos.x - pos.x, this.ball.pos.z - pos.z);
+  var feedback = Practice.scoreContact(contactDist, stabilityIdx, timing, 'contact');
+
+  var shot;
+  if (maxI === 'smash') {
+    shot = this._buildPracticeReturnShot(at.x, at.z, POWER_CAP.NET_H + 0.06, 0.06,
+      Physics.vec(7.0 * -fwd, at.aim * 1.5, 0), false);
+  } else {
+    var apex = Shots.apexForQuality(at.sp.apex, quality);
+    var spinVec = Physics.vec((at.sp.spinX + (swingType === 'bh' ? -1.5 : 0)) * -fwd,
+      at.aim * 1.5 + at.sp.spinY, 0);
+    shot = this._buildPracticeReturnShot(at.x, at.z, apex, at.sp.margin, spinVec, false);
+  }
+  this._spawnPracticeReturn(shot);
+  this._endPracticeRep(feedback);
 };
 
 // Human paddle strike. Aim from input + stability index + height-based power cap.
@@ -1070,7 +1251,7 @@ Game.prototype._cpuHit = function (p) {
 // opponents. Checks if the net-partner on the receiving team can intercept.
 // If so, deflects the ball mid-spline toward open court on the hitter's side.
 Game.prototype._checkPoach = function (hitterTeam) {
-  if (this.mode === 'singles') return;
+  if (this.mode === 'singles' || this.mode === 'practice') return;
   if (!this.ball.spline) return;
   var sp = this.ball.spline;
   var receivingTeam = hitterTeam === 'near' ? 'far' : 'near';
@@ -1201,6 +1382,7 @@ Game.prototype._syncMeshes = function (dt) {
   var b = this.ball, bm = this.world.ballMesh;
   bm.position.set(b.pos.x, b.pos.y, b.pos.z);
   bm.rotation.x += (b.vel.z) * dt * 2; bm.rotation.z -= (b.vel.x) * dt * 2;
+  this._updatePracticeBallCue();
   // Ghost marker (drawn on top) so the ball is never lost behind your own player.
   if (this.world.ballGhost) this.world.ballGhost.position.set(b.pos.x, b.pos.y, b.pos.z);
   // contact shadow blob
@@ -1261,15 +1443,21 @@ Game.prototype._syncMeshes = function (dt) {
   // Aim marker: show on the opponents' court when it's your turn to hit.
   if (this.aimMarker) {
     var human = this.players[0];
-    var rally = this.match.rally;
-    var incoming = (this.state === STATE.RALLY && rally && rally.lastHitter !== 'near' &&
-        this.ball.live && this.ball.vel.z > 0);
+    var rally = this.match && this.match.rally;
+    var incoming = this.mode === 'practice'
+      ? (this.state === STATE.RALLY && this.ball.live && this.ball.pos.z < C.HALF_L + 0.5)
+      : (this.state === STATE.RALLY && rally && rally.lastHitter !== 'near' &&
+          this.ball.live && this.ball.vel.z > 0);
     var yourTurn = false;
     if (incoming) {
-      this._aimPredT = (this._aimPredT || 0) - dt;
-      if (this._aimPredT <= 0 || !this._aimPred) { this._aimPred = AI.predict(this.ball); this._aimPredT = 0.08; }
-      yourTurn = (this._responsibleSlot('near', this._aimPred.x) === human.slot)
-              || this._reachOK(human.pos);
+      if (this.mode === 'practice') {
+        yourTurn = true;
+      } else {
+        this._aimPredT = (this._aimPredT || 0) - dt;
+        if (this._aimPredT <= 0 || !this._aimPred) { this._aimPred = AI.predict(this.ball); this._aimPredT = 0.08; }
+        yourTurn = (this._responsibleSlot('near', this._aimPred.x) === human.slot)
+                || this._reachOK(human.pos);
+      }
     } else { this._aimPred = null; }
     if (yourTurn) {
       var at = this._aimTarget(human);
@@ -1302,6 +1490,171 @@ Game.prototype._updateTrail = function () {
   this.world.trail.material.opacity = this.ball.live ? 0.35 : 0;
 };
 
+Game.prototype._updatePracticeBallCue = function () {
+  var mesh = this.world && this.world.ballMesh;
+  if (!mesh || !mesh.material) return;
+  var glow = mesh.children && mesh.children[0] && mesh.children[0].material ? mesh.children[0].material : null;
+  var ghost = this.world.ballGhost && this.world.ballGhost.material ? this.world.ballGhost.material : null;
+  var cue = 'none';
+  if (this.mode === 'practice' && this.practice && this.state === STATE.RALLY && this.ball.live) {
+    var p = this.players[0];
+    var dist = dist2D(this.ball.pos.x - p.pos.x, this.ball.pos.z - p.pos.z);
+    cue = Practice.liveCue(dist, this.ball.pos.z - p.pos.z, this.ball.pos.y);
+  }
+  if (cue === 'perfect') {
+    mesh.material.color.setHex(0xff7a18);
+    mesh.material.emissive.setHex(0xff4c00);
+    mesh.material.emissiveIntensity = 1.5;
+    mesh.scale.setScalar(1.18);
+    if (glow) { glow.color.setHex(0xffb066); glow.opacity = 0.42; }
+    if (ghost) { ghost.color.setHex(0xffb066); ghost.opacity = 0.82; }
+  } else if (cue === 'clean') {
+    mesh.material.color.setHex(0x1fe4ff);
+    mesh.material.emissive.setHex(0x00a6d6);
+    mesh.material.emissiveIntensity = 1.22;
+    mesh.scale.setScalar(1.12);
+    if (glow) { glow.color.setHex(0xa6fbff); glow.opacity = 0.34; }
+    if (ghost) { ghost.color.setHex(0xa6fbff); ghost.opacity = 0.72; }
+  } else if (cue === 'good') {
+    mesh.material.color.setHex(0xd6ff4a);
+    mesh.material.emissive.setHex(0x8fbe00);
+    mesh.material.emissiveIntensity = 0.98;
+    mesh.scale.setScalar(1.06);
+    if (glow) { glow.color.setHex(0xe4ff8a); glow.opacity = 0.24; }
+    if (ghost) { ghost.color.setHex(0xe4ff8a); ghost.opacity = 0.58; }
+  } else {
+    mesh.material.color.setHex(this.world.ballBaseColor || 0x73ff26);
+    mesh.material.emissive.setHex(this.world.ballBaseEmissive || 0x3a9e00);
+    mesh.material.emissiveIntensity = this.timeOfDay === 'night' ? 0.95 : (this.venue === 'indoor' ? 0.42 : 0.55);
+    mesh.scale.setScalar(1);
+    if (glow) {
+      glow.color.setHex(this.world.ballBaseGlow || 0x6cff14);
+      glow.opacity = this.timeOfDay === 'night' ? 0.26 : (this.venue === 'indoor' ? 0.12 : 0.18);
+    }
+    if (ghost) {
+      ghost.color.setHex(this.world.ballBaseGlow || 0x6cff14);
+      ghost.opacity = 0.35;
+    }
+  }
+};
+
+Game.prototype._initPracticeReturnVisuals = function () {
+  var sharedGeo = new THREE.SphereGeometry(C.BALL_R * 1.45, 20, 16);
+  var glowGeo = new THREE.SphereGeometry(C.BALL_R * 2.0, 14, 10);
+  var blobGeo = new THREE.CircleGeometry(C.BALL_R * 2.0, 16);
+  var markGeo = new THREE.RingGeometry(0.14, 0.24, 20);
+  for (var i = 0; i < PRACTICE.RETURN_VISUALS_MAX; i++) {
+    var mesh = new THREE.Mesh(sharedGeo, new THREE.MeshStandardMaterial({
+      color: 0x73ff26, roughness: 0.48, metalness: 0, emissive: 0x3a9e00, emissiveIntensity: 0.55
+    }));
+    mesh.castShadow = true;
+    mesh.visible = false;
+    var glow = new THREE.Mesh(glowGeo, new THREE.MeshBasicMaterial({
+      color: 0x96ff46, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false
+    }));
+    mesh.add(glow);
+    this.scene.add(mesh);
+
+    var blob = new THREE.Mesh(blobGeo, new THREE.MeshBasicMaterial({
+      color: 0x000000, transparent: true, opacity: 0.18
+    }));
+    blob.rotation.x = -Math.PI / 2;
+    blob.visible = false;
+    this.scene.add(blob);
+
+    var mark = new THREE.Mesh(markGeo, new THREE.MeshBasicMaterial({
+      color: 0x7ef0ff, transparent: true, opacity: 0.65, depthWrite: false
+    }));
+    mark.rotation.x = -Math.PI / 2;
+    mark.visible = false;
+    this.scene.add(mark);
+
+    this.practiceReturns.push({
+      mesh: mesh,
+      blob: blob,
+      mark: mark,
+      active: false,
+      age: 0,
+      spline: null,
+      pos: Physics.vec(0, 0, 0),
+      vel: Physics.vec(0, 0, 0),
+      spin: Physics.vec(0, 0, 0)
+    });
+  }
+};
+
+Game.prototype._buildPracticeReturnShot = function (targetX, targetZ, apex, margin, spinVec, isAtp) {
+  var p0 = Physics.vec(this.ball.pos.x, Math.max(0.5, this.ball.pos.y), this.ball.pos.z);
+  var p2 = Physics.vec(targetX, 0, targetZ);
+  var p1 = isAtp
+    ? { x: (p0.x + p2.x) * 0.5, y: 0.4, z: p0.z * 0.5 }
+    : Physics.computeP1(p0, p2, apex, margin);
+  var duration = Physics.splineFlightTime(p0, p2, p1.y);
+  return { P0: p0, P1: p1, P2: p2, duration: duration, spin: spinVec };
+};
+
+Game.prototype._spawnPracticeReturn = function (shot) {
+  if (!this.practiceReturns.length || !shot) return;
+  var slot = null;
+  for (var i = 0; i < this.practiceReturns.length; i++) {
+    if (!this.practiceReturns[i].active) { slot = this.practiceReturns[i]; break; }
+  }
+  slot = slot || this.practiceReturns[0];
+  slot.active = true;
+  slot.age = 0;
+  slot.spline = {
+    P0: Physics.clone(shot.P0),
+    P1: Physics.clone(shot.P1),
+    P2: Physics.clone(shot.P2),
+    duration: shot.duration,
+    elapsed: 0
+  };
+  slot.pos = Physics.clone(shot.P0);
+  slot.vel = Physics.vec(0, 0, 0);
+  slot.spin = Physics.clone(shot.spin);
+  slot.mesh.visible = true;
+  slot.blob.visible = true;
+  slot.mark.visible = true;
+  slot.mark.position.set(shot.P2.x, 0.04, shot.P2.z);
+};
+
+Game.prototype._updatePracticeReturns = function (dt) {
+  for (var i = 0; i < this.practiceReturns.length; i++) {
+    var rb = this.practiceReturns[i];
+    if (!rb.active) continue;
+    var sp = rb.spline;
+    if (!sp) {
+      rb.active = false;
+      rb.mesh.visible = false;
+      rb.blob.visible = false;
+      rb.mark.visible = false;
+      continue;
+    }
+    sp.elapsed += dt;
+    var t = Math.min(1, sp.elapsed / (sp.duration || 1));
+    var pt = Physics.bezierPoint(sp.P0, sp.P1, sp.P2, t);
+    var vt = Physics.bezierVel(sp.P0, sp.P1, sp.P2, t, sp.duration);
+    rb.pos = pt;
+    rb.vel = vt;
+    rb.mesh.position.set(pt.x, pt.y, pt.z);
+    rb.mesh.rotation.x += vt.z * dt * 2;
+    rb.mesh.rotation.z -= vt.x * dt * 2;
+    rb.blob.position.set(pt.x, 0.02, pt.z);
+    var sc = clamp(1.3 - pt.y * 0.16, 0.35, 1.3);
+    rb.blob.scale.setScalar(sc);
+    rb.blob.material.opacity = clamp(0.22 - pt.y * 0.024, 0.05, 0.22);
+    rb.mark.material.opacity = clamp(0.65 - t * 0.28, 0.26, 0.65);
+    if (t >= 1 || pt.y <= C.BALL_R) {
+      this._triggerBounceEffect(sp.P2.x, sp.P2.z);
+      rb.active = false;
+      rb.spline = null;
+      rb.mesh.visible = false;
+      rb.blob.visible = false;
+      rb.mark.visible = false;
+    }
+  }
+};
+
 /* ------------------------------- HUD ---------------------------------- */
 Game.prototype._cycleCamera = function () {
   var names = ['BROADCAST', 'FOLLOW', 'TOP-DOWN'];
@@ -1330,12 +1683,17 @@ Game.prototype._flashShot = function (type) {
 };
 Game.prototype._updateHUD = function () {
   if (!this.hud) return;
+  var scores = this.match ? this.match.scores : { near: 0, far: 0 };
+  var server = this.match ? this.match.server : 'near';
+  var callout = this.mode === 'practice'
+    ? Practice.sessionCallout(this.practice || { rep: 0, clean: 0, bestStreak: 0 })
+    : Rules.scoreCallout(this.match);
   this.hud.update({
-    scores: this.match.scores,
-    server: this.match.server,
-    serverNum: this.match.serverNum,
+    scores: scores,
+    server: server,
+    serverNum: this.match ? this.match.serverNum : 0,
     mode: this.mode,
-    callout: Rules.scoreCallout(this.match),
+    callout: callout,
     msg: this.msgTimer > 0 ? this._msg : null,
     msgOpacity: Math.min(1, this.msgTimer * 2),
     shotName: this.shotTimer > 0 ? this._shotName : null,
@@ -1343,6 +1701,36 @@ Game.prototype._updateHUD = function () {
     level: this.levelMeta,
     isHumanServe: this.isHumanServe()
   });
+};
+
+Game.prototype._scorePracticeRep = function (result) {
+  var dist = this.practice ? this.practice.nearestDist : 99;
+  var timing = null;
+  if (this.practice && this.practice.swingAttempted) {
+    timing = { grade: this.practice.swingSide > 0 ? 'late' : 'early' };
+  }
+  return Practice.scoreContact(dist, 0, timing, result || 'whiff');
+};
+
+Game.prototype._endPracticeRep = function (feedback) {
+  if (!this.practice) return;
+  this.practice.rep += 1;
+  this.practice.feedback = feedback;
+  var clean = feedback && (feedback.key === 'perfect' || feedback.key === 'clean' || feedback.key === 'good');
+  if (clean) {
+    this.practice.clean += 1;
+    this.practice.streak += 1;
+    this.practice.bestStreak = Math.max(this.practice.bestStreak, this.practice.streak);
+  } else {
+    this.practice.streak = 0;
+  }
+  this.ball.live = false;
+  this.ball.spline = null;
+  this.state = STATE.SERVE;
+  this.practice.timer = this.practice.feedNum <= 1 ? PRACTICE.READY_GAP : PRACTICE.FEED_INTERVAL;
+  this._placePracticeFeed();
+  this._message(feedback.banner, 1.2);
+  this._flashShot(feedback.shot);
 };
 
 Game.prototype.render = function () {

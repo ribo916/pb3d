@@ -30,6 +30,12 @@ All distances in **meters**. Key court landmarks (from `constants.js`):
 | `COURT.NET_H_POST` | 0.914 m | Net height at posts (36 in) |
 | `COURT.BALL_R` | 0.037 m | Ball radius (74 mm) |
 
+Practice-specific landmarks/tuning also live in `constants.js` `PRACTICE`:
+- Machine base at `x = 0`, `z = -HALF_L + 0.18`
+- Feed release slightly in front/above the machine
+- Human practice start near the near baseline
+- Grading windows for position/timing/stability
+
 ---
 
 ## Ball State
@@ -206,6 +212,21 @@ attempt being silently ignored.
 - After a serve: `HIT.COOLDOWN_SERVE = 0.25 s`
 - After a rally hit: `HIT.COOLDOWN_RALLY = 0.12 s`
 
+### Match Play vs Practice
+
+The **underlying contact quality logic is shared**:
+- Reach gate is the same
+- Stability Index is the same
+- Power cap and shot resolution are the same
+
+What practice adds on top:
+- practice-only coaching feedback (`early`, `late`, `good`, `clean`, `perfect`)
+- a live ball-color cue when the incoming machine feed enters a good contact window
+- a separate machine-feed loop instead of rules-driven rally state
+
+So a "good contact" still improves shot quality in doubles and singles, but only
+practice exposes that as explicit coaching feedback.
+
 ### Input (Human)
 
 All devices feed the same `input.state` fields (`move`, `aim`, `swingPower`,
@@ -276,6 +297,10 @@ stability  = distFactor × velFactor         → [0, 1]
 
 Apex is scaled by `Shots.apexForQuality(baseApex, quality)` before P1 is computed.
 
+Practice mode uses the same Stability Index, but with wider grading thresholds
+so "clean" and "perfect" map to an arcade-usable sweet spot rather than exact
+match-play precision.
+
 ---
 
 ## Power Cap
@@ -315,6 +340,57 @@ Triggered when **all active players are in the kitchen zone** (`|z| < KITCHEN + 
 - **Default:** Cross-court diagonal kitchen corner (`targetX = −sign(playerX) × HALF_W × 0.70`).
 - **Pulled fallback:** If `|playerX − ballX| > 1.5 m`, returns a straight neutral dink
   (`targetX = 0`) — safer when out of position.
+
+---
+
+## Practice Mode
+
+Practice is a dedicated third mode, not a match variant.
+
+### Structure
+
+- One active player only: the human on the near side
+- A Titan-style machine sits on the far baseline T
+- The first feed is a deep middle ball so the player starts with a baseline drive
+- Later feeds randomize across legal near-side target zones
+
+### Rep Flow
+
+1. Machine feeds one live practice ball.
+2. Human moves and swings using the normal hit model.
+3. On contact, the rep is graded immediately.
+4. The returned shot continues as a **visual-only** ball with a landing marker.
+5. The next feed can start while the old return is still finishing.
+6. Visual-only return balls disappear after they land/bounce out.
+
+### Practice Feedback
+
+Practice feedback combines:
+- timing: based on where the ball is relative to the player's body at contact
+- positioning: distance from the player's strike zone
+- stability: same `_computeStability()` used in match play
+
+Labels:
+- `perfect`
+- `clean`
+- `good`
+- `reach`
+- `early`
+- `late`
+- `far`
+- `whiff`
+
+### Live Ball Cue
+
+During practice rallies, the incoming ball changes color as it enters a useful
+contact window:
+- default green = outside the cue window
+- brighter yellow-green = acceptable/good window
+- cyan = clean contact window
+- hot orange = best/perfect window
+
+This cue is advisory only; the actual shot still depends on the shared contact,
+stability, and shot-resolution logic.
 
 ---
 
