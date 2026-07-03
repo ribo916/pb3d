@@ -7,6 +7,8 @@ import * as Shots from '../src/shots.js';
 import * as Rules from '../src/rules.js';
 import * as AI from '../src/ai.js';
 import * as Movement from '../src/movement.js';
+import * as SinglesStrategy from '../src/strategies/singles.js';
+import * as DoublesStrategy from '../src/strategies/doubles.js';
 import { buildMusicCatalog, sanitizeMusicState } from '../src/audio.js';
 import { STABILITY, POWER_CAP, SPECIALTY, MOVEMENT, HIT } from '../src/constants.js';
 
@@ -241,9 +243,86 @@ test('AI chooseShot serve aims diagonally into a service box', () => {
   const ai = AI.makeAI('normal');
   const m = Rules.makeMatch({ server: 'far' });
   const ball = Physics.makeBall();
-  const shot = AI.chooseShot(ai, ball, m, true);
+  const shot = AI.chooseShot(ai, ball, m, true, { mode: 'doubles' });
   assert.ok(shot.target.z > 0, 'far serve aims toward the near (+z) side');
   assert.equal(shot.type, 'serve');
+});
+
+test('singles passing target goes away from defender on same half', () => {
+  const ai = AI.makeAI('hard');
+  const m = Rules.makeMatch({ mode: 'singles', server: 'far' });
+  m.rally = { shots: 4, phase: 'open' };
+  const ball = Physics.makeBall();
+  ball.live = true;
+  ball.pos = Physics.vec(0, 1.1, -4.8);
+  const shot = AI.chooseShot(ai, ball, m, false, {
+    mode: 'singles',
+    hitterPos: { x: 0.2, z: -4.8 },
+    opponents: { a: { pos: { x: 1.1, z: 4.6 } } }
+  });
+  assert.ok(shot.target.x < 0, 'targets away from right-side defender');
+});
+
+test('singles wide-defender case targets opposite open court', () => {
+  const neutral = SinglesStrategy.neutralAimTarget({ a: { pos: { x: -2.0, z: 4.8 } } });
+  assert.ok(neutral.x > 0, 'neutral aim biases opposite the stretched defender');
+});
+
+test('singles return-of-serve stays deep and avoids middle body ball', () => {
+  const ai = AI.makeAI('hard');
+  const m = Rules.makeMatch({ mode: 'singles', server: 'near' });
+  m.rally = { shots: 2, phase: 'open' };
+  const ball = Physics.makeBall();
+  ball.live = true;
+  ball.pos = Physics.vec(0.2, 1.0, -5.2);
+  const shot = AI.chooseShot(ai, ball, m, false, {
+    mode: 'singles',
+    hitterPos: { x: 0.1, z: -5.1 },
+    opponents: { a: { pos: { x: 1.3, z: 4.2 } } }
+  });
+  assert.ok(shot.target.z > C.HALF_L * 0.7, 'return stays deep');
+  assert.ok(Math.abs(shot.target.x) > C.HALF_W * 0.45, 'return is not centered at the body');
+});
+
+test('doubles neutral aim still tracks away from the deeper opponent body', () => {
+  const target = DoublesStrategy.neutralAimTarget({
+    a: { pos: { x: 1.0, z: 5.4 } },
+    b: { pos: { x: -0.2, z: 3.2 } }
+  });
+  assert.ok(target.x < 1.0, 'aims away from deeper opponent body');
+  assert.ok(target.z >= 5.4, 'uses deeper opponent depth');
+});
+
+test('AI dispatcher selects the correct movement strategy by mode', () => {
+  const ai = AI.makeAI('normal');
+  const ball = Physics.makeBall();
+  ball.live = true;
+  ball.pos = Physics.vec(0.8, 1.0, -1.5);
+  ball.vel = Physics.vec(0, 0, 5);
+  ball.spline = { P0: Physics.vec(0, 1, -4), P1: Physics.vec(0, 2, 0), P2: Physics.vec(0.8, 0, 4.5), duration: 1, elapsed: 0.2 };
+  const singles = AI.chooseMovement(ai, ball, { shots: 2, phase: 'return' }, {
+    mode: 'singles',
+    player: { team: 'near', pos: { x: 0, z: 5 }, move: {} },
+    incoming: true,
+    responsible: true,
+    prediction: { x: 0.8, z: 4.5 },
+    opponents: { a: { pos: { x: -1.2, z: -4.5 } } },
+    isReturner: true,
+    distance: () => 0.6
+  });
+  const doubles = AI.chooseMovement(ai, ball, { shots: 4, phase: 'open' }, {
+    mode: 'doubles',
+    player: { team: 'near', pos: { x: 0, z: 5 }, move: {} , ai: ai },
+    lane: 1,
+    incoming: true,
+    responsible: true,
+    prediction: { x: 0.8, z: 4.5 },
+    servingTeam: 'far',
+    opponents: { a: { pos: { x: -1.2, z: -4.5 } }, b: { pos: { x: 1.1, z: -3.1 } } },
+    distance: () => 0.6
+  });
+  assert.equal(singles.kind, 'intercept');
+  assert.equal(doubles.kind, 'split');
 });
 
 /* ----------------------- spline / bezier helpers ----------------------- */

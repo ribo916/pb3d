@@ -373,17 +373,27 @@ Implemented in `rules.js` (pure, no Three.js).
 
 ### Shot Selection (`AI.chooseShot`)
 
+`ai.js` is now a dispatcher over mode-specific strategy modules:
+- `src/strategies/doubles.js` preserves the original doubles rhythm and deeper-opponent targeting.
+- `src/strategies/singles.js` is intentionally **passing-first**: more width, more hit-behind-recovery returns, and fewer routine third-shot drops than doubles.
+
 1. **Unforced error** (prob = `miss`) → fault (net or out)
 2. **Serve** → diagonal deep
 3. **Pro Erne** (smart ≥ 0.92 + position check) → see Specialty Shots
 4. **Pro ATP** (smart ≥ 0.92 + position check) → see Specialty Shots
 5. **Overhead smash** — `ball.y ≥ 1.3 m` AND `Math.random() < smart` → steep arc (apex 0.92 m), `isSmash: true`; skill-gated
-6. **Return of serve** (`rally.shots === 2`) → always `'power'` (deep); no drops on the return
-7. **Third shot** (`rally.shots === 3`, serving team's first open-play hit) → strongly prefer drop; `dropChance = max(0, smart − 0.1) × 1.25` ≈ 37 % easy / 75 % normal / 97 % hard
+6. **Return of serve**
+   - doubles: always deep power, usually at the deeper opponent's feet
+   - singles: always deep power, but biased cross-court / behind recovery instead of at the body
+7. **Third shot** (`rally.shots === 3`, serving team's first open-play hit)
+   - doubles: strongly prefer drop; `dropChance = max(0, smart − 0.1) × 1.25` ≈ 37 % easy / 75 % normal / 97 % hard
+   - singles: still drop-capable, but scaled down (`SINGLES.THIRD_SHOT_DROP_SCALE`) so baseline exchanges feature more drives and passes
 8. **Power cap** — if `ball.y ≤ NET_H`, intent forced to `'touch'`
 9. **Skill-scaled intent** (zone + ball height + `smart`): kitchen speedup, dink, or drive; transition/deep drop vs drive
 10. **Shot type** via `Shots.resolve`
-11. **Target** — deeper-opponent feet for drive/speedup/drop; otherwise corner/body/wide
+11. **Target**
+   - doubles: deeper-opponent feet for drive/speedup/drop; otherwise corner/body/wide
+   - singles: passing-first open-court placement. Drives and speedups aim away from defender position; when the defender is stretched wide, the strategy punishes the opposite half instead of continuing through them. Body balls are a low-frequency variation only.
 12. **Scatter** — add `±err` noise to `aim.x`, `aim.z`, `apex`
 
 ### Movement (`game._moveCPU`)
@@ -409,7 +419,18 @@ Singles positioning:
 - Each side has one player, so `_responsibleSlot()` always resolves to slot 0.
 - The CPU covers the full side instead of a left/right lane.
 - Serve formation places only the server and receiver behind their diagonal courts.
+- The receiver reads serves from a slightly shallower depth than the old shared logic (`SINGLES.RETURN_READ_Z`) to cut down clean whiffs.
+- Lateral pursuit starts early (`SINGLES.CHASE_X_BIAS`) so singles defenders break wider sooner instead of waiting under a doubles-style lane read.
+- Recovery shades lightly opposite the opponent's current x-position rather than parking dead center, which helps the next pass read like singles instead of two-up doubles spacing.
 - Poaching is disabled because there is no net partner.
+
+### Human neutral aim assist
+
+When the human holds a near-neutral stick (`|blend| < 0.15`), the default assist now comes from the active mode strategy:
+- doubles: aim away from the deeper opponent's body
+- singles: bias toward the open half away from the lone defender
+
+This keeps casual neutral swings tactically sensible in singles without changing manual left/right aim behavior.
 
 ---
 

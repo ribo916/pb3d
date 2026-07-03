@@ -123,3 +123,18 @@ export const SPECIALTY = {
   POACH_NORMAL_X_HALF: 0.85, // ±x bounding box for DUPR 4.5 poach intercept
   POACH_PRO_REACH: 1.9       // physical reach sphere radius (m) for Pro poach check
 };
+
+// Singles-only tactical tuning. Keep shot profile values in shots.js; these
+// numbers only control how singles players position and choose placement.
+export const SINGLES = {
+  READY_W_FRAC: 0.18,          // central ready shade before the ball is incoming
+  RECOVER_Z: 5.35,             // recover a bit inside the baseline
+  RETURN_READ_Z: 4.95,         // receiver reads serves less deep to cut down whiffs
+  CHASE_X_BIAS: 0.42,          // start lateral pursuit before the ball fully commits
+  INTERCEPT_CUSHION: 0.12,     // set up closer to the bounce/contact point
+  OPEN_COURT_PASS_FRAC: 0.86,  // default passing width target
+  WIDE_PUNISH_FRAC: 0.90,      // wider target when opponent is stretched off-court
+  BODY_SHOT_CHANCE: 0.14,      // occasional variation; not the default
+  THIRD_SHOT_DROP_SCALE: 0.62, // fewer routine drops than doubles
+  RETURN_CROSSCOURT_FRAC: 0.84 // deep return target when hitting behind recovery
+};

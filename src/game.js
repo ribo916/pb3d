@@ -16,6 +16,8 @@ import * as Physics from './physics.js';
 import * as Rules from './rules.js';
 import * as AI from './ai.js';
 import * as Shots from './shots.js';
+import * as SinglesStrategy from './strategies/singles.js';
+import * as DoublesStrategy from './strategies/doubles.js';
 import * as Movement from './movement.js';
 import * as Scene from './scene.js';
 import { makePlayer } from './players.js';
@@ -110,6 +112,10 @@ function normalizeDifficulty(d) {
 
 function normalizeMode(m) {
   return m === 'singles' ? 'singles' : 'doubles';
+}
+
+function strategyForMode(mode) {
+  return mode === 'singles' ? SinglesStrategy : DoublesStrategy;
 }
 
 export function Game(opts) {
@@ -347,7 +353,7 @@ Game.prototype._teamPlayers = function (team) {
 Game.prototype._opponentsFor = function (team) {
   var opp = this._teamPlayers(team === 'near' ? 'far' : 'near');
   var first = opp[0] || null;
-  var second = opp[1] || first;
+  var second = opp[1] || null;
   return { a: first, b: second };
 };
 
@@ -373,29 +379,12 @@ Game.prototype._responsibleSlot = function (team, atX) {
 Game.prototype._formationServe = function () {
   var srv = Rules.currentServer(this.match);
   var rcv = Rules.currentReceiver(this.match);
+  var strategy = strategyForMode(this.mode);
   for (var i = 0; i < this.players.length; i++) {
     var p = this.players[i];
-    var fwd = (p.team === 'near') ? 1 : -1;       // +z near, -z far
-    if (this.mode === 'singles') {
-      var info = p.team === srv.team ? srv : rcv;
-      p.pos.x = Rules.sideX(p.team, info.side) * (C.HALF_W * 0.5);
-      p.pos.z = fwd * (C.HALF_L + 0.45);
-      p.vel.x = 0; p.vel.z = 0;
-      p.move.kind = 'ready'; p.move.split = 0; p.move.plant = 0; p.move.lunge = 0;
-      continue;
-    }
     var laneX = this._laneSign(p) * (C.HALF_W * 0.5);
-    var z;
-    if (p.team === srv.team && p.slot === srv.slot) {
-      z = fwd * (C.HALF_L + 0.45);                 // server: a step behind the baseline
-    } else if (p.team === srv.team) {
-      z = fwd * (C.HALF_L + 0.2);                  // server's partner: back beside server
-    } else if (p.team === rcv.team && p.slot === rcv.slot) {
-      z = fwd * (C.HALF_L + 0.45);                 // receiver: behind the baseline
-    } else {
-      z = fwd * (C.KITCHEN + 0.25);                // receiver's partner: up at the kitchen line
-    }
-    p.pos.x = laneX; p.pos.z = z; p.vel.x = 0; p.vel.z = 0;
+    var servePos = strategy.servePosition(p, srv, rcv, laneX);
+    p.pos.x = servePos.x; p.pos.z = servePos.z; p.vel.x = 0; p.vel.z = 0;
     p.move.kind = 'ready'; p.move.split = 0; p.move.plant = 0; p.move.lunge = 0;
   }
 };
@@ -760,57 +749,22 @@ Game.prototype._moveCPU = function (p, dt) {
   var team = p.team, fwd = (team === 'near') ? 1 : -1;
   var rally = this.match.rally;
   var lane = this._laneSign(p);                    // ±1: this player's side of center
-  var laneX = lane * (C.HALF_W * 0.55);
-  // Kitchen race: once the rally is open, skilled players work up to the line.
-  // Serving team stays at baseline until they've hit shot 3 (their first open-play
-  // shot); the returning team's partner already starts at the kitchen in formation.
-  var backZ = C.HALF_L - 0.9, upZ = C.KITCHEN + 0.3;
-  var isServingTeam = (team === this.match.server);
-  var shotsCompleted = (rally && rally.shots) || 0;
-  var advanceAllowed = (rally && rally.phase === 'open') &&
-    (!isServingTeam || shotsCompleted >= 3);
-  var advance = advanceAllowed ? clamp(p.ai.cfg.smart * 1.6 - 0.2, 0, 1) : 0;
-  var tx = laneX, tz = fwd * (backZ + (upZ - backZ) * advance);
-  var kind = advanceAllowed ? 'recover' : 'hold';
-
-  if (this.mode === 'singles') {
-    tx = 0;
-    lane = null;
-  }
-
-  // Only the player whose LANE the ball is heading into goes for it.
   var incoming = this.ball.live && (this.ball.vel.z * fwd > 0);
   var pred = incoming ? AI.predict(this.ball) : null;
   var responsible = pred && (this.mode === 'singles' || p.slot === this._responsibleSlot(team, pred.x));
-  if (pred && responsible) {
-    // Pop-up arc (high apex): stay near kitchen to intercept overhead rather than
-    // retreating all the way to the baseline landing point.
-    var isPopup = this.ball.spline && this.ball.spline.P1.y >= 2.0;
-    if (!isPopup) {
-      tx = pred.x;
-      // Set up a small step behind the bounce/contact point so the player looks
-      // braced instead of standing directly under the ball.
-      tz = pred.z + fwd * 0.25;
-    }
-    // If popup: keep the default advance target so they can volley it overhead.
-    var dist = dist2D(tx - p.pos.x, tz - p.pos.z);
-    var timeLeft = this.ball.spline ? Math.max(0, this.ball.spline.duration - this.ball.spline.elapsed) : 0.65;
-    var reachable = p.ai.cfg.speed * (timeLeft + p.ai.cfg.react + 0.16);
-    kind = dist > reachable + 0.6 ? 'emergency' : 'intercept';
-    if (isPopup) {
-      if (p.move.kind !== 'split') p.move.split = Math.max(p.move.split || 0, MOVEMENT.SPLIT_STEP_TIME);
-      kind = 'split';
-    }
-    if (dist > MOVEMENT.LUNGE_DIST && timeLeft < 0.36) {
-      p.move.lunge = Math.max(p.move.lunge || 0, 0.18);
-    }
-  } else if (pred && incoming) {
-    // The non-responsible doubles partner shades middle and split-steps when the
-    // ball is incoming. It reads like "ready to poach" without stealing lane duty.
-    tx += -lane * MOVEMENT.RECOVER_SHADE_X;
-    if (p.move.kind !== 'split') p.move.split = Math.max(p.move.split || 0, MOVEMENT.SPLIT_STEP_TIME);
-    kind = 'split';
-  }
+  var strategy = AI.chooseMovement(p.ai, this.ball, rally, {
+    mode: this.mode,
+    player: p,
+    lane: lane,
+    incoming: incoming,
+    prediction: pred,
+    responsible: responsible,
+    servingTeam: this.match.server,
+    opponents: this._opponentsFor(team),
+    isReturner: this.state === STATE.RALLY && rally && rally.shots <= 1 && team !== this.match.server,
+    distance: function (tx, tz) { return dist2D(tx - p.pos.x, tz - p.pos.z); }
+  });
+  var tx = strategy.target.x, tz = strategy.target.z, kind = strategy.kind;
 
   var spd = p.ai.cfg.speed;
   var beforeX = p.vel.x, beforeZ = p.vel.z;
@@ -1035,10 +989,10 @@ Game.prototype._hit = function (p, swingType) {
   var blend = clamp(at.aim + (Math.abs(at.aim) < 0.2 ? timing : 0), -1, 1);
   var targetX = blend * C.HALF_W * 0.92;
   if (Math.abs(blend) < 0.15) {
-    var deeper = this._deeperOpponent(p.team);
-    if (deeper) {
-      var awaySign = deeper.pos.x >= 0 ? -1 : 1;
-      targetX = clamp(deeper.pos.x + awaySign * 0.6, -C.HALF_W * 0.92, C.HALF_W * 0.92);
+    var neutralTarget = strategyForMode(this.mode).neutralAimTarget(this._opponentsFor(p.team));
+    if (neutralTarget) {
+      targetX = clamp(neutralTarget.x, -C.HALF_W * 0.92, C.HALF_W * 0.92);
+      at.z = -fwd * neutralTarget.z;
     }
   }
 
@@ -1076,11 +1030,13 @@ Game.prototype._cpuHit = function (p) {
     return;
   }
 
-  // Build opponents object for deeper-target strategy. Singles duplicates the
-  // lone opponent so the existing AI strategy can stay unchanged.
   var opponents = this._opponentsFor(p.team);
-
-  var shot = AI.chooseShot(p.ai, this.ball, this.match, false, opponents, pos);
+  var shot = AI.chooseShot(p.ai, this.ball, this.match, false, {
+    mode: this.mode,
+    opponents: opponents,
+    hitterPos: pos,
+    servingTeam: this.match.server
+  });
   if (shot.isSmash || shot.type === 'erne') visualSwingType = 'smash';
   p.mesh.swing(visualSwingType);
   if (this.audio) this.audio.sfx.paddle();
