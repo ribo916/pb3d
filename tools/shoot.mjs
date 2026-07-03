@@ -108,6 +108,20 @@ async function captureRosterCloseup(cfg) {
   await page.screenshot({ path: path.join(OUT, cfg.shot) });
 }
 
+async function captureCharacterModal() {
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.click('#menuCharactersBtn');
+  // wait for the live-rendered bust thumbnails to replace the fallback crops
+  await page.waitForFunction(() => {
+    const imgs = document.querySelectorAll('#characterBody .character-thumb img.gen');
+    const loading = document.getElementById('characterPreviewLoading');
+    return imgs.length >= 4 && loading && loading.style.display === 'none';
+  }, { timeout: 20000 });
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: path.join(OUT, 'character-modal.png') });
+  await page.click('#characterDoneBtn');
+}
+
 async function captureSinglesSmoke() {
   await page.reload({ waitUntil: 'networkidle' });
   await selectOption('mode', 'singles');
@@ -141,6 +155,7 @@ await captureMatch({ venue: 'tropical', palette: 'green', tod: 'night', menuShot
 await captureMatch({ venue: 'indoor', palette: 'blue', menuShot: 'menu-indoor-blue.png', courtShot: 'court-indoor-blue.png', wait: 850 });
 await captureMatch({ venue: 'indoor', palette: 'green', menuShot: 'menu-indoor-green.png', courtShot: 'court-indoor-green.png', wait: 850 });
 await captureRosterCloseup({ venue: 'park', palette: 'blue', tod: 'day', shot: 'roster-closeup.png' });
+await captureCharacterModal();
 await captureSinglesSmoke();
 
 await page.reload({ waitUntil: 'networkidle' });

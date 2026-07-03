@@ -704,50 +704,109 @@
       -webkit-backdrop-filter: blur(12px); align-items: center; justify-content: center;
       padding: 18px; }
     #characterModal.active { display: flex; }
-    .character-position-block + .character-position-block { margin-top: 16px; }
+    .character-layout {
+      display: grid;
+      grid-template-columns: 1fr 240px;
+      gap: 18px;
+      align-items: start;
+    }
+    .character-position-block + .character-position-block { margin-top: 14px; }
     .character-position-label {
       font-size: 10px;
       font-weight: 800;
       letter-spacing: 1.8px;
       text-transform: uppercase;
       color: rgba(232, 244, 255, 0.48);
-      margin-bottom: 8px;
+      margin-bottom: 6px;
     }
     .character-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-      gap: 10px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
     }
     .character-card {
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 14px;
+      width: 64px;
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 12px;
       background: rgba(255,255,255,0.03);
       color: #fff;
       cursor: pointer;
       font-family: inherit;
-      padding: 8px;
+      padding: 4px;
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 3px;
       align-items: center;
     }
-    .character-card img {
-      width: 100%;
-      aspect-ratio: 3 / 4;
-      object-fit: cover;
-      object-position: 50% 8%;
-      border-radius: 10px;
-      background: rgba(255,255,255,0.05);
+    .character-thumb {
+      width: 54px;
+      height: 54px;
+      border-radius: 9px;
+      overflow: hidden;
+      position: relative;
+      background: radial-gradient(circle at 50% 30%, #9fd9ef 0%, #6ea7c8 55%, #4b7ea3 100%);
     }
-    .character-card span {
-      font-size: 11px;
+    /* Fallback while live thumbs generate: crop of the far-away portrait PNGs
+       (480x640, head heights vary per character -> measured top offset inline). */
+    .character-thumb img { position: absolute; width: 400%; left: -150%; }
+    /* Live-rendered bust snapshot (square, already framed) */
+    .character-thumb img.gen { width: 100%; height: 100%; left: 0; top: 0 !important; }
+    .character-card span.character-name {
+      font-size: 8.5px;
       font-weight: 800;
-      letter-spacing: 0.6px;
+      letter-spacing: 0.4px;
+      color: rgba(232,244,255,0.72);
+      white-space: nowrap;
+      overflow: hidden;
+      max-width: 56px;
+      text-overflow: ellipsis;
     }
     .character-card.active {
       border-color: rgba(54,208,111,0.66);
       background: rgba(54,208,111,0.11);
       box-shadow: inset 0 0 0 1px rgba(54,208,111,0.24);
+    }
+    .character-card.active span.character-name { color: #7df0a9; }
+    .character-card.focused { border-color: rgba(126,240,255,0.55); }
+    .character-preview-col { display: flex; flex-direction: column; gap: 8px; }
+    #characterPreviewPane {
+      width: 100%;
+      aspect-ratio: 3 / 4;
+      border-radius: 16px;
+      overflow: hidden;
+      position: relative;
+      border: 1px solid rgba(126,240,255,0.16);
+      background:
+        radial-gradient(circle at 50% 28%, rgba(126,240,255,0.16), transparent 55%),
+        linear-gradient(180deg, #14304c 0%, #0a1c30 62%, #071322 100%);
+    }
+    #characterPreviewLoading {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      color: rgba(232,244,255,0.55);
+    }
+    #characterPreviewName {
+      text-align: center;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 1.6px;
+      text-transform: uppercase;
+      color: #7ef0ff;
+    }
+    .character-preview-hint {
+      text-align: center;
+      font-size: 9.5px;
+      color: rgba(232,244,255,0.4);
+    }
+    @media (max-width: 640px) {
+      .character-layout { grid-template-columns: 1fr; }
+      .character-preview-col { order: -1; margin: 0 auto; width: min(240px, 70vw); }
     }
 
     /* ---- Info / controls modal ---- */
@@ -887,7 +946,16 @@
         </div>
         <button class="music-close" id="characterCloseBtn" aria-label="Close character picker">✕</button>
       </div>
-      <div id="characterBody"></div>
+      <div class="character-layout">
+        <div id="characterBody"></div>
+        <div class="character-preview-col">
+          <div id="characterPreviewPane">
+            <div id="characterPreviewLoading">LOADING&nbsp;MODEL&hellip;</div>
+          </div>
+          <div id="characterPreviewName">&nbsp;</div>
+          <div class="character-preview-hint">auto-rotating &mdash; drag to nudge</div>
+        </div>
+      </div>
       <div class="music-footer">
         <div></div>
         <button class="music-ctrl" id="characterDoneBtn">DONE</button>

@@ -149,6 +149,32 @@ export async function preloadAssetPack(opts, onProgress) {
   return pack;
 }
 
+/* Menu-time loader for the character picker preview: loads only the
+ * player-scoped model GLBs (no venue textures/environments) and returns a
+ * mini pack compatible with makePlayer's opts.assets (getModel + fallback
+ * chain + empty animations bucket; clips live inside the player GLBs).
+ * Cached module-level so repeated modal opens don't re-fetch. */
+var playerModelPackPromise = null;
+
+export function preloadPlayerModels() {
+  if (playerModelPackPromise) return playerModelPackPromise;
+  playerModelPackPromise = (async function () {
+    var pack = makePack();
+    pack.options = {};
+    var loaders = { gltf: new GLTFLoader(), texture: new THREE.TextureLoader() };
+    var items = list('models');
+    items.forEach(function (item) { pack.definitions.models[item.key] = item; });
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].scope !== 'player') continue;
+      await loadManifestItem(pack, loaders, 'models', items[i]);
+    }
+    delete pack.options;
+    return pack;
+  })();
+  playerModelPackPromise.catch(function () { playerModelPackPromise = null; });
+  return playerModelPackPromise;
+}
+
 export function cloneModelScene(record) {
   var gltf = record && record.payload;
   var root = gltf && gltf.scene;

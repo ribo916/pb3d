@@ -19,6 +19,7 @@ import * as Shots from './shots.js';
 import * as Movement from './movement.js';
 import * as Scene from './scene.js';
 import { makePlayer } from './players.js';
+import { CHARACTERS, DEFAULT_ROSTER as DEFAULT_CHARACTER_ROSTER } from './characters.js';
 import { makeCamera, updateCamera } from './camera.js';
 import { clamp, dist2D } from './utils.js';
 import { HIT, PHYS, STABILITY, POWER_CAP, SPECIALTY, MOVEMENT } from './constants.js';
@@ -191,45 +192,13 @@ Game.prototype._initWorld = function () {
   // Roster: doubles keeps the classic four-player setup; singles uses the
   // human plus the existing male opponent visual slot.
   //
-  // Cosmetics (colors, hairStyle, headwear) are keyed by CHARACTER, not by
-  // slot: each authored GLB only has hair/headwear variant nodes for the
-  // look it shipped with, so a slot's opts must travel with whichever
-  // character the picker assigns there, or a swapped-in character can end
-  // up hairless/mismatched (e.g. forcing hairStyle:'short' onto a model
-  // that only has a 'long' hair node hides its hair entirely).
-  var CHARACTERS = {
-    'player-human-v1': {
-      jersey: 0xff7a1f, shorts: 0x20283c, paddle: 0x2bd4ff, shoe: 0xf6f8ff,
-      skin: 0xe4bf9f, hair: 0x241814, height: 'tall', build: 'average',
-      hairStyle: 'short', headwear: 'headband', headband: 0x2bd4ff,
-      playerModelKey: 'player-human-v1'
-    },
-    'player-partner-v1': {
-      jersey: 0x21bdb0, shorts: 0x20283c, paddle: 0xffa53c, shoe: 0xf8fbff,
-      skin: 0xe8c3ab, hair: 0x5b3724, height: 'medium', build: 'average',
-      hairStyle: 'long', headwear: 'none', playerModelKey: 'player-partner-v1'
-    },
-    'player-opponent-a-v1': {
-      jersey: 0xf14668, shorts: 0x30111e, paddle: 0x36d399, shoe: 0xf9fbff,
-      skin: 0xf0cbb2, hair: 0xd5bb58, height: 'tower', build: 'slim',
-      hairStyle: 'short', headwear: 'cap', headband: 0xf4f5f6,
-      playerModelKey: 'player-opponent-a-v1'
-    },
-    'player-opponent-b-v1': {
-      jersey: 0xff7aa8, shorts: 0x55233a, paddle: 0xc8ff65, shoe: 0xfffbff,
-      skin: 0xedc6b0, hair: 0x4a2b22, height: 'medium', build: 'average',
-      hairStyle: 'ponytail', headwear: 'none', headband: 0xffd166,
-      playerModelKey: 'player-opponent-b-v1'
-    }
-  };
-  var DEFAULT_ROSTER = {
-    nearYou: 'player-human-v1', nearMate: 'player-partner-v1',
-    farA: 'player-opponent-a-v1', farB: 'player-opponent-b-v1'
-  };
+  // Character cosmetics live in src/characters.js (shared with the menu
+  // picker); see the note there about cosmetics being keyed by character,
+  // not slot.
   var roster = this.roster;
   function characterFor(position) {
-    var key = roster[position] || DEFAULT_ROSTER[position];
-    return CHARACTERS[key] || CHARACTERS[DEFAULT_ROSTER[position]];
+    var key = roster[position] || DEFAULT_CHARACTER_ROSTER[position];
+    return CHARACTERS[key] || CHARACTERS[DEFAULT_CHARACTER_ROSTER[position]];
   }
   var palettes = {
     nearYou: characterFor('nearYou'),
