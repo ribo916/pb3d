@@ -279,11 +279,16 @@ The important implementation contract:
 - **Night mode** — add a `nightMode` flag to `scene.build` and lerp sky/fog/light
   intensities + the ball's `emissiveIntensity` (the original raised it to ~1.2 at
   night so the ball stays visible).
-- **Character models** — the branch has an authored-player adapter. Player 1
-  (`player-human-v1`) and the CPU partner (`player-partner-v1`, female CC0
-  Quaternius body + merged hair mesh) are real; the two opponents still use the
-  generated POC. Keep the primitive rig as gameplay authority. To import/replace
-  a player, follow
+- **Character models** — the branch has an authored-player adapter. All 4
+  roster slots share two real CC0 Quaternius base bodies
+  (`player-male-v1`/`player-female-v1`), each with multiple hairstyles merged
+  in as runtime-toggleable variants (male also gets an independent beard
+  layer, combinable with any hairstyle); the character picker lets each slot
+  independently choose gender/hair/hair color/beard (`src/characters.js`). A
+  free "pants" attachment was tried and removed — the donor asset was never
+  designed to fit this body, see `PLAYER-IMPORT.md`'s "Retired" note before
+  attempting clothing again. Keep the primitive rig as gameplay authority. To
+  import/replace a player, follow
   [`PLAYER-IMPORT.md`](PLAYER-IMPORT.md) (download flow +
   `tools/build-player-model.mjs` + wiring), with [`GRAPHICS.md`](GRAPHICS.md) and
   `assets/README.md` for the adapter contract.

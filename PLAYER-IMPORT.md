@@ -1,8 +1,7 @@
 # Importing Authored Player Models (Quaternius CC0)
 
-How Player 1 (`player-human-v1`) and the CPU partner (`player-partner-v1`) were
-built, and how to build the remaining roster slots (`player-opponent-a-v1`,
-`player-opponent-b-v1`). This is the durable record of the download +
+How the two shared base models (`player-male-v1`, `player-female-v1`) used by
+all 4 roster slots were built. This is the durable record of the download +
 optimization pipeline and the non-obvious traps in it.
 
 Read alongside [`GRAPHICS.md`](GRAPHICS.md) (adapter contract, verification
@@ -44,13 +43,14 @@ Offline tool (deps not in `package.json`, like the raw music helpers):
 npm i @gltf-transform/core @gltf-transform/extensions \
       @gltf-transform/functions sharp
 
-# quick form (all defaults, no hair mesh)
+# quick form (all defaults, no extra meshes)
 node tools/build-player-model.mjs \
   "<pack>/Base Characters/Godot - UE/Superhero_Male_FullBody.gltf" \
   "<pack>/Unreal-Godot/UAL1_Standard.glb" \
-  assets/models/players/player-human-v1.glb
+  assets/models/players/player-male-v1.glb
 
-# config form (per-player overrides; player-human-v1 now needs this to add hair)
+# config form (per-gender overrides; player-male-v1/player-female-v1 need this
+# to merge in hair/pants via extraMeshes)
 node tools/build-player-model.mjs path/to/config.json
 ```
 
@@ -107,153 +107,120 @@ swing**:
   bounds so it can load real textured/skinned GLBs in Node (three's GLTFLoader
   otherwise throws `Image is not defined` and mis-measures skinned height).
 
-### Player 1 hair (done — `player-human-v1`)
+### Two shared base models, multi-variant hair + facial hair (done — `player-male-v1` / `player-female-v1`)
 
-Player 1's base body (`Superhero_Male_FullBody.gltf`) is also bald aside from
-eyebrows. `player-human-v1.glb` now merges the `Hair_SimpleParted.gltf`
-hairstyle mesh the same way the partner does (see "Female partner specifics"
-below for the mechanics), tagged `hairVariantValue: 'short'` to match the
-`nearYou` roster's `hairStyle: 'short'`. config.json used:
+All 4 roster slots (`nearYou`/`nearMate`/`farA`/`farB`) now share just two
+authored GLBs — one male base, one female base — instead of one baked
+"character" per slot. Each slot independently picks gender (which selects
+the GLB), a hairstyle, a hair color, and (male only) an independent beard
+toggle at runtime via `src/characters.js#resolveSlotCharacter`. The old
+fantasy "Ranger" opponent outfits (from a different Quaternius pack, see git
+history if you need the old approach) are gone entirely; opponents use the
+same sport-neutral base bodies as everyone else.
+
+Both free bodies (`Superhero_Male_FullBody.gltf` / `_Female_FullBody.gltf`)
+ship bald aside from eyebrows, so each GLB merges **all of that gender's free
+hairstyles** as toggleable variant nodes, using the build tool's
+`extraMeshes` config field (an array, replacing the older single
+`hairMesh`/`hairVariantValue` fields). The male build also merges
+`Hair_Beard` under its own `facialHair` variant group (not `hair`) so a
+beard can be shown at the same time as any hairstyle, rather than being one
+more mutually-exclusive hair option:
 
 ```json
 {
   "base": "<pack>/Base Characters/Godot - UE/Superhero_Male_FullBody.gltf",
   "anim": "<pack>/Unreal-Godot/UAL1_Standard.glb",
-  "hairMesh": "<pack>/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_SimpleParted.gltf",
-  "hairVariantValue": "short",
-  "out": "assets/models/players/player-human-v1.glb"
+  "extraMeshes": [
+    { "path": "<pack>/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_SimpleParted.gltf", "variantGroup": "hair", "variantValue": "simpleParted" },
+    { "path": "<pack>/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_Buzzed.gltf", "variantGroup": "hair", "variantValue": "buzzed" },
+    { "path": "<pack>/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_Beard.gltf", "variantGroup": "facialHair", "variantValue": "beard" }
+  ],
+  "out": "assets/models/players/player-male-v1.glb"
 }
 ```
 
-The pack also ships `Hair_Buzzed.gltf` (shorter/buzzed) and `Hair_Beard.gltf`
-(a separate beard mesh, mergeable the same way) if a different look is wanted.
+The female build is the same shape with `Superhero_Female_FullBody.gltf` and
+hair values `long`/`buns`/`buzzedFemale` (no `facialHair` entry — the female
+`GENDERS` entry's `facialHairOptions` is just `['none']`, so the picker never
+shows a "Face" row for that gender). All hairstyle meshes come from the same
+"Universal Base Characters" pack as the bodies
+(`quaternius.itch.io/universal-base-characters`) — same release, same rest
+pose, so the retargeting below "just works" for hair without any extra care.
 
-## Wiring a partner / opponent slot (not Player 1)
+At runtime, `src/players.js`'s generic variant system (`variantGroup`/
+`variantValue` node tagging, matched against roster `hairStyle`/
+`facialHair`) shows only the chosen mesh per group and hides the rest — no
+per-character rebuild needed to change cosmetics, and two different groups
+(`hair` + `facialHair`) can both be visible at once since each is resolved
+independently.
 
-Player 1 and the CPU partner (`nearMate`) are already wired. The two opponents
-(`farA`/`farB`) are still **hardcoded to `player-poc`** and need TWO edits, not
-just a manifest URL, to add each:
+**Trap: reusing a merged mesh's own inverse-bind matrices breaks when the
+mesh comes from a DIFFERENT donor pack than the base body/anim.** Matching
+bone *names* is enough to retarget animation channels (rotations are local
+and pose-driven either way) but is **not** enough to safely reuse a donor
+skin's inverse-bind matrices — those encode the donor's own rest pose, which
+can differ from ours even with identical joint names. `build-player-model.mjs`
+precomputes each base-skeleton joint's inverse-bind matrix from the base
+body's *own* skin once, up front, and reuses that for every merged mesh's new
+skin (see the `baseJointInvBind` map), instead of trusting whatever the donor
+mesh shipped. Verify any new cross-pack mesh merge by rendering the raw GLB
+with no animation applied at all (pure bind pose) — a correctly retargeted
+mesh should look clean and undistorted there; if it doesn't, the inverse-bind
+data is wrong before pose even enters the picture. This fix stays in place
+even though hair no longer strictly needs it (same-pack rest poses already
+matched) — it's a correctness fix, not a workaround, and protects the next
+cross-pack merge attempt too.
 
-1. **Add a manifest entry** in `assets/manifest.js` `models[]`, copying the
-   `player-human-v1` block. Give it a stable key
-   (`player-partner-v1`, `player-opponent-a-v1`, `player-opponent-b-v1`),
-   `fallbackKey: 'player-poc'`, `playerRotation: [0,0,0]`,
-   `paddleSocketRotation: [Math.PI,0,0]`, `syncPrimitiveArms: false`.
-2. **Point the roster at it** in `src/game.js` (the `palettes` object, ~line
-   186). Each member has a `playerModelKey`. The near partner is `nearMate`
-   (~line 196), opponents are `farA` / `farB`. Change the relevant
-   `playerModelKey: 'player-poc'` to your new key. This is visual wiring only —
-   it does not touch the gameplay-pure modules.
+**Retired: a free "peasant pants" attachment was tried and removed.** An
+earlier version of this pipeline merged a `Male_Peasant_Legs`/
+`Female_Peasant_Legs` mesh (cut from Quaternius's "Modular Character Outfits
+- Fantasy" pack) onto these bodies as a `pants` variant group. It never
+worked well and was pulled rather than shipped as a permanent workaround —
+see the "why doesn't clothing fit" question this always raises:
 
-The roster `palette` also carries `skin`/`hair`/`build`/`height`; those still
-tint the eyebrows (`hair` slot) and scale the authored model, but the free
-body's single suit material is **not** recolored (see the team-color trap).
+- Quaternius's **"Universal Base Characters"** pack (the base bodies + hair
+  used here) ships **no clothing at all** — bare bodies and hairstyles only,
+  confirmed on the pack's own product page.
+- Quaternius's **"Modular Character Outfits - Fantasy"** pack (source of the
+  peasant-pants mesh) states its outfits are *"Compatible with Universal
+  Base Character **heads** but you can use your own too"* — compatibility is
+  head-only. Each outfit (Ranger, Peasant, ...) is a complete standalone
+  body (its own torso/arms/legs); the pack was never designed to have its
+  clothing split apart and layered onto a different body's limbs.
+- Practical result: the pants mesh sat almost flush against (and often
+  slightly inside) the Superhero body's own thicker leg surface, since it
+  was modeled to fit a different, slimmer character. It z-fought with the
+  base body — badly during animated poses (running/swinging), where the two
+  differently-proportioned rigs bulge differently under the same skeleton
+  pose. A `polygonOffset` bias on the pants material (forcing it to always
+  win the depth-test tie) mostly papered over this in some poses but not
+  reliably across all of them, and it was a rendering-side cheat over a
+  genuine geometry mismatch, not a real fix.
+- If clothing is revisited, look for CC0/licensed assets explicitly modeled
+  to fit "Universal Base Characters" proportions (or plan to reshape a
+  donor mesh in a 3D tool first) rather than repeating this shortcut.
 
-### Female partner specifics (done — `player-partner-v1`)
+## Reproducing a build from scratch
 
-- Body: `Superhero_Female_FullBody.gltf` (same UE rig, same clip map, faces +Z).
-- The female base is **also bald** — only eyebrows, no hair mesh. A bald
-  muscular female didn't read clearly as female, so `player-partner-v1` merges
-  a hairstyle mesh via the `hairMesh` config field (added to
-  `build-player-model.mjs` for this): it reads a second glTF (e.g.
-  `Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_Long.gltf`),
-  **retargets its skin onto the base skeleton by bone name** — the same
-  by-name-matching trick used for animation channels above, not a static parent
-  to the `Head` bone, since the hairstyle ships pre-rigged to the shared UE
-  rig — disposes the hair doc's now-unreferenced duplicate skeleton copy, and
-  tags the merged mesh `variantGroup: 'hair'` / `variantValue: '<hairVariantValue>'`
-  so the adapter shows it only for roster members with a matching `hairStyle`.
-  Reuse `hairMesh` (e.g. `Hair_Buns.gltf`) for either opponent if they need hair.
-
-config.json (the tool only accepts a JSON file path when `hairMesh` is needed,
-not the quick 3-arg form):
-
-```json
-{
-  "base": "<pack>/Base Characters/Godot - UE/Superhero_Female_FullBody.gltf",
-  "anim": "<pack>/Unreal-Godot/UAL1_Standard.glb",
-  "hairMesh": "<pack>/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_Long.gltf",
-  "hairVariantValue": "long",
-  "out": "assets/models/players/player-partner-v1.glb"
-}
-```
-
-```bash
-node tools/build-player-model.mjs config.json
-```
-
-## Opponent A / Opponent B (done — `player-opponent-a-v1` / `player-opponent-b-v1`)
-
-Unlike Player 1 and the partner (Universal Base Characters + separate hair
-meshes), the two CPU opponents (`farA`/`farB`) use fully-clothed outfit
-exports from a different free Quaternius pack:
-<https://quaternius.itch.io/modular-character-outfits-fantasy> (CC0).
-
-- **Only 2 of the 12 listed outfits are in the free "Standard" tier zip.**
-  The page advertises "12 Outfits, 62 Parts", but the other 10 are Source-tier
-  only ($20+). The free `[Standard].zip` (~280 MB) contains exactly **Ranger**
-  and **Peasant**, each as Male/Female variants, under
-  `Exports/glTF (Godot-Unreal)/Outfits/{Male,Female}_{Peasant,Ranger}.gltf`.
-  Check the actual zip contents (or the itch.io download-page file list)
-  before planning around a specific outfit name — don't trust the page copy.
-- Used **Male_Ranger.gltf → `player-opponent-a-v1`** and
-  **Female_Ranger.gltf → `player-opponent-b-v1`**, matching the existing
-  male/female-coded roster hair hints (`farA` short hair/cap, `farB`
-  ponytail).
-- Each `Outfits/*.gltf` is a **complete, self-contained skinned character**
-  (body + clothing meshes together, own skin/cloth textures) — unlike the
-  Superhero base bodies, no separate base-body pack or hair merge is needed.
-  **Trap: the free zip's `Peasant` outfit (Male/Female) ships with NO head
-  mesh at all** — its mesh list is only `Arms`/`Body`/`Feet`/`Legs`. The itch
-  page notes the pack "works with Universal Base Character heads", meaning
-  Peasant expects a head from a separate pack we don't have; wired as-is it
-  renders as a headless torso, and naively scaling it up to match the
-  roster's height (see below) just makes the headless torso bigger. `Ranger`
-  (the pack's other free outfit) ships a `Head_Hood` mesh and reads as a
-  complete character — always check a candidate outfit's mesh list
-  (`python3 -c "import json; print([m['name'] for m in json.load(open(f))['meshes']])"`
-  on the `.gltf`) for a head/hood part before committing to it, don't assume
-  every outfit in a modular pack is headwear-complete.
-- Same UE-mannequin rig as the Universal Base Characters / Universal
-  Animation Library packs (`root/pelvis/spine_*/clavicle_*/hand_*`, fingers,
-  `thigh/calf/foot`) — `tools/build-player-model.mjs`'s by-bone-name
-  retargeting worked unmodified against `UAL1_Standard.glb`
-  (8385/8385 channels retargeted, 0 missed, for both outfits). No config
-  overrides needed beyond `base`/`anim`/`out`.
-- Facing is local **+Z**, same as the other roster models (verified via
-  `ball_r`/`foot_r` world-position Z, not guessed) — `playerRotation: [0,0,0]`.
-- Raw GLB height (`node tools/validate-player-glb.mjs <out.glb>`, the `bounds`
-  line) for the **Ranger** outfits came out 1.87 m (opponent A) / 1.80 m
-  (opponent B) — closely matching `player-human-v1` (1.85 m) /
-  `player-partner-v1` (1.79 m), so `playerScale: 1` (no correction) is
-  correct. The Peasant outfits measured ~1.53-1.56 m raw, which looked like a
-  real height deficit at first — it wasn't; it was the missing head. Don't
-  paper over a suspiciously short `bounds` reading with a `playerScale`
-  correction before checking whether geometry (like a head) is simply absent.
-- config.json used for each (quick 3-arg form also works since neither needs
-  `hairMesh`):
-
-```json
-{
-  "base": "<pack>/Exports/glTF (Godot-Unreal)/Outfits/Male_Ranger.gltf",
-  "anim": "<pack>/Unreal-Godot/UAL1_Standard.glb",
-  "out": "assets/models/players/player-opponent-a-v1.glb"
-}
-```
-
-## Per-player checklist
-
-1. Download + unzip both packs (see flow above); apply the texture-name copies.
-2. Pick a body; write a config (`out` = the target `player-*.glb`, tweak
-   `clipMap`/`socketTranslation` only if needed).
-3. `node tools/build-player-model.mjs config.json`.
-4. `node tools/validate-player-glb.mjs <out.glb>` — require `paddle_socket: OK`,
-   height ~1.7–1.9 m, all 7 clips recognized; slot/arm-sync warnings are
-   expected for this asset.
-5. Wire it up — for Player 1 just fill the existing manifest `url`; for the
-   partner/opponents add a manifest slot **and** flip the `playerModelKey` in
-   `src/game.js` (see "Wiring a partner / opponent slot" above).
-6. `npm run player:check` + `npm run shots` — **look at the PNGs** (facing,
-   paddle, scale vs teammates), then `npm test` + `npm run build`.
-7. Keep the primitive rig gameplay-authoritative: do not touch
+1. Re-download both packs via the itch.io CSRF flow (GET page → scrape
+   `csrf_token` → POST `download_url` → GET the returned download page →
+   scrape `data-upload_id` → POST `file/<id>?source=game_download&as_props=1&after_download_lightbox=true`
+   → GET the first `url` in that JSON, a signed R2 link expiring in ~60s).
+   Apply the texture-filename fixups (copy `T_Hair_1_Normal.png` →
+   `T_Hair_1_Normal_png.png`, `T_Eye_Normal.png` → `T_Eye_Normal_png.png`, for
+   both base bodies) before building.
+2. Write a config.json per gender (see above) and run
+   `node tools/build-player-model.mjs config.json`.
+3. `node tools/validate-player-glb.mjs <out.glb>` — require `paddle_socket:
+   OK`, height ~1.7–1.9 m, all 7 clips recognized; slot/arm-sync warnings are
+   expected for this asset (single-material body, see the team-color trap
+   above).
+4. Wire it up: `assets/manifest.js` `models[]` entry (`player-male-v1`/
+   `player-female-v1`), and `src/characters.js`'s `GENDERS` map
+   (`playerModelKey`, `hairOptions`, `defaultHair`, `facialHairOptions`).
+5. `npm run player:check` + `npm run shots` — **look at the PNGs** (facing,
+   paddle, scale vs teammates, hair/facial-hair toggling across all
+   combinations), then `npm test` + `npm run build`.
+6. Keep the primitive rig gameplay-authoritative: do not touch
    `constants/physics/shots/rules/ai/utils`, `HIT.SWING_WINDOW`, or `contactT`.

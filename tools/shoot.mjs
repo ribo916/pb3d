@@ -111,14 +111,37 @@ async function captureRosterCloseup(cfg) {
 async function captureCharacterModal() {
   await page.reload({ waitUntil: 'networkidle' });
   await page.click('#menuCharactersBtn');
-  // wait for the live-rendered bust thumbnails to replace the fallback crops
+  // wait for the live preview model to finish loading
   await page.waitForFunction(() => {
-    const imgs = document.querySelectorAll('#characterBody .character-thumb img.gen');
     const loading = document.getElementById('characterPreviewLoading');
-    return imgs.length >= 4 && loading && loading.style.display === 'none';
+    return loading && loading.style.display === 'none';
   }, { timeout: 20000 });
   await page.waitForTimeout(400);
   await page.screenshot({ path: path.join(OUT, 'character-modal.png') });
+
+  // Cycle every gender/hair/facialHair pill for nearYou, screenshotting the
+  // live preview so all combinations get visually checked at once.
+  const genders = ['male', 'female'];
+  const hairByGender = { male: ['simpleParted', 'buzzed'], female: ['long', 'buns', 'buzzedFemale'] };
+  const facialHairByGender = { male: ['none', 'beard'], female: ['none'] };
+  for (const gender of genders) {
+    await page.click(`#characterBody [data-position="nearYou"][data-axis="gender"][data-value="${gender}"]`);
+    for (const hair of hairByGender[gender]) {
+      for (const facialHair of facialHairByGender[gender]) {
+        await page.click(`#characterBody [data-position="nearYou"][data-axis="hair"][data-value="${hair}"]`);
+        if (facialHair !== 'none') {
+          await page.click(`#characterBody [data-position="nearYou"][data-axis="facialhair"][data-value="${facialHair}"]`);
+        }
+        await page.waitForFunction(() => {
+          const loading = document.getElementById('characterPreviewLoading');
+          return loading && loading.style.display === 'none';
+        }, { timeout: 20000 });
+        await page.waitForTimeout(250);
+        await page.screenshot({ path: path.join(OUT, `character-${gender}-${hair}-${facialHair}.png`) });
+      }
+    }
+  }
+
   await page.click('#characterDoneBtn');
 }
 

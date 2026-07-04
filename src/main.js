@@ -8,7 +8,7 @@ import { makeInput } from './input.js';
 import { makeHUD } from './hud.js';
 import { makeAudio } from './audio.js';
 import { preloadAssetPack, assetStatusSummary } from './assets.js';
-import { CHARACTER_LIST, DEFAULT_ROSTER, characterByKey } from './characters.js';
+import { GENDERS, HAIR_COLORS, SLOT_DEFAULTS, resolveSlotCharacter } from './characters.js';
 import { makeCharacterPreview } from './characterPreview.js';
 import { normalizeMode } from './modes.js';
 
@@ -50,12 +50,17 @@ const MENU_META = {
 
 const ALL_POSITIONS = ['nearYou', 'nearMate', 'farA', 'farB'];
 const POSITION_LABELS = { nearYou: 'You', nearMate: 'Partner', farA: 'Opponent A', farB: 'Opponent B' };
-const CHARACTER_SHORT_LABELS = {
-  'player-human-v1': 'Player 1',
-  'player-partner-v1': 'Partner',
-  'player-opponent-a-v1': 'Opp A',
-  'player-opponent-b-v1': 'Opp B'
+const GENDER_LABELS = { male: 'Male', female: 'Female' };
+const HAIR_LABELS = {
+  simpleParted: 'Parted', buzzed: 'Buzzed',
+  long: 'Long', buns: 'Buns', buzzedFemale: 'Buzzed'
 };
+const HAIR_COLOR_LABELS = {
+  black: 'Black', darkBrown: 'Dark Brown', brown: 'Brown',
+  blonde: 'Blonde', auburn: 'Auburn', gray: 'Gray'
+};
+const HAIR_COLOR_ORDER = ['black', 'darkBrown', 'brown', 'blonde', 'auburn', 'gray'];
+const FACIAL_HAIR_LABELS = { none: 'Clean', beard: 'Beard' };
 
 // Doubles uses all four slots; singles only plays nearYou vs farA
 // (see the mode-conditional roster build in src/game.js _initWorld).
@@ -78,6 +83,16 @@ function checkedValue(name, fallback) {
   return (document.querySelector('input[name="' + name + '"]:checked') || {}).value || fallback;
 }
 
+function slotPicks(position) {
+  var d = SLOT_DEFAULTS[position];
+  return {
+    gender: checkedValue('gender-' + position, d.gender),
+    hairStyle: checkedValue('hair-' + position, d.hairStyle),
+    hairColor: checkedValue('haircolor-' + position, d.hairColor),
+    facialHair: checkedValue('facialhair-' + position, d.facialHair)
+  };
+}
+
 function readMenuConfig() {
   var venue = checkedValue('venue', 'park');
   return {
@@ -89,10 +104,10 @@ function readMenuConfig() {
     musicStart: checkedValue('musicStart', 'muted'),
     cameraMode: checkedValue('cameraMode', 'follow'),
     roster: {
-      nearYou: checkedValue('char-nearYou', DEFAULT_ROSTER.nearYou),
-      nearMate: checkedValue('char-nearMate', DEFAULT_ROSTER.nearMate),
-      farA: checkedValue('char-farA', DEFAULT_ROSTER.farA),
-      farB: checkedValue('char-farB', DEFAULT_ROSTER.farB)
+      nearYou: slotPicks('nearYou'),
+      nearMate: slotPicks('nearMate'),
+      farA: slotPicks('farA'),
+      farB: slotPicks('farB')
     }
   };
 }
@@ -426,91 +441,81 @@ $('musicVolume').addEventListener('input', function () {
 
 function updateCharactersSummary() {
   $('menuCharactersSummary').textContent = activePositions().map(function (position) {
-    var key = checkedValue('char-' + position, DEFAULT_ROSTER[position]);
-    return characterByKey(key).label;
+    var picks = slotPicks(position);
+    var tag = GENDER_LABELS[picks.gender] + ' ' +
+      (HAIR_COLOR_LABELS[picks.hairColor] || picks.hairColor) + ' ' +
+      (HAIR_LABELS[picks.hairStyle] || picks.hairStyle);
+    if (picks.facialHair === 'beard') tag += ' + Beard';
+    return positionLabel(position) + ': ' + tag;
   }).join(' · ');
 }
 
-// Measured head-top fraction of each 480x640 fallback portrait; the thumb
-// crop window starts just above the head until the live thumbs replace them.
-// top% = -(fraction * imgWidth% * 4/3) of the thumb box.
-var CHARACTER_HEAD_TOP = {
-  'player-human-v1': 0.245,
-  'player-partner-v1': 0.305,
-  'player-opponent-a-v1': 0.22,
-  'player-opponent-b-v1': 0.305
-};
-var characterThumbs = {}; // key -> live-rendered bust data URL
 var characterPreview = null;
-var characterFocusKey = '';
+var characterFocusPosition = 'nearYou';
 
-function thumbFallbackTop(key) {
-  return (-(CHARACTER_HEAD_TOP[key] || 0.26) * 400 * 4 / 3).toFixed(1) + '%';
+function setSlotRadio(position, axis, value) {
+  var input = document.querySelector('input[name="' + axis + '-' + position + '"][value="' + value + '"]');
+  if (input) input.checked = true;
+}
+
+function axisPill(position, axis, value, active, label) {
+  return '<button class="axis-pill' + (active ? ' active' : '') +
+    '" data-position="' + position + '" data-axis="' + axis + '" data-value="' + value + '">' +
+    label + '</button>';
+}
+
+function colorPill(position, axis, value, active, label, hex) {
+  var swatch = '<span class="pill-swatch" style="background:#' + hex.toString(16).padStart(6, '0') + '"></span>';
+  return '<button class="axis-pill' + (active ? ' active' : '') +
+    '" data-position="' + position + '" data-axis="' + axis + '" data-value="' + value + '">' +
+    swatch + label + '</button>';
 }
 
 function renderCharacterModal() {
   $('characterBody').innerHTML = activePositions().map(function (position) {
-    var currentKey = checkedValue('char-' + position, DEFAULT_ROSTER[position]);
-    var cards = CHARACTER_LIST.map(function (c) {
-      var thumb = characterThumbs[c.key];
-      var img = thumb
-        ? '<img class="gen" src="' + thumb + '" alt="' + c.label + '" draggable="false">'
-        : '<img src="' + c.portrait + '" alt="' + c.label + '" draggable="false" style="top:' + thumbFallbackTop(c.key) + '">';
-      return '<button class="character-card' + (c.key === currentKey ? ' active' : '') +
-        (c.key === characterFocusKey ? ' focused' : '') +
-        '" data-position="' + position + '" data-char="' + c.key + '">' +
-        '<span class="character-thumb">' + img + '</span>' +
-        '<span class="character-name">' + (CHARACTER_SHORT_LABELS[c.key] || c.label) + '</span>' +
-        '</button>';
+    var picks = slotPicks(position);
+    var genderButtons = ['male', 'female'].map(function (g) {
+      return axisPill(position, 'gender', g, g === picks.gender, GENDER_LABELS[g]);
     }).join('');
-    return '<div class="character-position-block">' +
+    var hairButtons = GENDERS[picks.gender].hairOptions.map(function (h) {
+      return axisPill(position, 'hair', h, h === picks.hairStyle, HAIR_LABELS[h] || h);
+    }).join('');
+    var hairColorButtons = HAIR_COLOR_ORDER.map(function (c) {
+      return colorPill(position, 'haircolor', c, c === picks.hairColor, HAIR_COLOR_LABELS[c], HAIR_COLORS[c]);
+    }).join('');
+    var facialHairOptions = GENDERS[picks.gender].facialHairOptions;
+    var facialHairRow = facialHairOptions.length > 1
+      ? '<div class="character-axis-row"><span class="character-axis-label">Face</span><div class="character-axis-group">' +
+        facialHairOptions.map(function (f) {
+          return axisPill(position, 'facialhair', f, f === picks.facialHair, FACIAL_HAIR_LABELS[f] || f);
+        }).join('') + '</div></div>'
+      : '';
+    return '<div class="character-position-block' + (position === characterFocusPosition ? ' focused' : '') + '">' +
       '<div class="character-position-label">' + positionLabel(position) + '</div>' +
-      '<div class="character-grid">' + cards + '</div>' +
+      '<div class="character-axis-row"><span class="character-axis-label">Gender</span><div class="character-axis-group">' + genderButtons + '</div></div>' +
+      '<div class="character-axis-row"><span class="character-axis-label">Hair</span><div class="character-axis-group">' + hairButtons + '</div></div>' +
+      '<div class="character-axis-row"><span class="character-axis-label">Color</span><div class="character-axis-group">' + hairColorButtons + '</div></div>' +
+      facialHairRow +
       '</div>';
   }).join('');
 }
 
-function focusCharacterPreview(key) {
-  characterFocusKey = key;
-  $('characterPreviewName').textContent = characterByKey(key).label;
+function focusCharacterPreview(position) {
+  characterFocusPosition = position;
+  var character = resolveSlotCharacter(position, slotPicks(position));
+  $('characterPreviewName').textContent = positionLabel(position) + ' — ' + GENDER_LABELS[character.gender];
   if (!characterPreview) return;
-  characterPreview.show(key).then(function () {
+  characterPreview.show(character).then(function () {
     $('characterPreviewLoading').style.display = 'none';
-  });
-}
-
-// Picker thumbnails are rendered from the live models (face-on bust shots)
-// so they always match the GLBs; the old portrait PNG crops only show while
-// the models load on first open.
-function generateCharacterThumbs() {
-  var holder = document.createElement('div');
-  holder.style.cssText = 'position:fixed;left:-9999px;top:0;width:108px;height:108px;';
-  document.body.appendChild(holder);
-  var thumbRenderer = makeCharacterPreview(holder, { framing: 'bust', rotationMode: 'drag' });
-  var chain = Promise.resolve();
-  CHARACTER_LIST.forEach(function (c) {
-    chain = chain.then(function () {
-      return thumbRenderer.show(c.key).then(function () {
-        characterThumbs[c.key] = thumbRenderer.snapshot();
-      });
-    });
-  });
-  return chain.then(function () {
-    thumbRenderer.dispose();
-    holder.remove();
-    renderCharacterModal();
   });
 }
 
 function openCharacterModal() {
   renderCharacterModal();
   $('characterModal').classList.add('active');
-  if (!characterPreview) {
-    characterPreview = makeCharacterPreview($('characterPreviewPane'));
-    generateCharacterThumbs();
-  }
+  if (!characterPreview) characterPreview = makeCharacterPreview($('characterPreviewPane'), { framing: 'full' });
   characterPreview.start();
-  focusCharacterPreview(characterFocusKey || checkedValue('char-nearYou', DEFAULT_ROSTER.nearYou));
+  focusCharacterPreview(characterFocusPosition);
 }
 
 function closeCharacterModal() {
@@ -528,13 +533,19 @@ $('menuCharactersBtn').addEventListener('click', function (e) { e.preventDefault
 $('menuCharactersBtn').addEventListener('touchstart', function (e) { e.preventDefault(); openCharacterModal(); }, { passive: false });
 
 $('characterBody').addEventListener('click', function (e) {
-  var btn = e.target.closest('[data-char]');
+  var btn = e.target.closest('[data-axis]');
   if (!btn) return;
   var position = btn.getAttribute('data-position');
-  var key = btn.getAttribute('data-char');
-  var input = document.querySelector('input[name="char-' + position + '"][value="' + key + '"]');
-  if (input) input.checked = true;
-  focusCharacterPreview(key);
+  var axis = btn.getAttribute('data-axis');
+  var value = btn.getAttribute('data-value');
+  setSlotRadio(position, axis, value);
+  if (axis === 'gender') {
+    var picks = slotPicks(position);
+    var g = GENDERS[picks.gender];
+    if (g.hairOptions.indexOf(picks.hairStyle) === -1) setSlotRadio(position, 'hair', g.defaultHair);
+    if (g.facialHairOptions.indexOf(picks.facialHair) === -1) setSlotRadio(position, 'facialhair', 'none');
+  }
+  focusCharacterPreview(position);
   renderCharacterModal();
 });
 

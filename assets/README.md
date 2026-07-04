@@ -8,8 +8,8 @@ character-model priorities, see [`../GRAPHICS.md`](../GRAPHICS.md).
 
 To import a real CC0 humanoid into a `player-*` slot (download flow, the
 `tools/build-player-model.mjs` pipeline, and the traps), see
-[`../PLAYER-IMPORT.md`](../PLAYER-IMPORT.md). `player-human-v1` and
-`player-partner-v1` were built this way.
+[`../PLAYER-IMPORT.md`](../PLAYER-IMPORT.md). `player-male-v1` and
+`player-female-v1` were built this way.
 
 ## Structure
 
@@ -43,8 +43,9 @@ entries are safe and do not produce missing-file requests.
 
 ## Player Model Contract
 
-- Put Player 1's real authored GLB under `assets/models/players/` and set the
-  `player-human-v1` manifest URL. That slot is Player 1-only and falls back to
+- Put a real authored GLB under `assets/models/players/` and set the
+  `player-male-v1` / `player-female-v1` manifest URL. Both slots are shared by
+  all 4 roster positions (selected per-slot by gender) and fall back to
   `player-poc` while the URL is empty.
 - Use `player-base` only for future shared roster-wide replacement work.
 - Authored player GLBs should face local `+z`, use an origin at the feet, and
@@ -75,11 +76,15 @@ entries are safe and do not produce missing-file requests.
 - Mesh or material names, or `userData.slot` / `userData.materialSlot`, may use
   `jersey`, `shorts`, `skin`, `hair`, `shoe`, `headband`, or `paddle` to receive
   roster colors.
-- Variant groups may be named `variant_hair_short`, `variant_hair_long`,
-  `variant_hair_ponytail`, `variant_headwear_headband`, or
-  `variant_headwear_cap`; matching `userData.variantGroup` /
-  `userData.variantValue` fields are also supported. The adapter shows the group
-  matching roster `hairStyle` and `headwear`, and hides the others.
+- Variant groups may be named `variant_<group>_<value>` (e.g.
+  `variant_hair_long`, `variant_facialhair_beard`, `variant_headwear_cap`), or
+  use matching `userData.variantGroup` / `userData.variantValue` fields (the
+  `extraMeshes` build config sets these directly — see `PLAYER-IMPORT.md`).
+  The adapter shows the node matching roster `hairStyle`, `facialHair`, and
+  `headwear`, and hides the rest in each group. A cosmetic field with no
+  matching baked node (e.g. `facialHair: 'none'`) simply hides all nodes in
+  that group. Different groups are independent, so e.g. `hair` and
+  `facialHair` nodes can both be visible at once (a hairstyle plus a beard).
 - Animation clips may live on the player GLB or optional animation GLBs. Names
   containing `idle`, `ready`, `run`/`jog`, `forehand`/`fh`, `backhand`/`bh`,
   `serve`, or `smash` are recognized by the adapter. In-match stationary players
@@ -95,11 +100,11 @@ entries are safe and do not produce missing-file requests.
   GLB, and 1k-2k PBR textures where they materially improve face, skin, hair,
   clothes, and shoes. Provide a lower LOD or rely on the existing POC/primitive
   fallback for mobile if needed.
-- Roster-wide replacement uses separate optional slots. `player-partner-v1`
-  (the `nearMate` CPU partner), `player-opponent-a-v1` (`farA`), and
-  `player-opponent-b-v1` (`farB`) are all filled; each still falls back to
-  `player-poc` if its GLB is absent or fails to load. Keep the same
-  visual-only primitive-rig contract for all four players.
+- All 4 roster slots (`nearYou`/`nearMate`/`farA`/`farB`) resolve to one of the
+  two shared models above based on each slot's chosen gender
+  (`src/characters.js`); both fall back to `player-poc` if their GLB is
+  absent or fails to load. Keep the same visual-only primitive-rig contract
+  for all four players.
 
 Validate a candidate player GLB without rendering:
 

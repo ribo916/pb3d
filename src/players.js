@@ -142,6 +142,7 @@ function variantInfo(node) {
 function variantChoice(group, opts) {
   if (group === 'hair') return String(opts.hairStyle || 'short').toLowerCase();
   if (group === 'headwear') return String(opts.headwear || 'none').toLowerCase();
+  if (group === 'facialhair') return String(opts.facialHair || 'none').toLowerCase();
   return null;
 }
 

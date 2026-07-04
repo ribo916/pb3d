@@ -840,6 +840,12 @@
       align-items: start;
     }
     .character-position-block + .character-position-block { margin-top: 14px; }
+    .character-position-block {
+      border-radius: 12px;
+      padding: 8px 10px;
+      border: 1px solid transparent;
+    }
+    .character-position-block.focused { border-color: var(--focus); }
     .character-position-label {
       font-size: 10px;
       font-weight: 800;
@@ -848,55 +854,53 @@
       color: var(--label);
       margin-bottom: 6px;
     }
-    .character-grid {
+    .character-axis-row {
       display: flex;
+      align-items: center;
       gap: 8px;
+      margin-top: 4px;
+    }
+    .character-axis-label {
+      width: 46px;
+      flex: 0 0 auto;
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      color: var(--text-faint);
+    }
+    .character-axis-group {
+      display: flex;
+      gap: 6px;
       flex-wrap: wrap;
     }
-    .character-card {
-      width: 64px;
+    .axis-pill {
       border: 1px solid var(--seg-border);
       border-radius: var(--seg-radius);
       background: var(--seg-bg);
       color: var(--seg-text);
       cursor: pointer;
       font-family: inherit;
-      padding: 4px;
-      display: flex;
-      flex-direction: column;
-      gap: 3px;
-      align-items: center;
-    }
-    .character-thumb {
-      width: 54px;
-      height: 54px;
-      border-radius: 9px;
-      overflow: hidden;
-      position: relative;
-      background: radial-gradient(circle at 50% 30%, #9fd9ef 0%, #6ea7c8 55%, #4b7ea3 100%);
-    }
-    /* Fallback while live thumbs generate: crop of the far-away portrait PNGs
-       (480x640, head heights vary per character -> measured top offset inline). */
-    .character-thumb img { position: absolute; width: 400%; left: -150%; }
-    /* Live-rendered bust snapshot (square, already framed) */
-    .character-thumb img.gen { width: 100%; height: 100%; left: 0; top: 0 !important; }
-    .character-card span.character-name {
-      font-size: 8.5px;
+      font-size: 9.5px;
       font-weight: 800;
-      letter-spacing: 0.4px;
-      color: var(--text-soft);
-      white-space: nowrap;
-      overflow: hidden;
-      max-width: 56px;
-      text-overflow: ellipsis;
+      letter-spacing: 0.3px;
+      padding: 5px 9px;
     }
-    .character-card.active {
+    .axis-pill.active {
       border-color: var(--seg-checked-border);
       background: var(--seg-checked-bg);
+      color: var(--seg-checked-text);
       box-shadow: inset 0 0 0 1px var(--seg-checked-border);
     }
-    .character-card.active span.character-name { color: var(--seg-checked-text); }
-    .character-card.focused { border-color: var(--focus); }
+    .pill-swatch {
+      display: inline-block;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      margin-right: 5px;
+      vertical-align: middle;
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+    }
     .character-preview-col { display: flex; flex-direction: column; gap: 8px; }
     #characterPreviewPane {
       width: 100%;
@@ -1095,7 +1099,7 @@
           <button type="button" class="theme-dot dot-arcade" onclick="setTheme('arcade')" title="Arcade" aria-label="Arcade theme"></button>
           <button type="button" class="theme-dot dot-night"  onclick="setTheme('night')"  title="Night"  aria-label="Night theme"></button>
         </div>
-        <span class="theme-pill-name">COBALT</span>
+        <span class="theme-pill-name">NIGHT</span>
       </div>
       <h2>PAUSED</h2>
       <div class="pause-row">
@@ -1228,7 +1232,7 @@
         <button type="button" class="theme-dot dot-arcade" onclick="setTheme('arcade')" title="Arcade" aria-label="Arcade theme"></button>
         <button type="button" class="theme-dot dot-night"  onclick="setTheme('night')"  title="Night"  aria-label="Night theme"></button>
       </div>
-      <span class="theme-pill-name">COBALT</span>
+      <span class="theme-pill-name">NIGHT</span>
     </div>
     <div class="menu-hero-card">
 
@@ -1362,26 +1366,73 @@
           <div class="menu-row-music">
             <div class="menu-music-copy">
               <strong>Characters</strong>
-              <span id="menuCharactersSummary">Player 1 · Partner · Opponent A · Opponent B</span>
+              <span id="menuCharactersSummary">You: Male Black Parted · Partner: Female Brown Long · Opponent A: Male Blonde Buzzed · Opponent B: Female Dark Brown Buzzed</span>
             </div>
             <button id="menuCharactersBtn" class="menu-music-btn" type="button">Choose</button>
           </div>
-          <input class="menu-char-radio" type="radio" name="char-nearYou" value="player-human-v1" checked>
-          <input class="menu-char-radio" type="radio" name="char-nearYou" value="player-partner-v1">
-          <input class="menu-char-radio" type="radio" name="char-nearYou" value="player-opponent-a-v1">
-          <input class="menu-char-radio" type="radio" name="char-nearYou" value="player-opponent-b-v1">
-          <input class="menu-char-radio" type="radio" name="char-nearMate" value="player-human-v1">
-          <input class="menu-char-radio" type="radio" name="char-nearMate" value="player-partner-v1" checked>
-          <input class="menu-char-radio" type="radio" name="char-nearMate" value="player-opponent-a-v1">
-          <input class="menu-char-radio" type="radio" name="char-nearMate" value="player-opponent-b-v1">
-          <input class="menu-char-radio" type="radio" name="char-farA" value="player-human-v1">
-          <input class="menu-char-radio" type="radio" name="char-farA" value="player-partner-v1">
-          <input class="menu-char-radio" type="radio" name="char-farA" value="player-opponent-a-v1" checked>
-          <input class="menu-char-radio" type="radio" name="char-farA" value="player-opponent-b-v1">
-          <input class="menu-char-radio" type="radio" name="char-farB" value="player-human-v1">
-          <input class="menu-char-radio" type="radio" name="char-farB" value="player-partner-v1">
-          <input class="menu-char-radio" type="radio" name="char-farB" value="player-opponent-a-v1">
-          <input class="menu-char-radio" type="radio" name="char-farB" value="player-opponent-b-v1" checked>
+          <input class="menu-char-radio" type="radio" name="gender-nearYou" value="male" checked>
+          <input class="menu-char-radio" type="radio" name="gender-nearYou" value="female">
+          <input class="menu-char-radio" type="radio" name="hair-nearYou" value="simpleParted" checked>
+          <input class="menu-char-radio" type="radio" name="hair-nearYou" value="buzzed">
+          <input class="menu-char-radio" type="radio" name="hair-nearYou" value="long">
+          <input class="menu-char-radio" type="radio" name="hair-nearYou" value="buns">
+          <input class="menu-char-radio" type="radio" name="hair-nearYou" value="buzzedFemale">
+          <input class="menu-char-radio" type="radio" name="haircolor-nearYou" value="black" checked>
+          <input class="menu-char-radio" type="radio" name="haircolor-nearYou" value="darkBrown">
+          <input class="menu-char-radio" type="radio" name="haircolor-nearYou" value="brown">
+          <input class="menu-char-radio" type="radio" name="haircolor-nearYou" value="blonde">
+          <input class="menu-char-radio" type="radio" name="haircolor-nearYou" value="auburn">
+          <input class="menu-char-radio" type="radio" name="haircolor-nearYou" value="gray">
+          <input class="menu-char-radio" type="radio" name="facialhair-nearYou" value="none" checked>
+          <input class="menu-char-radio" type="radio" name="facialhair-nearYou" value="beard">
+
+          <input class="menu-char-radio" type="radio" name="gender-nearMate" value="male">
+          <input class="menu-char-radio" type="radio" name="gender-nearMate" value="female" checked>
+          <input class="menu-char-radio" type="radio" name="hair-nearMate" value="simpleParted">
+          <input class="menu-char-radio" type="radio" name="hair-nearMate" value="buzzed">
+          <input class="menu-char-radio" type="radio" name="hair-nearMate" value="long" checked>
+          <input class="menu-char-radio" type="radio" name="hair-nearMate" value="buns">
+          <input class="menu-char-radio" type="radio" name="hair-nearMate" value="buzzedFemale">
+          <input class="menu-char-radio" type="radio" name="haircolor-nearMate" value="black">
+          <input class="menu-char-radio" type="radio" name="haircolor-nearMate" value="darkBrown">
+          <input class="menu-char-radio" type="radio" name="haircolor-nearMate" value="brown" checked>
+          <input class="menu-char-radio" type="radio" name="haircolor-nearMate" value="blonde">
+          <input class="menu-char-radio" type="radio" name="haircolor-nearMate" value="auburn">
+          <input class="menu-char-radio" type="radio" name="haircolor-nearMate" value="gray">
+          <input class="menu-char-radio" type="radio" name="facialhair-nearMate" value="none" checked>
+          <input class="menu-char-radio" type="radio" name="facialhair-nearMate" value="beard">
+
+          <input class="menu-char-radio" type="radio" name="gender-farA" value="male" checked>
+          <input class="menu-char-radio" type="radio" name="gender-farA" value="female">
+          <input class="menu-char-radio" type="radio" name="hair-farA" value="simpleParted">
+          <input class="menu-char-radio" type="radio" name="hair-farA" value="buzzed" checked>
+          <input class="menu-char-radio" type="radio" name="hair-farA" value="long">
+          <input class="menu-char-radio" type="radio" name="hair-farA" value="buns">
+          <input class="menu-char-radio" type="radio" name="hair-farA" value="buzzedFemale">
+          <input class="menu-char-radio" type="radio" name="haircolor-farA" value="black">
+          <input class="menu-char-radio" type="radio" name="haircolor-farA" value="darkBrown">
+          <input class="menu-char-radio" type="radio" name="haircolor-farA" value="brown">
+          <input class="menu-char-radio" type="radio" name="haircolor-farA" value="blonde" checked>
+          <input class="menu-char-radio" type="radio" name="haircolor-farA" value="auburn">
+          <input class="menu-char-radio" type="radio" name="haircolor-farA" value="gray">
+          <input class="menu-char-radio" type="radio" name="facialhair-farA" value="none" checked>
+          <input class="menu-char-radio" type="radio" name="facialhair-farA" value="beard">
+
+          <input class="menu-char-radio" type="radio" name="gender-farB" value="male">
+          <input class="menu-char-radio" type="radio" name="gender-farB" value="female" checked>
+          <input class="menu-char-radio" type="radio" name="hair-farB" value="simpleParted">
+          <input class="menu-char-radio" type="radio" name="hair-farB" value="buzzed">
+          <input class="menu-char-radio" type="radio" name="hair-farB" value="long">
+          <input class="menu-char-radio" type="radio" name="hair-farB" value="buns">
+          <input class="menu-char-radio" type="radio" name="hair-farB" value="buzzedFemale" checked>
+          <input class="menu-char-radio" type="radio" name="haircolor-farB" value="black">
+          <input class="menu-char-radio" type="radio" name="haircolor-farB" value="darkBrown" checked>
+          <input class="menu-char-radio" type="radio" name="haircolor-farB" value="brown">
+          <input class="menu-char-radio" type="radio" name="haircolor-farB" value="blonde">
+          <input class="menu-char-radio" type="radio" name="haircolor-farB" value="auburn">
+          <input class="menu-char-radio" type="radio" name="haircolor-farB" value="gray">
+          <input class="menu-char-radio" type="radio" name="facialhair-farB" value="none" checked>
+          <input class="menu-char-radio" type="radio" name="facialhair-farB" value="beard">
         </div>
 
         <div class="menu-compact-row">

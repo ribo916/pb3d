@@ -8,11 +8,11 @@
  *   npm i @gltf-transform/core @gltf-transform/extensions \
  *         @gltf-transform/functions sharp
  *
- *   # quick form (all defaults, reproduces player-human-v1):
+ *   # quick form (all defaults, reproduces player-male-v1 minus its hair):
  *   node tools/build-player-model.mjs \
  *     "<pack>/Base Characters/Godot - UE/Superhero_Male_FullBody.gltf" \
  *     "<pack>/Unreal-Godot/UAL1_Standard.glb" \
- *     assets/models/players/player-human-v1.glb
+ *     assets/models/players/player-male-v1.glb
  *
  *   # config form (override clips / socket / texture size per player):
  *   node tools/build-player-model.mjs path/to/config.json
@@ -27,15 +27,38 @@
  *   textureSize                max px, square (default 1024)
  *   textureQuality             WebP quality 1-100 (default 88)
  *   resampleTolerance          keyframe resample tolerance (default 1e-3)
- *   hairMesh                   path to a Quaternius "Rigged to Head Bone" hair
- *                              .gltf (e.g. Hair_Long.gltf). Its skin is
- *                              retargeted onto the base skeleton by bone name
- *                              (same trick as the animation clips) and the
- *                              mesh node is tagged as a `hair` variant so the
- *                              adapter shows it only when roster `hairStyle`
- *                              matches `hairVariantValue`.
- *   hairVariantValue           variant value for the merged hair (default
- *                              'long')
+ *   extraMeshes                array of { path, variantGroup, variantValue }.
+ *                              Each path is a Quaternius "Rigged to Head
+ *                              Bone" mesh .gltf (e.g. Hair_Long.gltf or
+ *                              Hair_Beard.gltf). Its skin is retargeted onto
+ *                              the base skeleton by bone name (same trick as
+ *                              the animation clips) and the mesh node is
+ *                              tagged with the given variantGroup/variantValue
+ *                              so the adapter shows it only when the
+ *                              roster's matching cosmetic field (e.g.
+ *                              hairStyle, facialHair) equals variantValue.
+ *                              Multiple entries can share a variantGroup
+ *                              (e.g. several hairstyles) to bake all options
+ *                              into one GLB, toggled at runtime — or use
+ *                              distinct groups (e.g. hair vs facialHair) so
+ *                              two layers can be visible at once. AVOID
+ *                              merging a mesh authored for a different donor
+ *                              body/pack than `base` (e.g. clothing cut from
+ *                              a different character) — matching bone names
+ *                              is enough to retarget the skin without
+ *                              erroring, but if the donor body's proportions
+ *                              differ, the merged mesh will sit almost
+ *                              flush against (and z-fight with) the base
+ *                              body's own surface. This is exactly what went
+ *                              wrong trying to reuse a "Modular Character
+ *                              Outfits" pants mesh on this "Universal Base
+ *                              Characters" body — no amount of polygon-offset
+ *                              tuning fully fixed it, and the feature was
+ *                              removed rather than shipped as a rendering
+ *                              hack. Stick to meshes from the SAME pack as
+ *                              `base` (hair here) unless you've confirmed
+ *                              the donor asset is actually meant to attach
+ *                              to this body, not just share bone names.
  *
  * See PLAYER-IMPORT.md for the itch.io download flow, the texture-filename
  * fix-ups the base pack needs, and the gltf-transform gotchas baked in here.
@@ -91,6 +114,24 @@ const baseScenes = new Set(root.listScenes());
 const baseSkins = new Set(root.listSkins());
 const baseMeshes = new Set(root.listMeshes());
 const baseMaterials = new Set(root.listMaterials());
+
+// Precompute each base-skeleton joint's inverse-bind matrix from the base
+// body's own skin. Extra meshes (hair, pants) merged in later may come from
+// a DIFFERENT Quaternius pack than the base body/anim (e.g. the pants come
+// from "Modular Character Outfits", not "Universal Base Characters") — even
+// when their skeleton uses the same bone NAMES, the donor rig's rest pose
+// can differ enough that reusing its own inverse-bind matrices produces
+// deformed/collapsed geometry once rebound to our joints. Always rebuild
+// inverse-bind matrices from THIS base skin instead of trusting the donor's.
+const baseJointInvBind = new Map();
+for (const skin of baseSkins) {
+  const ibm = skin.getInverseBindMatrices();
+  if (!ibm) continue;
+  const arr = ibm.getArray();
+  skin.listJoints().forEach((joint, i) => {
+    baseJointInvBind.set(joint, arr.slice(i * 16, i * 16 + 16));
+  });
+}
 
 // --- merge animation document in ---
 mergeDocuments(doc, animDoc);
@@ -149,32 +190,51 @@ for (const anim of root.listAnimations()) {
 }
 console.log('kept clips:', root.listAnimations().map((a) => a.getName()).join(', ') || '(none)');
 
-// --- optional: merge a pre-rigged hairstyle mesh, retargeting its skin onto
-//     the base skeleton by bone name (same trick as the animation channels
-//     above). Quaternius ships these hair meshes specifically for this. ---
-if (cfg.hairMesh) {
+// --- optional: merge N pre-rigged extra meshes (hairstyles, facial hair,
+//     ...), retargeting each skin onto the base skeleton by bone name (same
+//     trick as the animation channels above). Quaternius ships meshes rigged
+//     to the shared base skeleton specifically for this. Each entry is
+//     merged and cleaned up in its own iteration so multiple meshes
+//     accumulate into one output GLB instead of clobbering each other. ---
+function disposeTree(n) {
+  for (const c of n.listChildren()) disposeTree(c);
+  n.dispose();
+}
+
+for (const extra of cfg.extraMeshes || []) {
   const preNodes = new Set(root.listNodes());
   const preMeshes = new Set(root.listMeshes());
   const preSkins = new Set(root.listSkins());
   const preMaterials = new Set(root.listMaterials());
   const preScenes = new Set(root.listScenes());
 
-  const hairDoc = await io.read(cfg.hairMesh);
-  mergeDocuments(doc, hairDoc);
+  const extraDoc = await io.read(extra.path);
+  mergeDocuments(doc, extraDoc);
 
-  const hairMeshNodes = root.listNodes().filter((n) => !preNodes.has(n) && n.getMesh());
-  if (!hairMeshNodes.length) throw new Error('no mesh node found in hairMesh doc: ' + cfg.hairMesh);
+  const extraMeshNodes = root.listNodes().filter((n) => !preNodes.has(n) && n.getMesh());
+  if (!extraMeshNodes.length) throw new Error('no mesh node found in extraMeshes doc: ' + extra.path);
 
-  for (const node of hairMeshNodes) {
+  for (const node of extraMeshNodes) {
     const oldSkin = node.getSkin();
     if (oldSkin) {
       const newSkin = doc.createSkin(oldSkin.getName());
+      const joints = [];
       for (const j of oldSkin.listJoints()) {
         const baseJoint = baseNodesByName.get(j.getName());
-        if (!baseJoint) throw new Error('hair joint not found on base skeleton: ' + j.getName());
+        if (!baseJoint) throw new Error('joint not found on base skeleton: ' + j.getName());
         newSkin.addJoint(baseJoint);
+        joints.push(baseJoint);
       }
-      newSkin.setInverseBindMatrices(oldSkin.getInverseBindMatrices());
+      // Use the BASE skeleton's own inverse-bind matrices (not the donor
+      // mesh's) — see the baseJointInvBind comment above for why.
+      const invBindData = new Float32Array(joints.length * 16);
+      joints.forEach((baseJoint, i) => {
+        const m = baseJointInvBind.get(baseJoint);
+        if (!m) throw new Error('no base inverse-bind matrix for joint: ' + baseJoint.getName());
+        invBindData.set(m, i * 16);
+      });
+      const invBindAccessor = doc.createAccessor().setArray(invBindData).setType('MAT4');
+      newSkin.setInverseBindMatrices(invBindAccessor);
       const skRoot = oldSkin.getSkeleton();
       if (skRoot) {
         const baseSkRoot = baseNodesByName.get(skRoot.getName());
@@ -183,11 +243,11 @@ if (cfg.hairMesh) {
       node.setSkin(newSkin);
       oldSkin.dispose();
     }
-    // hair node ships with an identity local transform in its own doc; drop
-    // it onto the base scene directly (its pose comes entirely from the
+    // extra mesh node ships with an identity local transform in its own doc;
+    // drop it onto the base scene directly (its pose comes entirely from the
     // retargeted skin, not this node's transform).
     node.setTranslation([0, 0, 0]).setRotation([0, 0, 0, 1]).setScale([1, 1, 1]);
-    node.setExtras({ variantGroup: 'hair', variantValue: cfg.hairVariantValue || 'long' });
+    node.setExtras({ variantGroup: extra.variantGroup, variantValue: extra.variantValue });
     baseScene.addChild(node);
   }
 
@@ -195,18 +255,15 @@ if (cfg.hairMesh) {
   for (const s of root.listSkins()) if (!preSkins.has(s)) baseSkins.add(s);
   for (const m of root.listMaterials()) if (!preMaterials.has(m)) baseMaterials.add(m);
 
-  // dispose the hair doc's own duplicate skeleton copy (now unreferenced —
-  // the mesh node above was already reparented off of it).
-  function disposeTree(n) {
-    for (const c of n.listChildren()) disposeTree(c);
-    n.dispose();
-  }
+  // dispose this mesh's own duplicate skeleton copy (now unreferenced — the
+  // mesh node above was already reparented off of it).
   for (const s of root.listScenes()) {
     if (preScenes.has(s)) continue;
     for (const n of s.listChildren()) disposeTree(n);
     s.dispose();
   }
-  console.log('merged hair mesh:', hairMeshNodes.map((n) => n.getName()).join(', '));
+  console.log('merged extra mesh (' + extra.variantGroup + '/' + extra.variantValue + '):',
+    extraMeshNodes.map((n) => n.getName()).join(', '));
 }
 
 // --- drop merged-in scenes / skins / meshes / materials that aren't base ---

@@ -1,6 +1,6 @@
 (function () {
   var STORAGE_KEY = 'pb3d-menu-theme';
-  var saved = window.localStorage.getItem(STORAGE_KEY) || 'cobalt';
+  var saved = window.localStorage.getItem(STORAGE_KEY) || 'night';
   document.body.dataset.theme = saved;
 
   function syncLabels(name) {

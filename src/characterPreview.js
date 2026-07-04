@@ -10,7 +10,6 @@
 
 import * as THREE from 'three';
 import { makePlayer } from './players.js';
-import { characterByKey } from './characters.js';
 import { preloadPlayerModels } from './assets.js';
 
 var FOV = 28;
@@ -135,8 +134,10 @@ export function makeCharacterPreview(container, options) {
     /* Resolves once player GLBs are available (cached after first call). */
     ready: function () { return preloadPlayerModels(); },
 
-    show: async function (characterKey) {
-      var character = characterByKey(characterKey);
+    /* character: a resolved cosmetics object (see characters.js
+     * resolveSlotCharacter()) with a `.key` field used to de-dupe repeat
+     * calls for the same combo. */
+    show: async function (character) {
       if (state.disposed || character.key === state.characterKey) return;
       state.characterKey = character.key;
       var pack = null;

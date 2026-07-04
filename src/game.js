@@ -22,7 +22,7 @@ import * as DoublesStrategy from './strategies/doubles.js';
 import * as Movement from './movement.js';
 import * as Scene from './scene.js';
 import { makePlayer } from './players.js';
-import { CHARACTERS, DEFAULT_ROSTER as DEFAULT_CHARACTER_ROSTER } from './characters.js';
+import { resolveSlotCharacter } from './characters.js';
 import { makeCamera, updateCamera } from './camera.js';
 import { clamp, dist2D } from './utils.js';
 import { HIT, PHYS, STABILITY, POWER_CAP, SPECIALTY, MOVEMENT, PRACTICE } from './constants.js';
@@ -202,8 +202,7 @@ Game.prototype._initWorld = function () {
   // not slot.
   var roster = this.roster;
   function characterFor(position) {
-    var key = roster[position] || DEFAULT_CHARACTER_ROSTER[position];
-    return CHARACTERS[key] || CHARACTERS[DEFAULT_CHARACTER_ROSTER[position]];
+    return resolveSlotCharacter(position, roster[position]);
   }
   var palettes = {
     nearYou: characterFor('nearYou'),
