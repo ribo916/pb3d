@@ -201,6 +201,212 @@ see the "why doesn't clothing fit" question this always raises:
   to fit "Universal Base Characters" proportions (or plan to reshape a
   donor mesh in a 3D tool first) rather than repeating this shortcut.
 
+### Done: colorable shirt/pants via mesh splitting (`tools/paint-player-clothing.mjs`)
+
+The body now has a runtime-tintable shirt and pants, picked per roster
+position in the character customization UI (`GARMENT_COLORS` in
+`src/characters.js`, "Shirt"/"Pants" rows in the character modal). This
+superseded an earlier version of this tool that baked a single **fixed**
+color into the texture (see the v1-v3 history below, kept for the technique
+lessons even though the fixed-color approach itself is gone) — a baked color
+can't be changed per character at runtime, which is what the color-picker
+feature needs.
+
+Both pickers include a `'none'` option (rendered with a diagonal-stripe
+swatch, not a real color, deliberately not a key in `GARMENT_COLORS`).
+`resolveSlotCharacter` special-cases it to fall back to the character's own
+`skin` tone rather than tinting the jersey/shorts primitive — those
+primitives can't be geometrically hidden without leaving a hole (their
+triangles were removed from the skin primitive's own index buffer, not just
+overlaid on top of it), so "no garment" is approximated by making the
+region blend back into skin tone rather than truly reverting to the
+original textured skin material.
+
+**Current approach: split the body mesh, don't paint it.** The single
+`Superhero` body primitive is partitioned into 3 primitives — skin / jersey
+/ shorts — by classifying each triangle from its vertices' skinning weights
+(same weight-group logic as the old painter: leg joints for pants, spine +
+arm-suppressed clavicle for the shirt, see the v1-v3 notes below for why
+those groups are shaped the way they are). Skin keeps the original
+primitive/material untouched; jersey and shorts become two new sibling
+nodes, same skin, same shared position/normal/uv/joints/weights accessors
+(just a different index buffer each — no vertex duplication, no z-fighting,
+since it's literally the same continuous surface). Each new material gets
+its own copy of the base texture, desaturated and contrast-stretched to a
+neutral gray band. That makes the EXISTING runtime tinting system in
+`players.js` (`applyModelMaterials`/`tintMaterial`/`materialSlot`) — the same
+one the primitive rig always used for its own jersey/shorts spheres — treat
+these two new nodes exactly like any other jersey/shorts material, multiplying
+in whatever `opts.jersey`/`opts.shorts` the roster picks resolve to. No
+runtime plumbing had to change; the slot system already existed; the
+authored body just wasn't split into tintable pieces before.
+
+`--legs` controls how much leg becomes a colorable "pants" region:
+`full` (leggings, used for the female body) or `brief` (a short brief only,
+used for the male body — bare thighs/calves stay bare per prior direction to
+remove full leggings from the male look):
+
+```bash
+node tools/paint-player-clothing.mjs assets/models/players/player-male-v1.glb --legs=brief
+node tools/paint-player-clothing.mjs assets/models/players/player-female-v1.glb --legs=full
+```
+
+Add `--dump-mask` to write a `*-mask-debug.png` (jersey triangles in red,
+shorts in blue, dotted at their own vertices) before committing — check this
+first if the donor body's rig or UV layout ever changes. This step must be
+re-run any time `tools/build-player-model.mjs` regenerates these GLBs from
+scratch (it operates on the already-built GLB, so it has to run after, not
+before, that pipeline).
+
+**Traps specific to the mesh-split rewrite:**
+
+- **Region luminance range must come from rasterizing the region's own
+  triangles, not sampling at vertices.** The neutral texture copy is built by
+  contrast-stretching each region's own observed brightness range to a
+  standard band (so, e.g., "White" reads as an actual light color even
+  though the male brief's source pixels are naturally dark navy/black — a
+  fixed global brightness remap left it stuck near-black forever, since
+  `material.color` can only multiply a texture darker, never brighten it).
+  Sampling luminance only at each triangle's 3 vertex UV positions missed the
+  true darkest interior pixels of small regions (the male brief is only
+  ~250-1200 triangles), understating how dark the low end of the range
+  really was and leaving most of the region clamped near black regardless of
+  the stretch. Rasterizing full triangles (same barycentric fill as the old
+  painter) to scan every pixel in the region's actual footprint fixed it.
+- **`--legs=brief` must trim by bind-pose HEIGHT, not by narrowing the joint
+  set.** The obvious-looking approach — classify "pants" using only the
+  `pelvis` joint, excluding `thigh_l/r` entirely, so the region stays small —
+  undershoots: the male body's baked-in brief graphic visibly extends into
+  territory where `thigh_l/r`, not `pelvis`, is the skinning-dominant joint,
+  so a pelvis-only group left most of the brief's own pixels stuck on the
+  unpainted, untintable skin primitive. Fix: classify by the SAME full leg
+  joint group as the female body (so the anatomical boundary is clean), then
+  trim the result by each vertex's bind-pose Y position, keeping only the
+  top fraction of the leg region's height (near the hip). This fraction is
+  measured against the FULL leg span (hip to ankle), not the thigh alone —
+  it first went to 0.45 to satisfy `--dump-mask`'s visualization, but that
+  tool only draws small dots at each vertex rather than filling triangle
+  interiors, so it understated how much of the brief graphic real (filled)
+  triangles already covered. 0.45 of the full hip-to-ankle span reaches
+  close to knee height — well past the actual brief — and made the (jagged,
+  mesh-resolution-limited) boundary visible partway down the thigh, which a
+  user later flagged. Corrected down to 0.22. **Verify coverage/boundary
+  placement via an actual RENDER, not the dot-mask**, if this ever needs
+  retuning — the mask tool is only good for confirming which triangles were
+  classified into which bucket, not for judging visual coverage or where a
+  boundary will actually land.
+- **A `leg >= 0.5` / `torso >= 0.5` "majority" gate leaves a bare gap at the
+  true boundary.** Right where two bones split weight close to evenly (the
+  actual anatomical seam), NEITHER sum reliably clears 0.5, so those
+  vertices fell through to the untinted skin primitive — invisible when
+  jersey/shorts were dark like the surrounding skin, but a visible gap
+  revealing the body's original texture once a light color was picked (read
+  as "doesn't cover the existing shorts/bra"). Fixed by only treating
+  near-zero-both vertices as skin (`SKIN_EPS = 0.15`); everywhere else, leg
+  vs. torso is a winner-take-all comparison, no 0.5 floor. Combined with
+  Laplacian smoothing of the raw per-vertex weight sums (via mesh adjacency
+  built from the ORIGINAL index buffer) before classifying, this also
+  rounds the seam into a noticeably smoother line — the raw skinning
+  weights aren't smooth enough on their own to avoid a jagged "V-cut"
+  boundary once split into hard geometry with no texture alpha left to
+  soften it. Needed more smoothing than expected to fully round out in
+  actual gameplay screenshots (close-up character-preview renders looked
+  smooth well before the boundary actually was) — went from 4 iterations to
+  25 to the current 45 before a user-flagged remaining rough patch at the
+  waist/hem seam actually disappeared. If a seam still reads jagged, try
+  raising iterations further before suspecting anything else.
+- **Desaturating the source texture is not enough to erase a drawn garment
+  graphic — it needs both a blur AND a contrast reduction.** The source bake
+  draws the female bra and male brief as actual ink/shading, not simply a
+  flat color; desaturating it alone just turns "dark ink" into "dark gray
+  ink," which still reads as a printed garment shape once tinted (glaringly
+  under a light color — a bra-shaped print on a white shirt). A wide blur
+  (`NEUTRAL_BLUR_SIGMA`, ~20px on the 1024px texture) erases fine printed
+  linework while leaving broad low-frequency shading alone — but the
+  darkest patch on the female chest turned out to be exactly that kind of
+  broad, low-frequency shading (the source bake's own AO shadow under the
+  bust, the same kind of shading that reads fine as "muscle definition" on
+  the male chest but happens to land in bra territory here), so blur alone
+  couldn't touch it. The second half of the fix is `CONTRAST_FACTOR` (0.35):
+  after normalizing luminance to 0..1, compress it toward 0.5 before mapping
+  to the output band, so no single AO feature — printed ink or genuine
+  shading — is dark/light enough on its own to read as a distinct garment
+  print. `CONTRAST_FACTOR = 1` keeps full original contrast (the ghost
+  problem); `0` would be perfectly flat (no fabric shading at all, reads
+  flat/plasticky). Current value is 0.15 (lowered from an initial 0.35 that
+  still wasn't flat enough).
+- **The remaining "shows the body through the fabric" look is NOT a
+  texture/material property at all — don't keep tuning texture parameters
+  for it.** After the contrast fix above, muscle/anatomy shape (breast form,
+  ab lines, deltoid bulges) was still clearly visible under a light color.
+  Two more targeted tests — stripping the material's normal map entirely
+  (`setNormalTexture(null)`; the base material's `..._Normal` texture bakes
+  in the same anatomy as bump detail, and `.clone()` carries that reference
+  over unless explicitly cleared) and forcing `roughnessFactor` to `1.0`
+  (fully matte, no specular highlight to emphasize form) — each changed the
+  render only marginally. That rules out texture-level fixes: the shape
+  being seen is the mesh's own REAL 3D sculpted geometry (this is an
+  athletic "Superhero" body, genuinely modeled with muscle/anatomy bulges,
+  not a flat mannequin), lit by ordinary directional lights. A neutral
+  material painted directly onto that geometry will always look like
+  athletic compression wear — it can't look like looser, less form-fitting
+  clothing — because the surface it's riding on IS the body's exact
+  shape. Getting a looser-reading garment from here requires actually
+  changing geometry (e.g. inflating/offsetting the jersey/shorts vertices
+  outward along their normals and smoothing to blunt anatomical crispness),
+  not another material tweak; normal-map removal and `roughnessFactor: 0.85`
+  were kept anyway since they're free correctness wins (a garment shouldn't
+  carry the body's own bump map), just not the fix for this specific
+  complaint.
+
+### v1-v3 history (fixed-color texture painting, since replaced above)
+
+These three rounds happened before the mesh-split rewrite, back when the
+tool baked ONE fixed color into the texture instead of making it runtime
+tintable. Kept because the underlying weight-group reasoning (why `pelvis`
+and `spine_01` are in the leg group, why clavicle is arm-suppressed rather
+than flatly capped) still applies unchanged to the current mesh-split code —
+only the "paint a pixel" step at the end was replaced by "assign this
+triangle to a primitive."
+
+**v1 mistake:** classified each vertex by its single *dominant* joint and
+painted whole triangles in/out by majority vote, and sampled the fill color
+from the body's own pelvis-region pixels. Both were wrong: dominant-joint
+classification flips discontinuously between adjacent vertices even though
+the underlying weights are smooth, producing a saw-tooth/jagged boundary,
+and restricting the torso group to spine-only left the shoulders bare,
+reading as a bra/bikini cut on the male model rather than a tank top.
+Pixel-sampling the fill color also picked up whatever tone happened to be
+under the pelvis (skin-toned on the female body), instead of a clean fabric
+color. Fixed with continuous per-vertex weight SUMS (not a single dominant
+joint) interpolated as a paint alpha, plus a fixed neutral fill color.
+
+**v2 mistake:** summing raw `clavicle_l/r` weight uncapped into the torso
+group covered the shoulder (fixing the v1 bra look) but also bled down the
+front deltoid — this rig's clavicle skin weight reaches further onto the arm
+at the front than at the back, so the top read as a symmetric tank top from
+behind but a lopsided short-sleeve from the front. First fix tried: a flat
+cap (`CLAVICLE_CAP = 0.35`) so clavicle weight alone couldn't cross the paint
+threshold. Also added `pelvis` to the leg group, since leaving it unpainted
+(it sits between the waistband and thighs) let the body's own baked-in brief
+show through as a bare gap between top and leggings.
+
+**v3 mistake:** the flat clavicle cap overcorrected — it suppressed the true
+shoulder-top/collar coverage by the same amount as the unwanted arm bleed,
+so the top read as if its top edge had been cut away. Replaced with
+`UPPERARM_JOINTS` suppression: clavicle's contribution is scaled down only
+where `upperarm_l/r` weight is *also* present at that vertex (via
+`smoothstep(0.02, 0.15, upperArmWeight)`) — that weight is the actual
+skinning signal for "this vertex is out on the arm," so the collar/
+shoulder-top (upperarm weight ~0 there) keeps full clavicle coverage while
+the sleeve-bleed zone is suppressed. Separately, the hip gap persisted even
+with `pelvis` in the leg group — `spine_01` (the waist bone immediately
+above pelvis) also carries meaningful weight at the same hip vertices,
+diluting both sums below the paint threshold there. Adding `spine_01` to the
+leg group too (it was already in the torso group; double-counting is
+harmless) closed the gap. Both fixes carry over unchanged to the current
+mesh-split classification.
+
 ## Reproducing a build from scratch
 
 1. Re-download both packs via the itch.io CSRF flow (GET page → scrape

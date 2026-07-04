@@ -901,6 +901,24 @@
       vertical-align: middle;
       box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
     }
+    .pill-swatch-none {
+      background: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.55) 0 1.5px, transparent 1.5px 4px);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+    }
+    .character-height-slider {
+      flex: 1 1 auto;
+      min-width: 80px;
+      max-width: 220px;
+      accent-color: var(--focus, #2bd4ff);
+      cursor: pointer;
+    }
+    .character-height-value {
+      flex: 0 0 auto;
+      font-size: 10px;
+      font-weight: 800;
+      color: var(--text-faint);
+      min-width: 32px;
+    }
     .character-preview-col { display: flex; flex-direction: column; gap: 8px; }
     #characterPreviewPane {
       width: 100%;
@@ -1407,6 +1425,34 @@
           <input class="menu-char-radio" type="radio" name="haircolor-nearYou" value="gray">
           <input class="menu-char-radio" type="radio" name="facialhair-nearYou" value="none" checked>
           <input class="menu-char-radio" type="radio" name="facialhair-nearYou" value="beard">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-nearYou" value="none">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-nearYou" value="black">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-nearYou" value="charcoal">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-nearYou" value="navy">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-nearYou" value="skyBlue">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-nearYou" value="white">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-nearYou" value="brown">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-nearYou" value="forestGreen">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-nearYou" value="identityOrange" checked>
+          <input class="menu-char-radio" type="radio" name="shirtcolor-nearYou" value="identityTeal">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-nearYou" value="identityCrimson">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-nearYou" value="identityPink">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-nearYou" value="identityPlum">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-nearYou" value="identityBerry">
+          <input class="menu-char-radio" type="radio" name="pantscolor-nearYou" value="none">
+          <input class="menu-char-radio" type="radio" name="pantscolor-nearYou" value="black">
+          <input class="menu-char-radio" type="radio" name="pantscolor-nearYou" value="charcoal">
+          <input class="menu-char-radio" type="radio" name="pantscolor-nearYou" value="navy" checked>
+          <input class="menu-char-radio" type="radio" name="pantscolor-nearYou" value="skyBlue">
+          <input class="menu-char-radio" type="radio" name="pantscolor-nearYou" value="white">
+          <input class="menu-char-radio" type="radio" name="pantscolor-nearYou" value="brown">
+          <input class="menu-char-radio" type="radio" name="pantscolor-nearYou" value="forestGreen">
+          <input class="menu-char-radio" type="radio" name="pantscolor-nearYou" value="identityOrange">
+          <input class="menu-char-radio" type="radio" name="pantscolor-nearYou" value="identityTeal">
+          <input class="menu-char-radio" type="radio" name="pantscolor-nearYou" value="identityCrimson">
+          <input class="menu-char-radio" type="radio" name="pantscolor-nearYou" value="identityPink">
+          <input class="menu-char-radio" type="radio" name="pantscolor-nearYou" value="identityPlum">
+          <input class="menu-char-radio" type="radio" name="pantscolor-nearYou" value="identityBerry">
 
           <input class="menu-char-radio" type="radio" name="gender-nearMate" value="male">
           <input class="menu-char-radio" type="radio" name="gender-nearMate" value="female" checked>
@@ -1423,6 +1469,34 @@
           <input class="menu-char-radio" type="radio" name="haircolor-nearMate" value="gray">
           <input class="menu-char-radio" type="radio" name="facialhair-nearMate" value="none" checked>
           <input class="menu-char-radio" type="radio" name="facialhair-nearMate" value="beard">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-nearMate" value="none">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-nearMate" value="black">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-nearMate" value="charcoal">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-nearMate" value="navy">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-nearMate" value="skyBlue">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-nearMate" value="white">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-nearMate" value="brown">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-nearMate" value="forestGreen">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-nearMate" value="identityOrange">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-nearMate" value="identityTeal" checked>
+          <input class="menu-char-radio" type="radio" name="shirtcolor-nearMate" value="identityCrimson">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-nearMate" value="identityPink">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-nearMate" value="identityPlum">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-nearMate" value="identityBerry">
+          <input class="menu-char-radio" type="radio" name="pantscolor-nearMate" value="none">
+          <input class="menu-char-radio" type="radio" name="pantscolor-nearMate" value="black">
+          <input class="menu-char-radio" type="radio" name="pantscolor-nearMate" value="charcoal">
+          <input class="menu-char-radio" type="radio" name="pantscolor-nearMate" value="navy" checked>
+          <input class="menu-char-radio" type="radio" name="pantscolor-nearMate" value="skyBlue">
+          <input class="menu-char-radio" type="radio" name="pantscolor-nearMate" value="white">
+          <input class="menu-char-radio" type="radio" name="pantscolor-nearMate" value="brown">
+          <input class="menu-char-radio" type="radio" name="pantscolor-nearMate" value="forestGreen">
+          <input class="menu-char-radio" type="radio" name="pantscolor-nearMate" value="identityOrange">
+          <input class="menu-char-radio" type="radio" name="pantscolor-nearMate" value="identityTeal">
+          <input class="menu-char-radio" type="radio" name="pantscolor-nearMate" value="identityCrimson">
+          <input class="menu-char-radio" type="radio" name="pantscolor-nearMate" value="identityPink">
+          <input class="menu-char-radio" type="radio" name="pantscolor-nearMate" value="identityPlum">
+          <input class="menu-char-radio" type="radio" name="pantscolor-nearMate" value="identityBerry">
 
           <input class="menu-char-radio" type="radio" name="gender-farA" value="male" checked>
           <input class="menu-char-radio" type="radio" name="gender-farA" value="female">
@@ -1439,6 +1513,34 @@
           <input class="menu-char-radio" type="radio" name="haircolor-farA" value="gray">
           <input class="menu-char-radio" type="radio" name="facialhair-farA" value="none" checked>
           <input class="menu-char-radio" type="radio" name="facialhair-farA" value="beard">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-farA" value="none">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-farA" value="black">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-farA" value="charcoal">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-farA" value="navy">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-farA" value="skyBlue">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-farA" value="white">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-farA" value="brown">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-farA" value="forestGreen">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-farA" value="identityOrange">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-farA" value="identityTeal">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-farA" value="identityCrimson" checked>
+          <input class="menu-char-radio" type="radio" name="shirtcolor-farA" value="identityPink">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-farA" value="identityPlum">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-farA" value="identityBerry">
+          <input class="menu-char-radio" type="radio" name="pantscolor-farA" value="none">
+          <input class="menu-char-radio" type="radio" name="pantscolor-farA" value="black">
+          <input class="menu-char-radio" type="radio" name="pantscolor-farA" value="charcoal">
+          <input class="menu-char-radio" type="radio" name="pantscolor-farA" value="navy">
+          <input class="menu-char-radio" type="radio" name="pantscolor-farA" value="skyBlue">
+          <input class="menu-char-radio" type="radio" name="pantscolor-farA" value="white">
+          <input class="menu-char-radio" type="radio" name="pantscolor-farA" value="brown">
+          <input class="menu-char-radio" type="radio" name="pantscolor-farA" value="forestGreen">
+          <input class="menu-char-radio" type="radio" name="pantscolor-farA" value="identityOrange">
+          <input class="menu-char-radio" type="radio" name="pantscolor-farA" value="identityTeal">
+          <input class="menu-char-radio" type="radio" name="pantscolor-farA" value="identityCrimson">
+          <input class="menu-char-radio" type="radio" name="pantscolor-farA" value="identityPink">
+          <input class="menu-char-radio" type="radio" name="pantscolor-farA" value="identityPlum" checked>
+          <input class="menu-char-radio" type="radio" name="pantscolor-farA" value="identityBerry">
 
           <input class="menu-char-radio" type="radio" name="gender-farB" value="male">
           <input class="menu-char-radio" type="radio" name="gender-farB" value="female" checked>
@@ -1455,6 +1557,34 @@
           <input class="menu-char-radio" type="radio" name="haircolor-farB" value="gray">
           <input class="menu-char-radio" type="radio" name="facialhair-farB" value="none" checked>
           <input class="menu-char-radio" type="radio" name="facialhair-farB" value="beard">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-farB" value="none">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-farB" value="black">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-farB" value="charcoal">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-farB" value="navy">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-farB" value="skyBlue">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-farB" value="white">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-farB" value="brown">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-farB" value="forestGreen">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-farB" value="identityOrange">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-farB" value="identityTeal">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-farB" value="identityCrimson">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-farB" value="identityPink" checked>
+          <input class="menu-char-radio" type="radio" name="shirtcolor-farB" value="identityPlum">
+          <input class="menu-char-radio" type="radio" name="shirtcolor-farB" value="identityBerry">
+          <input class="menu-char-radio" type="radio" name="pantscolor-farB" value="none">
+          <input class="menu-char-radio" type="radio" name="pantscolor-farB" value="black">
+          <input class="menu-char-radio" type="radio" name="pantscolor-farB" value="charcoal">
+          <input class="menu-char-radio" type="radio" name="pantscolor-farB" value="navy">
+          <input class="menu-char-radio" type="radio" name="pantscolor-farB" value="skyBlue">
+          <input class="menu-char-radio" type="radio" name="pantscolor-farB" value="white">
+          <input class="menu-char-radio" type="radio" name="pantscolor-farB" value="brown">
+          <input class="menu-char-radio" type="radio" name="pantscolor-farB" value="forestGreen">
+          <input class="menu-char-radio" type="radio" name="pantscolor-farB" value="identityOrange">
+          <input class="menu-char-radio" type="radio" name="pantscolor-farB" value="identityTeal">
+          <input class="menu-char-radio" type="radio" name="pantscolor-farB" value="identityCrimson">
+          <input class="menu-char-radio" type="radio" name="pantscolor-farB" value="identityPink">
+          <input class="menu-char-radio" type="radio" name="pantscolor-farB" value="identityPlum">
+          <input class="menu-char-radio" type="radio" name="pantscolor-farB" value="identityBerry" checked>
         </div>
 
         <div class="menu-compact-row">

@@ -27,8 +27,19 @@ The game now has:
   config field), plus (male only) a beard merged as its own independent
   `facialHair` variant group so it can be shown alongside any hairstyle
   rather than being one more mutually-exclusive hair option. Both fall back
-  to the POC if their GLB is absent. The old fantasy "Ranger" opponent
-  outfits are gone — `farA`/`farB` now just pick
+  to the POC if their GLB is absent. Both GLBs have their single body
+  material SPLIT into skin/jersey/shorts primitives via
+  `tools/paint-player-clothing.mjs` (shoulder-cap coverage on the jersey
+  region, not just the chest, so it reads as a tank top rather than a
+  bra/bikini cut; the female body's shorts region is full leggings, the male
+  body's is a short brief only — bare thighs/calves stay bare). This makes
+  the body's jersey/shorts materials tint at runtime from each roster
+  position's `shirtColor`/`pantsColor` pick (`GARMENT_COLORS` in
+  `src/characters.js`, "Shirt"/"Pants" rows in the character modal) through
+  the SAME jersey/shorts material-slot system the primitive rig always used
+  — see `PLAYER-IMPORT.md`'s "Done: colorable shirt/pants via mesh
+  splitting" section. The old
+  fantasy "Ranger" opponent outfits are gone — `farA`/`farB` now just pick
   `player-male-v1`/`player-female-v1` like every other slot, distinguished
   only by their own team colors/gender/hair/hair-color/beard choice
   (`src/characters.js`). A free "peasant pants" option was tried and removed
@@ -351,11 +362,15 @@ like any other slot. A free "peasant pants" option was tried and removed —
 the free Quaternius pack it came from was never designed to attach to this
 body (see `PLAYER-IMPORT.md`'s "Retired" note), and no amount of
 `polygonOffset` tuning made the z-fighting against the base body's own leg
-geometry reliable across every animated pose. A future pass could add real
-clothing (proper shorts/skirt) once a CC0/licensed asset actually modeled
-for "Universal Base Characters" proportions is found; the adapter/manifest
-/build pipeline (including the `extraMeshes` multi-variant merge) does not
-need to change, only the source GLB.
+geometry reliable across every animated pose. Both bodies now instead get a
+colorable shirt/pants by splitting the body's own triangles into
+skin/jersey/shorts primitives (no added geometry, so no z-fighting) via
+`tools/paint-player-clothing.mjs` — see `PLAYER-IMPORT.md`'s "Done: colorable
+shirt/pants via mesh splitting" section. A future pass could still add real
+garment geometry (proper shorts/skirt with folds) once a CC0/licensed asset
+actually modeled for "Universal Base Characters" proportions is found; the
+adapter/manifest/build pipeline (including the `extraMeshes` multi-variant
+merge) does not need to change, only the source GLB.
 
 Only after the full roster reads as premium/appropriate should broader
 venue/material polish resume.

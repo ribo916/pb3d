@@ -35,11 +35,9 @@ function limb(rad, len, mat) {
 }
 function ease(t) { return t * t * (3 - 2 * t); } // smoothstep
 
-function heightScale(kind) {
-  if (kind === 'short') return 0.96;
-  if (kind === 'tall') return 1.14;
-  if (kind === 'tower') return 1.22;
-  return 1.0;
+function clampHeightScale(v) {
+  var n = typeof v === 'number' && !isNaN(v) ? v : 1.0;
+  return Math.max(0.85, Math.min(1.3, n));
 }
 
 function buildScale(kind) {
@@ -148,8 +146,10 @@ function variantChoice(group, opts) {
 
 function applyAuthoredIdentity(model, opts) {
   var body = buildScale(opts.build);
-  model.scale.x *= body;
-  model.scale.z *= body;
+  var tall = clampHeightScale(opts.heightScale);
+  model.scale.x *= body * tall;
+  model.scale.y *= tall;
+  model.scale.z *= body * tall;
 
   model.traverse(function (node) {
     var info = variantInfo(node);
@@ -382,7 +382,7 @@ export function makePrimitivePlayer(opts) {
   var limbW = 0.95 + (bodyW - 0.9) * 0.5;
   var shoulderW = 0.96 + (bodyW - 0.9) * 0.4;
   var hipW = 0.98 + (bodyW - 0.9) * 0.3;
-  var tall = heightScale(opts.height);
+  var tall = clampHeightScale(opts.heightScale);
 
   var root3 = new THREE.Group();
   root3.scale.y = tall;
