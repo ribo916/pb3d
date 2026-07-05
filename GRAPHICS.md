@@ -219,7 +219,7 @@ history, every bug found and fixed, and the detailed open-items list live in
 [`character-preview/CONTEXT.md`](character-preview/CONTEXT.md) — read it
 before touching this pipeline again. `character-preview/` (`index.html`,
 `main.js`, `CONTEXT.md`) is git-tracked; only `character-preview/local-clips/`
-(the 7 still-unconfirmed-license raw FBX sport clips) stays untracked. It's
+(the 7 raw FBX sport clips) stays untracked. It's
 reached at `/character-preview/` under the normal `npm run dev` server —
 there is no separate dev-server process anymore. Status summary:
 
@@ -289,14 +289,12 @@ there is no separate dev-server process anymore. Status summary:
 - **Not yet done:** real team-color/identity art beyond the flat swatch
   tiles, and the missing idle/run/serve clips above. Full tracked list:
   `character-preview/CONTEXT.md`'s "Open TODOs" section.
-- **Licensing: characters resolved, swing clips still open.** The 12
-  characters are confirmed Mixamo content, free for unlimited commercial use
-  (checked against Adobe's current terms) — no restriction on shipping them
-  in this game. The swing/sports mocap clips (forehand/backhand/overhead +
-  6 other-sport exploratory clips) did not come from Mixamo's own catalog
-  and their real source is still unconfirmed — do not ship those
-  commercially until that's resolved. See `character-preview/CONTEXT.md`'s
-  "Licensing status" section.
+- **Licensing is resolved.** The 12 characters are confirmed Mixamo content,
+  free for unlimited commercial use (checked against Adobe's current terms)
+  — no restriction on shipping them in this game. The project owner also
+  confirmed there are no remaining licensing blockers for the swing/sports
+  mocap clips. See `character-preview/CONTEXT.md`'s "Licensing status"
+  section.
 
 ### Roster-Wide Players
 
@@ -428,12 +426,11 @@ how the Quaternius bodies were built, not as an active plan.
 Do not spend the next pass on minor procedural crispness. The visual bottleneck
 is now character presentation:
 
-1. Add missing idle/ready/run/serve animation states.
-2. Calibrate clip contact frames to `contactT = 0.5`.
-3. Resolve swing/sports mocap licensing before commercial release.
-4. Improve team/role identity for fixed, non-customizable characters.
-5. Keep the primitive rig as gameplay authority.
-6. Verify paddle socket, contact frame, `paddleWorld`, and gameplay readability.
+- [ ] Add missing idle/ready/run/serve animation states.
+- [ ] Calibrate clip contact frames to `contactT = 0.5`.
+- [ ] Improve team/role identity for fixed, non-customizable characters.
+- [ ] Keep the primitive rig as gameplay authority.
+- [ ] Verify paddle socket, contact frame, `paddleWorld`, and gameplay readability.
 
 Only after the full roster reads as premium/appropriate should broader
 venue/material polish resume.

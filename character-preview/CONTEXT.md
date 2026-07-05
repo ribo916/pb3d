@@ -3,7 +3,7 @@
 This folder is a standalone Three.js POC for the Mixamo character pipeline.
 It is git-tracked (`index.html`, `main.js`, `CONTEXT.md`); only
 `character-preview/local-clips/` (the 6 other-sport exploratory clips + the
-full tennis source take, all still-unconfirmed license) stays out of git via
+full tennis source take) stays out of git via
 `.gitignore`. Its only job so far: let you eyeball whether Mixamo-sourced
 characters + mocap swing animations are viable replacements for pb3d's
 current authored player models, before touching real game code.
@@ -102,22 +102,13 @@ Files:
   intended use case.
 - **Forehand/Backhand/Overhead**: hand-cut in Blender by the user from a
   longer mocap take, at frame ranges (30fps) 69–117 / 170–220 / 300–381.
-  **Origin of the underlying tennis mocap is still unconfirmed** — the
-  `_mixamo` suffix on the source filename most likely just means it was run
-  through Mixamo's auto-rigger/retargeting tool (which works on *any*
-  uploaded animation, not just Mixamo's own catalog), not that the
-  motion-capture data itself is Mixamo's licensed content. Mixamo's own
-  animation library is generic locomotion/action clips, not sport-specific
-  swings, so this likely came from elsewhere. **Verify the real source before
-  this ships in a real product** — do not assume the character licensing
-  above extends to this.
+  Licensing is cleared for project use per owner confirmation.
 - **Tennis Source (full)**: the pristine, uncut ~28.7s take those three were
   sliced from. Original file: `/Users/ribo/Dev/CharacterAssets/Sports/tennis/
-  Tennis_mixamo.fbx`. Same unconfirmed-origin caveat as above.
+  Tennis_mixamo.fbx`.
 - **Golf/Baseball/Soccer/Football clips**: from
   `/Users/ribo/Dev/CharacterAssets/Sports/*_mixamo.fbx` — a folder the user
-  already had, same `_mixamo` naming convention as the tennis file, same
-  unconfirmed-provenance caveat applies.
+  already had, same `_mixamo` naming convention as the tennis file.
 
 ## Licensing status
 
@@ -129,14 +120,9 @@ Files:
   standalone, independently-downloadable asset pack (e.g. selling them on an
   asset marketplace) — not applicable to shipping them compiled into this
   game.
-- **Swing/sports mocap clips: still open.** These did not come from
-  mixamo.com's own animation catalog (see "Asset provenance" above) — their
-  true origin is unconfirmed, so Mixamo's license terms don't automatically
-  cover them. Do not ship these commercially until the actual source is
-  identified and its terms checked. This applies to
-  forehand/backhand/overhead (and therefore `pickleball-swings.glb`, already
-  wired into the real game) as much as to the 6 other-sport exploratory
-  clips.
+- **Swing/sports mocap clips: resolved.** The project owner confirmed there
+  are no remaining licensing blockers for the forehand/backhand/overhead
+  clips, `pickleball-swings.glb`, or the 6 other-sport exploratory clips.
 
 ## Bugs found and fixed here (read before touching retargeting code again)
 
@@ -337,14 +323,12 @@ the position/scale fix.
   deliberately NOT wired up as a team-color feature per that decision — see
   the Open TODOs section for the "replace the character creator" item this
   feeds into.
-- **RESOLVED (characters) / STILL OPEN (mocap clips) — licensing.** The 12
-  characters are confirmed Mixamo content, free for unlimited commercial use
-  per Adobe's current terms (checked live, see "Licensing status" above) —
-  no royalties, no attribution, no restriction on shipping them compiled
-  into this game. The swing/sports mocap (forehand/backhand/overhead and the
-  6 other-sport clips) did **not** come from Mixamo's own catalog and its
-  real source is still unconfirmed — do not ship those commercially until
-  that's resolved.
+- **RESOLVED — licensing.** The 12 characters are confirmed Mixamo content,
+  free for unlimited commercial use per Adobe's current terms (checked live,
+  see "Licensing status" above) — no royalties, no attribution, no
+  restriction on shipping them compiled into this game. The project owner
+  also confirmed there are no remaining licensing blockers for the
+  swing/sports mocap clips.
 
 ## Character roster reference
 
@@ -390,7 +374,7 @@ the abstract.
 
 ## Open TODOs (tracked here — keep this list current)
 
-1. **Add the missing animations: idle, serve, run, ready.** Only
+- [ ] **Add the missing animations: idle, serve, run, ready.** Only
    forehand/backhand/overhead exist today. Without these, any wired-in
    character freezes in its bind pose whenever not mid-swing (confirmed
    accepted as a known/documented gap for the `ch12` proof of concept — see
@@ -399,7 +383,7 @@ the abstract.
    double-check the `freezeRootHorizontalMotion` axis fix above applies
    correctly to whatever new clips get added (rebuild + re-measure Hips
    world Y across the clip, don't assume).
-2. **DONE — all 12 characters are wired into the real game.** All of
+- [x] **DONE — all 12 characters are wired into the real game.** All of
    `ch01`-`ch12` have full `assets/manifest.js` entries (facing measured per
    character via `tools/validate-player-glb.mjs`, all `+Z`;
    `paddleSocketRotation`/`paddleSocketScale` reused from `ch12`'s values and
@@ -407,23 +391,14 @@ the abstract.
    picker's live preview — no per-character adjustment was needed).
    `src/characters.js` now has no gender concept; each roster slot
    independently picks one of the 12 by id.
-3. **Mocap character license question — narrowed, not fully closed.** The
-   12 characters are confirmed Mixamo content (user-verified source),
-   checked against Adobe's current public terms: free for unlimited
-   commercial use including video games, no attribution required, no
-   restriction on shipping them compiled into this game (see "Licensing
-   status" above). **Still open:** the swing/sports mocap
-   (forehand/backhand/overhead + the 6 other-sport clips) did not come from
-   Mixamo's own catalog — their real source is unconfirmed. Do not ship any
-   of these commercially until that source is identified and checked.
-4. **DONE — the character creator has been replaced with a character
+- [x] **DONE — the character creator has been replaced with a character
    chooser.** The old gender/hair/color customization modal is gone
    entirely. The main menu's "Choose" button now opens a fighting-game-style
    picker (`#characterModal` in `index.html`, behavior in `src/main.js`): a
    P1/P2/P3/P4 tab strip switches the active roster slot, and clicking a
    tile in a shared 12-character grid assigns that character to it.
    Duplicate picks across slots are allowed.
-5. **Real team-color art / accessory**, beyond the current placeholder
+- [ ] **Real team-color art / accessory**, beyond the current placeholder
    `Headband` box — a stated `GRAPHICS.md` priority (player team/role
    distinction) with no concrete plan yet for fixed, non-customizable
    characters.
