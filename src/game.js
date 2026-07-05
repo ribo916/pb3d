@@ -195,11 +195,11 @@ Game.prototype._initWorld = function () {
   this.ball = Physics.makeBall();
 
   // Roster: doubles keeps the classic four-player setup; singles uses the
-  // human plus the existing male opponent visual slot.
+  // human plus the far-side opponent slot.
   //
-  // Character cosmetics live in src/characters.js (shared with the menu
-  // picker); see the note there about cosmetics being keyed by character,
-  // not slot.
+  // Each slot picks one of the 12 Mixamo characters (src/characters.js,
+  // shared with the menu picker); team/paddle color stays keyed by SLOT so
+  // switching a slot's character doesn't change its team color.
   var roster = this.roster;
   function characterFor(position) {
     return resolveSlotCharacter(position, roster[position]);

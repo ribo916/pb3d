@@ -121,24 +121,115 @@ export const ASSET_MANIFEST = {
       customizable: false,
       optional: true
     },
-    // Remaining raw Mixamo catalog (ch01-ch11): minimal, uncalibrated entries.
-    // No playerRotation/playerScale/paddleSocket* yet -- per-character facing
-    // and scale calibration (the ch12 proof-of-concept work above) is a
-    // deferred follow-up before any of these can be wired into gameplay.
-    // Listed here so assets/manifest.js is the single enumerable catalog of
-    // "raw characters that exist," used by character-preview/main.js instead
-    // of a second hardcoded list.
-    { key: 'player-ch01-v1', label: 'Mixamo character (ch01)', url: '/assets/models/players/mixamo/ch01.glb', scope: 'player', optional: true },
-    { key: 'player-ch02-v1', label: 'Mixamo character (ch02)', url: '/assets/models/players/mixamo/ch02.glb', scope: 'player', optional: true },
-    { key: 'player-ch03-v1', label: 'Mixamo character (ch03)', url: '/assets/models/players/mixamo/ch03.glb', scope: 'player', optional: true },
-    { key: 'player-ch04-v1', label: 'Mixamo character (ch04)', url: '/assets/models/players/mixamo/ch04.glb', scope: 'player', optional: true },
-    { key: 'player-ch05-v1', label: 'Mixamo character (ch05)', url: '/assets/models/players/mixamo/ch05.glb', scope: 'player', optional: true },
-    { key: 'player-ch06-v1', label: 'Mixamo character (ch06)', url: '/assets/models/players/mixamo/ch06.glb', scope: 'player', optional: true },
-    { key: 'player-ch07-v1', label: 'Mixamo character (ch07)', url: '/assets/models/players/mixamo/ch07.glb', scope: 'player', optional: true },
-    { key: 'player-ch08-v1', label: 'Mixamo character (ch08)', url: '/assets/models/players/mixamo/ch08.glb', scope: 'player', optional: true },
-    { key: 'player-ch09-v1', label: 'Mixamo character (ch09)', url: '/assets/models/players/mixamo/ch09.glb', scope: 'player', optional: true },
-    { key: 'player-ch10-v1', label: 'Mixamo character (ch10)', url: '/assets/models/players/mixamo/ch10.glb', scope: 'player', optional: true },
-    { key: 'player-ch11-v1', label: 'Mixamo character (ch11)', url: '/assets/models/players/mixamo/ch11.glb', scope: 'player', optional: true }
+    // Remaining Mixamo catalog (ch01-ch11), calibrated the same way as ch12:
+    // facing + bind-pose height measured via `node tools/validate-player-glb.mjs`
+    // (all 11 report toe-vs-foot +Z, same convention as ch12 and the
+    // primitive rig -- no rotation correction needed). playerScale brings
+    // each character's bind-pose height to ~1.80m (matching ch12's actual
+    // 2.12 * 0.85 = 1.802m). paddleSocketScale/paddleSocketRotation reuse
+    // ch12's measured values as a starting point (the underlying Blender
+    // cm->m export artifact is confirmed fixed across characters) --
+    // visually re-verified per character via the in-menu character picker,
+    // not assumed.
+    {
+      key: 'player-ch01-v1', label: 'Mixamo character (ch01)',
+      url: '/assets/models/players/mixamo/ch01.glb', scope: 'player',
+      fallbackKey: 'player-poc', playerScale: 0.97, playerOffset: [0, 0, 0],
+      playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
+      paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
+      swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
+      customizable: false, optional: true
+    },
+    {
+      key: 'player-ch02-v1', label: 'Mixamo character (ch02)',
+      url: '/assets/models/players/mixamo/ch02.glb', scope: 'player',
+      fallbackKey: 'player-poc', playerScale: 1.02, playerOffset: [0, 0, 0],
+      playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
+      paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
+      swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
+      customizable: false, optional: true
+    },
+    {
+      key: 'player-ch03-v1', label: 'Mixamo character (ch03)',
+      url: '/assets/models/players/mixamo/ch03.glb', scope: 'player',
+      fallbackKey: 'player-poc', playerScale: 1.08, playerOffset: [0, 0, 0],
+      playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
+      paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
+      swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
+      customizable: false, optional: true
+    },
+    {
+      key: 'player-ch04-v1', label: 'Mixamo character (ch04)',
+      url: '/assets/models/players/mixamo/ch04.glb', scope: 'player',
+      fallbackKey: 'player-poc', playerScale: 1.12, playerOffset: [0, 0, 0],
+      playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
+      paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
+      swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
+      customizable: false, optional: true
+    },
+    {
+      key: 'player-ch05-v1', label: 'Mixamo character (ch05)',
+      url: '/assets/models/players/mixamo/ch05.glb', scope: 'player',
+      fallbackKey: 'player-poc', playerScale: 1.02, playerOffset: [0, 0, 0],
+      playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
+      paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
+      swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
+      customizable: false, optional: true
+    },
+    {
+      key: 'player-ch06-v1', label: 'Mixamo character (ch06)',
+      url: '/assets/models/players/mixamo/ch06.glb', scope: 'player',
+      fallbackKey: 'player-poc', playerScale: 1.03, playerOffset: [0, 0, 0],
+      playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
+      paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
+      swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
+      customizable: false, optional: true
+    },
+    {
+      key: 'player-ch07-v1', label: 'Mixamo character (ch07)',
+      url: '/assets/models/players/mixamo/ch07.glb', scope: 'player',
+      fallbackKey: 'player-poc', playerScale: 1.01, playerOffset: [0, 0, 0],
+      playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
+      paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
+      swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
+      customizable: false, optional: true
+    },
+    {
+      key: 'player-ch08-v1', label: 'Mixamo character (ch08)',
+      url: '/assets/models/players/mixamo/ch08.glb', scope: 'player',
+      fallbackKey: 'player-poc', playerScale: 1.00, playerOffset: [0, 0, 0],
+      playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
+      paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
+      swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
+      customizable: false, optional: true
+    },
+    {
+      key: 'player-ch09-v1', label: 'Mixamo character (ch09)',
+      url: '/assets/models/players/mixamo/ch09.glb', scope: 'player',
+      fallbackKey: 'player-poc', playerScale: 1.22, playerOffset: [0, 0, 0],
+      playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
+      paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
+      swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
+      customizable: false, optional: true
+    },
+    {
+      key: 'player-ch10-v1', label: 'Mixamo character (ch10)',
+      url: '/assets/models/players/mixamo/ch10.glb', scope: 'player',
+      fallbackKey: 'player-poc', playerScale: 0.99, playerOffset: [0, 0, 0],
+      playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
+      paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
+      swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
+      customizable: false, optional: true
+    },
+    {
+      key: 'player-ch11-v1', label: 'Mixamo character (ch11)',
+      url: '/assets/models/players/mixamo/ch11.glb', scope: 'player',
+      fallbackKey: 'player-poc', playerScale: 0.87, playerOffset: [0, 0, 0],
+      playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
+      paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
+      swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
+      customizable: false, optional: true
+    }
   ],
   textures: [
     {

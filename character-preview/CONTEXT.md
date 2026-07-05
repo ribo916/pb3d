@@ -399,14 +399,14 @@ the abstract.
    double-check the `freezeRootHorizontalMotion` axis fix above applies
    correctly to whatever new clips get added (rebuild + re-measure Hips
    world Y across the clip, don't assume).
-2. **Import the rest of the 12 characters into the real game.** Only `ch12`
-   is wired into `assets/manifest.js`/`src/characters.js` so far, as a
-   proof of concept (temporarily substituted in place of `player-male-v1` —
-   see `GRAPHICS.md`'s player-model status section for the current
-   substitution state). Each additional character needs its own facing
-   measurement and paddle-socket-scale check (both now have a repeatable,
-   documented recipe from the `ch12` pass — see the "DONE" items above) —
-   don't assume they match `ch12`'s values.
+2. **DONE — all 12 characters are wired into the real game.** All of
+   `ch01`-`ch12` have full `assets/manifest.js` entries (facing measured per
+   character via `tools/validate-player-glb.mjs`, all `+Z`;
+   `paddleSocketRotation`/`paddleSocketScale` reused from `ch12`'s values and
+   visually confirmed correct for every character via the character
+   picker's live preview — no per-character adjustment was needed).
+   `src/characters.js` now has no gender concept; each roster slot
+   independently picks one of the 12 by id.
 3. **Mocap character license question — narrowed, not fully closed.** The
    12 characters are confirmed Mixamo content (user-verified source),
    checked against Adobe's current public terms: free for unlimited
@@ -416,15 +416,13 @@ the abstract.
    (forehand/backhand/overhead + the 6 other-sport clips) did not come from
    Mixamo's own catalog — their real source is unconfirmed. Do not ship any
    of these commercially until that source is identified and checked.
-4. **Replace the character creator entirely with a character chooser, or
-   find a way for both to coexist.** pb3d's current character modal
-   (`src/main.js`) only has a `gender` axis feeding `src/characters.js`'s
-   `GENDERS` map — there's no "pick one of N distinct characters" axis yet.
-   Fixed, non-customizable Mixamo characters (`customizable: false`, see
-   above) don't fit the existing hair/jersey/shorts-color picker model at
-   all; a real decision is needed on whether the picker becomes "choose a
-   character" instead of "customize a body," or whether some slots keep the
-   old customizable bodies while others offer fixed characters.
+4. **DONE — the character creator has been replaced with a character
+   chooser.** The old gender/hair/color customization modal is gone
+   entirely. The main menu's "Choose" button now opens a fighting-game-style
+   picker (`#characterModal` in `index.html`, behavior in `src/main.js`): a
+   P1/P2/P3/P4 tab strip switches the active roster slot, and clicking a
+   tile in a shared 12-character grid assigns that character to it.
+   Duplicate picks across slots are allowed.
 5. **Real team-color art / accessory**, beyond the current placeholder
    `Headband` box — a stated `GRAPHICS.md` priority (player team/role
    distinction) with no concrete plan yet for fixed, non-customizable

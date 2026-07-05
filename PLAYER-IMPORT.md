@@ -7,15 +7,17 @@ optimization pipeline and the non-obvious traps in it.
 Read alongside [`GRAPHICS.md`](GRAPHICS.md) (adapter contract, verification
 baseline) and [`assets/README.md`](assets/README.md) (manifest field reference).
 
-> A second, in-progress character source (12 Mixamo characters + a shared
-> swing-clip library, not Quaternius) is being wired in alongside these two
-> bodies — see [`GRAPHICS.md`](GRAPHICS.md)'s "Mixamo Character Pipeline"
-> section and [`character-preview/CONTEXT.md`](character-preview/CONTEXT.md)
-> for that pipeline's own build tools, traps, and open TODOs. The facing/
-> paddle-socket/root-motion traps documented below are Quaternius-specific;
-> the Mixamo pipeline hit analogous but distinct traps of its own (a
-> Blender-export unit-conversion wrapper, not a 180°-guess problem) — don't
-> assume the fixes below carry over directly.
+> **Superseded**: the roster now uses the 12-character Mixamo pipeline
+> instead of these two Quaternius bodies — see [`GRAPHICS.md`](GRAPHICS.md)'s
+> "Mixamo Character Pipeline" section and
+> [`character-preview/CONTEXT.md`](character-preview/CONTEXT.md) for that
+> pipeline's build tools, traps, and open TODOs. `src/characters.js` no
+> longer has a `GENDERS` map or a gender-driven character modal — this file
+> is kept as the historical record of the Quaternius bodies' build pipeline;
+> the facing/paddle-socket/root-motion traps documented below are
+> Quaternius-specific and don't carry over to the Mixamo pipeline (which hit
+> analogous but distinct traps of its own — a Blender-export
+> unit-conversion wrapper, not a 180°-guess problem).
 
 ## Source assets (CC0)
 

@@ -2,149 +2,68 @@
  * characters.js — Shared character catalog (pure data, no three/DOM imports).
  *
  * Single source of truth for the selectable roster: each of the 4 slots
- * (nearYou/nearMate/farA/farB) independently picks a gender (which selects
- * the base GLB), a hairstyle, a hair color, and (male only) an independent
- * facial-hair option layered on top of any hairstyle. Hair options are
- * filtered to each gender's pool — the merged GLBs only carry variant nodes
- * for their own gender's hairstyles. Team colors (jersey/paddle/shoe/skin/
- * etc.) stay keyed by SLOT, not by the gender/hair pick, so switching a
- * slot's look doesn't change its team color.
+ * (nearYou/nearMate/farA/farB) independently picks one of the 12 authored
+ * Mixamo characters. Team identity (paddle color, "you" ring color) stays
+ * keyed by SLOT, not by character, so two slots can pick the same character
+ * without losing their distinct team colors, and switching a slot's
+ * character doesn't change its team color.
  * ==========================================================================*/
 'use strict';
 
-export const HAIR_COLORS = {
-  black: 0x241814,
-  darkBrown: 0x4a2b22,
-  brown: 0x5b3724,
-  blonde: 0xd5bb58,
-  auburn: 0x8a4a2b,
-  gray: 0xc7c2ba
-};
+// The 12 shippable Mixamo characters. `swatch` is a purely decorative
+// per-tile accent color for the picker grid (no gameplay meaning).
+export const CHARACTERS = [
+  { id: 'ch01', playerModelKey: 'player-ch01-v1', label: 'CH01', swatch: 0xff6b6b },
+  { id: 'ch02', playerModelKey: 'player-ch02-v1', label: 'CH02', swatch: 0xffa94d },
+  { id: 'ch03', playerModelKey: 'player-ch03-v1', label: 'CH03', swatch: 0xffd43b },
+  { id: 'ch04', playerModelKey: 'player-ch04-v1', label: 'CH04', swatch: 0x94d82d },
+  { id: 'ch05', playerModelKey: 'player-ch05-v1', label: 'CH05', swatch: 0x37b24d },
+  { id: 'ch06', playerModelKey: 'player-ch06-v1', label: 'CH06', swatch: 0x12b886 },
+  { id: 'ch07', playerModelKey: 'player-ch07-v1', label: 'CH07', swatch: 0x22b8cf },
+  { id: 'ch08', playerModelKey: 'player-ch08-v1', label: 'CH08', swatch: 0x4dabf7 },
+  { id: 'ch09', playerModelKey: 'player-ch09-v1', label: 'CH09', swatch: 0x5c7cfa },
+  { id: 'ch10', playerModelKey: 'player-ch10-v1', label: 'CH10', swatch: 0x9775fa },
+  { id: 'ch11', playerModelKey: 'player-ch11-v1', label: 'CH11', swatch: 0xda77f2 },
+  { id: 'ch12', playerModelKey: 'player-ch12-v1', label: 'CH12', swatch: 0xf06595 }
+];
 
-// Shared shirt/pants palette. The authored player GLBs bake their jersey and
-// shorts regions as neutral desaturated fabric (see
-// tools/paint-player-clothing.mjs), so any of these tint cleanly via the
-// existing jersey/shorts material-slot system in players.js — the same one
-// the primitive rig already used, just newly reachable on the authored body.
-// The four `identity*` entries reproduce each roster slot's original fixed
-// hex exactly, so existing per-position looks don't shift by default.
-export const GARMENT_COLORS = {
-  black: 0x1c1e22,
-  charcoal: 0x3a3d44,
-  navy: 0x20283c,
-  skyBlue: 0x6fb3e0,
-  white: 0xf0f0f0,
-  brown: 0x5b3a24,
-  forestGreen: 0x1f4d3a,
-  identityOrange: 0xff7a1f,
-  identityTeal: 0x21bdb0,
-  identityCrimson: 0xf14668,
-  identityPink: 0xff7aa8,
-  identityPlum: 0x30111e,
-  identityBerry: 0x55233a
-};
-
-export const GENDERS = {
-  male: {
-    // TEMPORARY verification substitution: pointed at the new Mixamo ch12
-    // proof-of-concept model (see character-preview/CONTEXT.md and
-    // assets/manifest.js's 'player-ch12-v1' entry) to confirm it renders
-    // correctly in a real match. Revert to 'player-male-v1' once reviewed --
-    // this is not a wired-up chooser yet, and hairOptions below are inert
-    // for ch12 (customizable: false, no hair-variant nodes on that model).
-    playerModelKey: 'player-ch12-v1',
-    hairOptions: ['simpleParted', 'buzzed'],
-    defaultHair: 'simpleParted',
-    facialHairOptions: ['none', 'beard']
-  },
-  female: {
-    playerModelKey: 'player-female-v1',
-    hairOptions: ['long', 'buns', 'buzzedFemale'],
-    defaultHair: 'long',
-    facialHairOptions: ['none']
+export function getCharacter(id) {
+  for (var i = 0; i < CHARACTERS.length; i++) {
+    if (CHARACTERS[i].id === id) return CHARACTERS[i];
   }
+  return null;
+}
+
+// Distinct-by-default per position, so a match can start without ever
+// opening the picker.
+export const DEFAULT_ROSTER = {
+  nearYou: 'ch01', nearMate: 'ch02', farA: 'ch03', farB: 'ch04'
 };
 
-// Height is a continuous scale multiplier (a slider in the character
-// modal). The original short/medium/tall/tower presets (0.96/1.0/1.14/1.22)
-// were tuned against the primitive rig and never actually reached the
-// authored model (applyAuthoredIdentity didn't apply height at all — see
-// PLAYER-IMPORT.md), so nobody had seen them rendered on realistic human
-// proportions until the gap was fixed. On a realistic body a given percent
-// difference reads far more dramatically than on the primitive rig's
-// stylized blob proportions — 0.85-1.3 looked like "midgets and giants," not
-// plausible human height variation. Narrowed to a subtler range.
-export const HEIGHT_SCALE_MIN = 0.97;
-export const HEIGHT_SCALE_MAX = 1.08;
-
-export const SLOT_DEFAULTS = {
-  nearYou: {
-    label: 'Player 1',
-    shirtColor: 'identityOrange', pantsColor: 'navy', paddle: 0x2bd4ff, shoe: 0xf6f8ff,
-    skin: 0xe4bf9f, heightScale: 1.06, build: 'average',
-    headwear: 'headband', headband: 0x2bd4ff,
-    gender: 'male', hairStyle: 'simpleParted', hairColor: 'black', facialHair: 'none'
-  },
-  nearMate: {
-    label: 'Partner',
-    shirtColor: 'identityTeal', pantsColor: 'navy', paddle: 0xffa53c, shoe: 0xf8fbff,
-    skin: 0xe8c3ab, heightScale: 1.0, build: 'average',
-    headwear: 'none',
-    gender: 'female', hairStyle: 'long', hairColor: 'brown', facialHair: 'none'
-  },
-  farA: {
-    label: 'Opponent A',
-    shirtColor: 'identityCrimson', pantsColor: 'identityPlum', paddle: 0x36d399, shoe: 0xf9fbff,
-    skin: 0xf0cbb2, heightScale: 1.08, build: 'slim',
-    headwear: 'cap', headband: 0xf4f5f6,
-    gender: 'male', hairStyle: 'buzzed', hairColor: 'blonde', facialHair: 'none'
-  },
-  farB: {
-    label: 'Opponent B',
-    shirtColor: 'identityPink', pantsColor: 'identityBerry', paddle: 0xc8ff65, shoe: 0xfffbff,
-    skin: 0xedc6b0, heightScale: 1.0, build: 'average',
-    headwear: 'none', headband: 0xffd166,
-    gender: 'female', hairStyle: 'buzzedFemale', hairColor: 'darkBrown', facialHair: 'none'
-  }
+// Team/role identity stays keyed by SLOT (reproduces the old SLOT_DEFAULTS
+// paddle/ring hex values exactly, so switching a slot's character doesn't
+// shift its existing team color).
+var SLOT_TEAM_COLORS = {
+  nearYou:  { label: 'Player 1',    paddle: 0x2bd4ff, ring: 0xff7a1f },
+  nearMate: { label: 'Partner',     paddle: 0xffa53c, ring: 0x21bdb0 },
+  farA:     { label: 'Opponent A',  paddle: 0x36d399, ring: 0xf14668 },
+  farB:     { label: 'Opponent B',  paddle: 0xc8ff65, ring: 0xff7aa8 }
 };
 
-// Merges a slot's stored defaults with a user's {gender, hairStyle,
-// hairColor, facialHair, shirtColor, pantsColor} picks into the full
-// cosmetics object makePlayer() expects.
-export function resolveSlotCharacter(position, picks) {
-  var d = SLOT_DEFAULTS[position] || SLOT_DEFAULTS.nearYou;
-  var gender = (picks && picks.gender) || d.gender;
-  var g = GENDERS[gender] || GENDERS.male;
-  var hairStyle = (picks && picks.hairStyle) || d.hairStyle;
-  if (g.hairOptions.indexOf(hairStyle) === -1) hairStyle = g.defaultHair;
-  var hairColor = (picks && picks.hairColor) || d.hairColor;
-  if (!HAIR_COLORS[hairColor]) hairColor = d.hairColor;
-  var facialHair = (picks && picks.facialHair) || d.facialHair || 'none';
-  if (g.facialHairOptions.indexOf(facialHair) === -1) facialHair = 'none';
-  // 'none' is a valid pick (deliberately not a key in GARMENT_COLORS) —
-  // it means "don't paint this region a garment color," which falls back to
-  // the character's own skin tone so the jersey/shorts primitive reads as
-  // bare skin rather than a flat untinted gray fabric.
-  var shirtColor = (picks && picks.shirtColor) || d.shirtColor;
-  if (shirtColor !== 'none' && !GARMENT_COLORS[shirtColor]) shirtColor = d.shirtColor;
-  var pantsColor = (picks && picks.pantsColor) || d.pantsColor;
-  if (pantsColor !== 'none' && !GARMENT_COLORS[pantsColor]) pantsColor = d.pantsColor;
-  var heightScale = picks && typeof picks.heightScale === 'number' && !isNaN(picks.heightScale)
-    ? picks.heightScale : d.heightScale;
-  heightScale = Math.max(HEIGHT_SCALE_MIN, Math.min(HEIGHT_SCALE_MAX, heightScale));
-  return Object.assign({}, d, {
-    gender: gender,
-    hairStyle: hairStyle,
-    hairColor: hairColor,
-    hair: HAIR_COLORS[hairColor],
-    facialHair: facialHair,
-    shirtColor: shirtColor,
-    pantsColor: pantsColor,
-    jersey: shirtColor === 'none' ? d.skin : GARMENT_COLORS[shirtColor],
-    shorts: pantsColor === 'none' ? d.skin : GARMENT_COLORS[pantsColor],
-    heightScale: heightScale,
-    playerModelKey: g.playerModelKey,
-    key: position + ':' + gender + ':' + hairStyle + ':' + hairColor + ':' + facialHair + ':' +
-      shirtColor + ':' + pantsColor + ':' + heightScale.toFixed(2)
-  });
+// Resolves a slot + a chosen character id into the object makePlayer()/
+// game.js expect: .jersey (ring color, only read for nearYou today),
+// .paddle (primitive paddle color), .playerModelKey (asset loading). Falls
+// back to the slot's default character if the id doesn't resolve.
+export function resolveSlotCharacter(position, characterId) {
+  var colors = SLOT_TEAM_COLORS[position] || SLOT_TEAM_COLORS.nearYou;
+  var id = getCharacter(characterId) ? characterId : (DEFAULT_ROSTER[position] || DEFAULT_ROSTER.nearYou);
+  var character = getCharacter(id) || getCharacter(DEFAULT_ROSTER.nearYou);
+  return {
+    id: id,
+    label: character.label,
+    playerModelKey: character.playerModelKey,
+    jersey: colors.ring,
+    paddle: colors.paddle,
+    key: position + ':' + id
+  };
 }

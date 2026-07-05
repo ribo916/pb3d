@@ -108,38 +108,42 @@ async function captureRosterCloseup(cfg) {
   await page.screenshot({ path: path.join(OUT, cfg.shot) });
 }
 
-async function captureCharacterModal() {
-  await page.reload({ waitUntil: 'networkidle' });
-  await page.click('#menuCharactersBtn');
-  // wait for the live preview model to finish loading
+async function waitForCharacterPreview() {
   await page.waitForFunction(() => {
     const loading = document.getElementById('characterPreviewLoading');
     return loading && loading.style.display === 'none';
   }, { timeout: 20000 });
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(250);
+}
+
+async function captureCharacterModal() {
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.click('#menuCharactersBtn');
+  await waitForCharacterPreview();
   await page.screenshot({ path: path.join(OUT, 'character-modal.png') });
 
-  // Cycle every gender/hair/facialHair pill for nearYou, screenshotting the
-  // live preview so all combinations get visually checked at once.
-  const genders = ['male', 'female'];
-  const hairByGender = { male: ['simpleParted', 'buzzed'], female: ['long', 'buns', 'buzzedFemale'] };
-  const facialHairByGender = { male: ['none', 'beard'], female: ['none'] };
-  for (const gender of genders) {
-    await page.click(`#characterBody [data-position="nearYou"][data-axis="gender"][data-value="${gender}"]`);
-    for (const hair of hairByGender[gender]) {
-      for (const facialHair of facialHairByGender[gender]) {
-        await page.click(`#characterBody [data-position="nearYou"][data-axis="hair"][data-value="${hair}"]`);
-        if (facialHair !== 'none') {
-          await page.click(`#characterBody [data-position="nearYou"][data-axis="facialhair"][data-value="${facialHair}"]`);
-        }
-        await page.waitForFunction(() => {
-          const loading = document.getElementById('characterPreviewLoading');
-          return loading && loading.style.display === 'none';
-        }, { timeout: 20000 });
-        await page.waitForTimeout(250);
-        await page.screenshot({ path: path.join(OUT, `character-${gender}-${hair}-${facialHair}.png`) });
-      }
-    }
+  // Cycle every character tile on the default (P1) tab, screenshotting the
+  // live preview so all 12 GLBs get loaded and visually checked at once.
+  const ids = ['ch01', 'ch02', 'ch03', 'ch04', 'ch05', 'ch06', 'ch07', 'ch08', 'ch09', 'ch10', 'ch11', 'ch12'];
+  for (const id of ids) {
+    await page.click(`#characterGrid [data-character-id="${id}"]`);
+    await waitForCharacterPreview();
+    await page.screenshot({ path: path.join(OUT, `character-nearYou-${id}.png`) });
+  }
+
+  // Spot-check the tab strip: switch tabs and assign characters (including
+  // a deliberate duplicate) to confirm per-slot assignment and the
+  // duplicates-allowed behavior both work.
+  const tabPicks = [
+    { position: 'nearMate', id: 'ch05' },
+    { position: 'farA', id: 'ch12' },
+    { position: 'farB', id: 'ch05' } // duplicate of nearMate's pick, intentional
+  ];
+  for (const { position, id } of tabPicks) {
+    await page.click(`#characterTabStrip [data-position="${position}"]`);
+    await page.click(`#characterGrid [data-character-id="${id}"]`);
+    await waitForCharacterPreview();
+    await page.screenshot({ path: path.join(OUT, `character-${position}-${id}.png`) });
   }
 
   await page.click('#characterDoneBtn');
