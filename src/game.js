@@ -642,8 +642,10 @@ Game.prototype.update = function (dt) {
   if (this.state === STATE.RALLY && this.input) {
     var sw = this.input.consumeSwing();
     if (sw) {
-      this.human.swing(sw);
-      this.swingType = sw;
+      var humanFwd = (this.players[0].team === 'near') ? 1 : -1;
+      var side = Shots.swingSide(this.players[0].pos.x, this.ball.pos.x, humanFwd);
+      this.human.swing(side);
+      this.swingType = side;
       this.swingAim = this.input.state.aim || 0;
       this.swingPower = this.input.state.swingPower || 'power';
       this.swingShot = this.input.state.swingShot || null;
@@ -953,7 +955,7 @@ Game.prototype._checkContacts = function (dt) {
 
   if (p.isHuman) {
     if (this.swingWindow <= 0 || this.swingUsed) return; // human must time a swing
-    this._hit(p, this.swingType);
+    this._hit(p);
     this.swingUsed = true;
   } else {
     // If the ball is still rising and will reach smash height, wait for it.
@@ -977,7 +979,7 @@ Game.prototype._checkPracticeContacts = function () {
   var p = this.players[0];
   if (!this._reachOK(p.pos)) return;
   if (this.swingWindow <= 0 || this.swingUsed) return;
-  this._hitPractice(p, this.swingType);
+  this._hitPractice(p);
   this.swingUsed = true;
 };
 
@@ -1069,10 +1071,11 @@ Game.prototype._executeHit = function (targetX, targetZ, apex, margin, spinVec, 
   this.lastHitCooldown = HIT.COOLDOWN_RALLY;
 };
 
-Game.prototype._hitPractice = function (p, swingType) {
+Game.prototype._hitPractice = function (p) {
   var pos = p.pos, fwd = (p.team === 'near') ? 1 : -1;
   var maxI = Shots.maxIntent(this.ball.pos.y);
-  var visualSwingType = maxI === 'smash' ? 'smash' : (swingType || 'fh');
+  var swingType = Shots.swingSide(pos.x, this.ball.pos.x, fwd);
+  var visualSwingType = maxI === 'smash' ? 'smash' : swingType;
   p.mesh.swing(visualSwingType);
   if (this.audio) this.audio.sfx.paddle();
   this._triggerHitEffect();
@@ -1101,14 +1104,15 @@ Game.prototype._hitPractice = function (p, swingType) {
 };
 
 // Human paddle strike. Aim from input + stability index + height-based power cap.
-Game.prototype._hit = function (p, swingType) {
+Game.prototype._hit = function (p) {
   var pos = p.pos, fwd = (p.team === 'near') ? 1 : -1;
   var rally = this.match.rally;
 
   // Erne bypasses the kitchen volley rule (player has jumped outside the kitchen).
   var isErne = this.difficulty === 'hard' && this._isErnePosition(p);
   var maxI = Shots.maxIntent(this.ball.pos.y);
-  var visualSwingType = (isErne || maxI === 'smash') ? 'smash' : (swingType || 'fh');
+  var swingType = Shots.swingSide(pos.x, this.ball.pos.x, fwd);
+  var visualSwingType = (isErne || maxI === 'smash') ? 'smash' : swingType;
   var volley = rally ? (rally.bouncesSinceHit < 1) : false;
   var inKitchen = isErne ? false : (Math.abs(pos.z) < C.KITCHEN);
   var res = Rules.onPaddleHit(this.match, p.team, { volley: volley, inKitchen: inKitchen });
@@ -1201,7 +1205,7 @@ Game.prototype._cpuHit = function (p) {
   var inKitchen = Math.abs(pos.z) < C.KITCHEN;
   if (volley && inKitchen) { pos.z = fwd * (C.KITCHEN + 0.3); inKitchen = false; }
   var res = Rules.onPaddleHit(this.match, p.team, { volley: volley, inKitchen: inKitchen });
-  var visualSwingType = Math.random() < 0.3 ? 'bh' : 'fh';
+  var visualSwingType = Shots.swingSide(pos.x, this.ball.pos.x, fwd);
   if (rallyOver(res)) {
     p.mesh.swing(visualSwingType);
     if (this.audio) this.audio.sfx.paddle();

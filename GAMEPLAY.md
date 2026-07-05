@@ -230,7 +230,7 @@ practice exposes that as explicit coaching feedback.
 ### Input (Human)
 
 All devices feed the same `input.state` fields (`move`, `aim`, `swingPower`,
-`swingShot`, `swingType`) consumed by `game._hit` / `_aimTarget`.
+`swingShot`) consumed by `game._hit` / `_aimTarget`.
 
 | Abstract input | Effect |
 |---|---|
@@ -239,7 +239,12 @@ All devices feed the same `input.state` fields (`move`, `aim`, `swingPower`,
 | Swing → `swingPower = 'power'` | Drive / speedup intent |
 | Swing → `swingPower = 'touch'` | Drop / dink intent |
 | Swing → `swingShot = 'lob'` | Lob override (always resolves to `lob`) |
-| Backhand (`aim < −0.25`) | `swingType = 'bh'`; adds −1.5 to spinX |
+
+Forehand/backhand is **not** an input at all — `Shots.swingSide(hitterX, ballX,
+fwd)` derives it at contact time from which side of the hitter's body the ball
+is on (every player model holds the paddle in the right hand), so it's
+identical across keyboard/mouse/touch and doesn't depend on cursor position.
+`swingType === 'bh'` still adds −1.5 to spinX.
 
 **Intent is not the final shot.** A button sets the *intent*; the shot type is
 resolved at contact by `Shots.classify` (zone + ball height) and can be
