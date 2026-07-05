@@ -18,6 +18,12 @@ assets/
   models/
     venues/       Optional `.glb` / `.gltf` venue props or full venue shells.
     players/      Future skinned or static player models.
+      mixamo/     Full raw Mixamo character catalog (ch01-ch12). Catalog-only
+                  in `assets/manifest.js` until individually calibrated
+                  (facing, scale, paddle-socket) -- see `../GRAPHICS.md`'s
+                  "Mixamo Character Pipeline" section. Also read by
+                  `character-preview/` (the standalone rig/clip viewer), so
+                  this is the one common location for these files.
   textures/
     court/        Optional court/surface texture sets.
     venues/       Optional prop and venue texture sets.

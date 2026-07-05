@@ -132,7 +132,9 @@ assets/
       player-poc.glb
       player-male-v1.glb
       player-female-v1.glb
-      player-ch12-v1.glb    (Mixamo proof-of-concept character, see below)
+      mixamo/
+        ch01.glb .. ch12.glb  (full raw Mixamo catalog; only ch12 is
+                               gameplay-calibrated, see below)
     venues/
       park-props.glb
       tropical-props.glb
@@ -242,7 +244,11 @@ pipeline (`tools/blender-fbx-to-gltf.py`, `tools/build-mixamo-character.mjs`,
 `tools/build-mixamo-clip-library.mjs`, `tools/lib/mixamo-bones.mjs`). Full
 history, every bug found and fixed, and the detailed open-items list live in
 [`character-preview/CONTEXT.md`](character-preview/CONTEXT.md) — read it
-before touching this pipeline again. Status summary:
+before touching this pipeline again. `character-preview/` (`index.html`,
+`main.js`, `CONTEXT.md`) is git-tracked; only `character-preview/local-clips/`
+(the 7 still-unconfirmed-license raw FBX sport clips) stays untracked. It's
+reached at `/character-preview/` under the normal `npm run dev` server —
+there is no separate dev-server process anymore. Status summary:
 
 - **`ch12` is wired end-to-end as a proof of concept** — `assets/manifest.js`
   has a `player-ch12-v1` model entry (facing measured via a
@@ -278,12 +284,38 @@ before touching this pipeline again. Status summary:
   forehand/backhand/overhead), so `ch12` freezes in its bind pose whenever
   not mid-swing. Documented, not yet fixed — see the TODO list in
   `character-preview/CONTEXT.md`.
-- **Not yet done:** importing the other 11 characters (each needs its own
-  facing + paddle-socket-scale measurement, don't assume they match `ch12`),
-  real team-color art, a character-chooser UI to replace/coexist with the
-  current customization modal, and confirming Mixamo/mocap licensing before
-  any of this ships. Full tracked list: `character-preview/CONTEXT.md`'s
-  "Open TODOs" section.
+- **All 12 raw characters are now cataloged in `assets/manifest.js`** as
+  `player-ch01-v1`…`player-ch12-v1`, all sourced from the single common
+  location `assets/models/players/mixamo/chNN.glb` (also the file
+  `character-preview/` reads — no more duplicated GLB bytes between the two
+  surfaces). Only `player-ch12-v1` carries calibration
+  (`playerRotation`/`playerScale`/`paddleSocket*`); `ch01`-`ch11` are
+  minimal, uncalibrated entries — enumerable, but not gameplay-wired.
+- **Loading is scoped and lazy**, not "load every player model up front":
+  `src/assets.js`'s `preloadAssetPack`/`preloadPlayerModels` accept a
+  `neededPlayerKeys`/`neededKeys` list (expanded through each key's
+  `fallbackKey` chain via a shared `expandFallbackKeys` helper) and skip
+  every `scope: 'player'` manifest entry not in that list. Real match start
+  (`src/main.js`'s `startMatch`) computes the needed keys from the actual
+  resolved roster for the active mode (`practice` fetches one model,
+  `singles` two, `doubles` up to four); the character-picker preview
+  (`src/characterPreview.js`'s `show()`) fetches only the one character
+  being previewed. This matters once the roster grows toward the full
+  12-character catalog — without scoping, every match start or picker open
+  would fetch the whole catalog regardless of what's actually shown.
+- **Not yet done:** importing the other 11 characters into gameplay (each
+  needs its own facing + paddle-socket-scale measurement, don't assume they
+  match `ch12`), real team-color art, and a character-chooser UI to
+  replace/coexist with the current customization modal. Full tracked list:
+  `character-preview/CONTEXT.md`'s "Open TODOs" section.
+- **Licensing: characters resolved, swing clips still open.** The 12
+  characters are confirmed Mixamo content, free for unlimited commercial use
+  (checked against Adobe's current terms) — no restriction on shipping them
+  in this game. The swing/sports mocap clips (forehand/backhand/overhead +
+  6 other-sport exploratory clips) did not come from Mixamo's own catalog
+  and their real source is still unconfirmed — do not ship those
+  commercially until that's resolved. See `character-preview/CONTEXT.md`'s
+  "Licensing status" section.
 
 ### Roster-Wide Players
 

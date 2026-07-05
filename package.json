@@ -16,8 +16,7 @@
     "player:validate": "node tools/validate-player-glb.mjs assets/models/players/player-poc.glb",
     "player:check": "node tools/player-check.mjs",
     "music:sync": "node tools/sync-music-catalog.mjs",
-    "music:generate": "node tools/generate-music-wavs.mjs",
-    "preview:character": "vite character-preview --port 5180 --host 127.0.0.1"
+    "music:generate": "node tools/generate-music-wavs.mjs"
   },
   "devDependencies": {
     "playwright": "^1.61.1",

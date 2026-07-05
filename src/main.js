@@ -92,11 +92,14 @@ var heightPicks = {
 
 // Doubles uses all four slots; singles only plays nearYou vs farA
 // (see the mode-conditional roster build in src/game.js _initWorld).
-function activePositions() {
-  var mode = normalizeMode(checkedValue('mode', 'doubles'));
+function positionsForMode(mode) {
   if (mode === 'singles') return ['nearYou', 'farA'];
   if (mode === 'practice') return ['nearYou'];
   return ALL_POSITIONS;
+}
+
+function activePositions() {
+  return positionsForMode(normalizeMode(checkedValue('mode', 'doubles')));
 }
 
 function positionLabel(position) {
@@ -303,6 +306,10 @@ async function startMatch(difficulty, config) {
   var startLabel = startBtn.textContent;
   startBtn.disabled = true;
   startBtn.textContent = 'Loading...';
+  var neededPlayerKeys = positionsForMode(config.mode).map(function (position) {
+    return resolveSlotCharacter(position, config.roster[position]).playerModelKey;
+  });
+  config = Object.assign({}, config, { neededPlayerKeys: neededPlayerKeys });
   var assetPack = null;
   try {
     assetPack = await preloadAssetPack(config);

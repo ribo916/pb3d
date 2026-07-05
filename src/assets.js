@@ -12,7 +12,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 
-function makeGltfLoader() {
+export function makeGltfLoader() {
   var loader = new GLTFLoader();
   loader.setMeshoptDecoder(MeshoptDecoder);
   return loader;
@@ -27,11 +27,28 @@ function hasUrl(item) {
   return !!(item && item.url && String(item.url).trim());
 }
 
+/* Expands a list of manifest model keys to also include each key's
+ * fallbackKey chain, so a load failure can always fall back to a record that
+ * was actually fetched. Used to scope both preloadAssetPack's real-match
+ * fetch and preloadPlayerModels' preview fetch to only what's needed. */
+function expandFallbackKeys(keys) {
+  var byKey = {};
+  list('models').forEach(function (m) { byKey[m.key] = m; });
+  var out = {};
+  (keys || []).forEach(function (k) {
+    var seen = {};
+    while (k && !seen[k]) { out[k] = true; seen[k] = true; k = byKey[k] && byKey[k].fallbackKey; }
+  });
+  return Object.keys(out);
+}
+
 function shouldPreload(item, opts) {
   if (!item) return false;
   if (item.venue && opts && opts.venue && item.venue !== opts.venue) return false;
   if (item.palette && opts && opts.courtPalette && item.palette !== opts.courtPalette) return false;
   if (item.timeOfDay && opts && opts.timeOfDay && item.timeOfDay !== opts.timeOfDay) return false;
+  if (item.scope === 'player' && opts && opts.neededPlayerKeys &&
+      opts.neededPlayerKeys.indexOf(item.key) === -1) return false;
   return true;
 }
 
@@ -127,6 +144,9 @@ async function loadManifestItem(pack, loaders, kind, item) {
 export async function preloadAssetPack(opts, onProgress) {
   var pack = makePack();
   pack.options = opts || {};
+  if (pack.options.neededPlayerKeys) {
+    pack.options.neededPlayerKeys = expandFallbackKeys(pack.options.neededPlayerKeys);
+  }
   var loaders = {
     gltf: makeGltfLoader(),
     texture: new THREE.TextureLoader()
@@ -173,6 +193,7 @@ export async function preloadAssetPack(opts, onProgress) {
 var playerModelPackPromises = new Map();
 
 export function preloadPlayerModels(neededKeys) {
+  neededKeys = neededKeys ? expandFallbackKeys(neededKeys) : neededKeys;
   var cacheKey = neededKeys ? neededKeys.slice().sort().join(',') : '*';
   var existing = playerModelPackPromises.get(cacheKey);
   if (existing) return existing;
