@@ -9,7 +9,14 @@
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
+
+function makeGltfLoader() {
+  var loader = new GLTFLoader();
+  loader.setMeshoptDecoder(MeshoptDecoder);
+  return loader;
+}
 import { ASSET_MANIFEST } from '../assets/manifest.js';
 
 function list(kind) {
@@ -121,7 +128,7 @@ export async function preloadAssetPack(opts, onProgress) {
   var pack = makePack();
   pack.options = opts || {};
   var loaders = {
-    gltf: new GLTFLoader(),
+    gltf: makeGltfLoader(),
     texture: new THREE.TextureLoader()
   };
   var entries = [];
@@ -152,27 +159,40 @@ export async function preloadAssetPack(opts, onProgress) {
 /* Menu-time loader for the character picker preview: loads only the
  * player-scoped model GLBs (no venue textures/environments) and returns a
  * mini pack compatible with makePlayer's opts.assets (getModel + fallback
- * chain + empty animations bucket; clips live inside the player GLBs).
- * Cached module-level so repeated modal opens don't re-fetch. */
-var playerModelPackPromise = null;
+ * chain + empty animations bucket; clips live inside the player GLBs, or
+ * come from the shared clip-library entries in the `animations` bucket).
+ * Cached module-level per requested key set so repeated modal opens or
+ * repeated matches with the same roster don't re-fetch.
+ *
+ * `neededKeys` (optional array of manifest model keys) limits the fetch to
+ * only the characters actually resolved for the current roster instead of
+ * eagerly loading every `scope: 'player'` entry -- important once the
+ * roster includes several multi-MB authored characters instead of the two
+ * small shared bodies this originally targeted. Omit it to load everything
+ * (existing behavior, still used by the picker's "browse all" surface). */
+var playerModelPackPromises = new Map();
 
-export function preloadPlayerModels() {
-  if (playerModelPackPromise) return playerModelPackPromise;
-  playerModelPackPromise = (async function () {
+export function preloadPlayerModels(neededKeys) {
+  var cacheKey = neededKeys ? neededKeys.slice().sort().join(',') : '*';
+  var existing = playerModelPackPromises.get(cacheKey);
+  if (existing) return existing;
+  var promise = (async function () {
     var pack = makePack();
     pack.options = {};
-    var loaders = { gltf: new GLTFLoader(), texture: new THREE.TextureLoader() };
+    var loaders = { gltf: makeGltfLoader(), texture: new THREE.TextureLoader() };
     var items = list('models');
     items.forEach(function (item) { pack.definitions.models[item.key] = item; });
     for (var i = 0; i < items.length; i++) {
       if (items[i].scope !== 'player') continue;
+      if (neededKeys && neededKeys.indexOf(items[i].key) === -1) continue;
       await loadManifestItem(pack, loaders, 'models', items[i]);
     }
     delete pack.options;
     return pack;
   })();
-  playerModelPackPromise.catch(function () { playerModelPackPromise = null; });
-  return playerModelPackPromise;
+  playerModelPackPromises.set(cacheKey, promise);
+  promise.catch(function () { playerModelPackPromises.delete(cacheKey); });
+  return promise;
 }
 
 export function cloneModelScene(record) {

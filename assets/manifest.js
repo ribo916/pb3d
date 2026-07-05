@@ -89,6 +89,36 @@ export const ASSET_MANIFEST = {
       paddleSocketOffset: [0, 0, 0],
       syncPrimitiveArms: true,
       optional: true
+    },
+    {
+      // First Mixamo-sourced character wired in as a proof of concept (see
+      // character-preview/CONTEXT.md). Facing measured via
+      // `node tools/validate-player-glb.mjs` (toe-vs-foot points +Z at rest,
+      // matching the primitive rig's forward convention, so no rotation
+      // correction needed). Bind-pose height measured at 2.12m; playerScale
+      // brings it into the ~1.7-1.9m authored-player range. No idle/run/
+      // ready/serve clips exist yet -- only forehand/backhand/overhead via
+      // the shared 'mixamo-swings' animation bucket entry below.
+      key: 'player-ch12-v1',
+      label: 'Mixamo character (ch12)',
+      url: '/assets/models/players/player-ch12-v1.glb',
+      scope: 'player',
+      playerScale: 0.85,
+      playerOffset: [0, 0, 0],
+      playerRotation: [0, 0, 0],
+      paddleSocketOffset: [0, 0, 0],
+      paddleSocketRotation: [Math.PI, 0, 0],
+      // paddle_socket's WORLD scale measured at 0.01 (not 1) -- it's a rigid
+      // (non-skinned) node parented under a bone, so it inherits the
+      // Blender-export cm->m unit-conversion scale baked onto the top-level
+      // Armature wrapper, unlike the skinned mesh itself (whose vertex
+      // deformation is computed consistently in that same space). 100x
+      // compensates back to the primitive paddle's real-world size.
+      paddleSocketScale: 100,
+      swingClipOverrides: { serve: 'fh' },
+      syncPrimitiveArms: false,
+      customizable: false,
+      optional: true
     }
   ],
   textures: [
@@ -177,6 +207,17 @@ export const ASSET_MANIFEST = {
       key: 'player-smash',
       label: 'Player smash animation',
       url: '',
+      scope: 'player-animation',
+      optional: true
+    },
+    {
+      // Shared Mixamo swing-clip library (see tools/build-mixamo-clip-library.mjs).
+      // Clip names 'forehand'/'backhand'/'overhead' already match
+      // src/players.js's clipKey() regexes directly (-> fh/bh/smash), no
+      // renaming needed. Merged onto any player model via collectAnimationClips().
+      key: 'mixamo-swings',
+      label: 'Mixamo pickleball swing clips',
+      url: '/assets/animations/pickleball-swings.glb',
       scope: 'player-animation',
       optional: true
     }

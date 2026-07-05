@@ -19,6 +19,17 @@ The game now has:
 - Instanced/shared-material repeated props for selected procedural scenery.
 - A generated player-model POC (`assets/models/players/player-poc.glb`) loaded
   through the authored-player adapter.
+- A new Mixamo-sourced character pipeline (`tools/build-mixamo-character.mjs`
+  / `tools/build-mixamo-clip-library.mjs`, see `character-preview/CONTEXT.md`
+  for full history) with one character, `ch12`, wired end-to-end as a proof
+  of concept: manifest entry `player-ch12-v1` (facing measured, not guessed),
+  a shared swing-clip library (`assets/animations/pickleball-swings.glb`,
+  forehand/backhand/overhead only), and a new `customizable: false` manifest
+  flag that opts a model out of the roster's cosmetic tinting system
+  entirely. Currently **temporarily substituted** in place of
+  `player-male-v1` via `src/characters.js`'s `GENDERS.male.playerModelKey`
+  for verification — see "Mixamo Character Pipeline" below before assuming
+  this is the permanent roster.
 - All 4 roster slots share just two authored base models — `player-male-v1`
   and `player-female-v1` — real CC0 Quaternius humanoids (skinned, textured,
   real idle/ready/run/swing clips) built via `tools/build-player-model.mjs`;
@@ -121,6 +132,7 @@ assets/
       player-poc.glb
       player-male-v1.glb
       player-female-v1.glb
+      player-ch12-v1.glb    (Mixamo proof-of-concept character, see below)
     venues/
       park-props.glb
       tropical-props.glb
@@ -128,6 +140,7 @@ assets/
   textures/
   environments/
   animations/
+    pickleball-swings.glb   (shared forehand/backhand/overhead clip library)
 ```
 
 Important contracts:
@@ -219,6 +232,58 @@ or licensed `.glb` into the `player-male-v1` manifest slot (shared by
   textures where needed. Use a lower LOD or the existing POC/primitive fallback
   for mobile if the premium model is too heavy.
 - Run the validator and Player 1 screenshot workflow before accepting the asset.
+
+### Mixamo Character Pipeline (in progress)
+
+A second, higher-quality character source is now in progress alongside the
+Quaternius bodies above: 12 Mixamo characters + a shared pickleball
+swing-clip library, converted/optimized via a Blender + `@gltf-transform`
+pipeline (`tools/blender-fbx-to-gltf.py`, `tools/build-mixamo-character.mjs`,
+`tools/build-mixamo-clip-library.mjs`, `tools/lib/mixamo-bones.mjs`). Full
+history, every bug found and fixed, and the detailed open-items list live in
+[`character-preview/CONTEXT.md`](character-preview/CONTEXT.md) — read it
+before touching this pipeline again. Status summary:
+
+- **`ch12` is wired end-to-end as a proof of concept** — `assets/manifest.js`
+  has a `player-ch12-v1` model entry (facing measured via a
+  `tools/validate-player-glb.mjs` diagnostic, not guessed: its rest pose
+  already faces `+Z`) and an animations-bucket entry for the shared
+  `pickleball-swings.glb` clip library (forehand/backhand/overhead only).
+  It's currently substituted in place of `player-male-v1` via
+  `src/characters.js`'s `GENDERS.male.playerModelKey` purely for
+  verification — decide whether to keep or revert that before treating it as
+  final.
+- **New manifest field: `customizable: false`.** Read in `src/players.js`'s
+  `applyModelMaterials`/`applyAuthoredIdentity`; when set, a model skips the
+  roster's jersey/shorts/hair/headwear tinting and variant-hiding system
+  entirely and renders with its own imported look untouched. Used for
+  `ch12` per an explicit decision that these characters are not
+  customizable the way the Quaternius bodies are.
+- **Two real, general (non-Mixamo-specific) adapter bugs were found and
+  fixed this session** via the screenshot-driven verification loop
+  `CLAUDE.md` mandates — not by reasoning about the code in the abstract:
+  1. `src/players.js`'s `clipKey()` tested the generic
+     `backpedal|backward|back` pattern before the specific `backhand|bh`
+     pattern, so any clip literally named `"backhand"` (true of
+     `player-male-v1.glb` too) was misfiled as locomotion, silently losing
+     the backhand swing to the `fh` fallback. This likely explains a
+     previously-flagged "only forehand seems to work" symptom.
+  2. `tools/lib/mixamo-bones.mjs`'s `freezeRootHorizontalMotion` zeroed the
+     wrong two local axes for this Blender-exported pipeline (a rule
+     correctly ported from the `character-preview` viewer's FBX-native,
+     wrapper-free coordinate frame, but wrong for these Blender-glTF-wrapped
+     assets), pinning every swinging character's hips to the floor for the
+     whole clip. Fixed; `pickleball-swings.glb` was rebuilt and reverified.
+- **Known, accepted gap:** no idle/ready/run/serve clips exist yet (only
+  forehand/backhand/overhead), so `ch12` freezes in its bind pose whenever
+  not mid-swing. Documented, not yet fixed — see the TODO list in
+  `character-preview/CONTEXT.md`.
+- **Not yet done:** importing the other 11 characters (each needs its own
+  facing + paddle-socket-scale measurement, don't assume they match `ch12`),
+  real team-color art, a character-chooser UI to replace/coexist with the
+  current customization modal, and confirming Mixamo/mocap licensing before
+  any of this ships. Full tracked list: `character-preview/CONTEXT.md`'s
+  "Open TODOs" section.
 
 ### Roster-Wide Players
 

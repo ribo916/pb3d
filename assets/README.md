@@ -105,6 +105,15 @@ entries are safe and do not produce missing-file requests.
   (`src/characters.js`); both fall back to `player-poc` if their GLB is
   absent or fails to load. Keep the same visual-only primitive-rig contract
   for all four players.
+- Optional manifest field `customizable: false` opts a model out of the
+  roster's cosmetic system entirely: `applyModelMaterials`/
+  `applyAuthoredIdentity` (`src/players.js`) skip jersey/shorts/hair/headwear
+  tinting and variant-node hiding, leaving the model's own imported look
+  untouched. Used by the in-progress Mixamo character pipeline (see
+  `GRAPHICS.md`'s "Mixamo Character Pipeline" section and
+  `character-preview/CONTEXT.md`) for characters that are not meant to be
+  customized the way `player-male-v1`/`player-female-v1` are. Defaults to
+  customizable (omit the field, or set `true`) for existing models.
 
 Validate a candidate player GLB without rendering:
 

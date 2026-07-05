@@ -291,7 +291,15 @@ The important implementation contract:
   import/replace a player, follow
   [`PLAYER-IMPORT.md`](PLAYER-IMPORT.md) (download flow +
   `tools/build-player-model.mjs` + wiring), with [`GRAPHICS.md`](GRAPHICS.md) and
-  `assets/README.md` for the adapter contract.
+  `assets/README.md` for the adapter contract. A second, in-progress
+  character source (12 Mixamo characters + a shared swing-clip library) is
+  being wired in alongside the Quaternius bodies — one character (`ch12`) is
+  live as a proof of concept; see `GRAPHICS.md`'s "Mixamo Character
+  Pipeline" section and [`character-preview/CONTEXT.md`](character-preview/CONTEXT.md)
+  for the full pipeline, bugs found/fixed, and tracked open TODOs (missing
+  idle/serve/run/ready clips, importing the remaining 11 characters, a
+  mocap-licensing question, and replacing/coexisting with the character
+  creator).
 - **Singles mode** — implemented via `opts.mode` on `Game`; it uses one player
   per side, immediate receiver side-outs, and a two-number HUD callout.
 - **Difficulty/venue gating, pre-match cards, rankings** — layer above `main.js`;

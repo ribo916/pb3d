@@ -113,11 +113,13 @@ function bareSkinMaterial(root, garmentNode) {
   return (baseNode && baseNode.material) || null;
 }
 
-function applyModelMaterials(root, opts) {
+function applyModelMaterials(root, opts, item) {
+  var customizable = !(item && item.customizable === false);
   root.traverse(function (node) {
     if (!node.isMesh) return;
     node.castShadow = true;
     node.receiveShadow = true;
+    if (!customizable) return;
     if (Array.isArray(node.material)) {
       node.material = node.material.map(function (mat) {
         return tintMaterial(mat, materialSlot(node, mat), opts);
@@ -170,12 +172,14 @@ function variantChoice(group, opts) {
   return null;
 }
 
-function applyAuthoredIdentity(model, opts) {
+function applyAuthoredIdentity(model, opts, item) {
   var body = buildScale(opts.build);
   var tall = clampHeightScale(opts.heightScale);
   model.scale.x *= body * tall;
   model.scale.y *= tall;
   model.scale.z *= body * tall;
+
+  if (item && item.customizable === false) return;
 
   model.traverse(function (node) {
     var info = variantInfo(node);
@@ -227,6 +231,12 @@ function configureAuthoredModel(model, item) {
 function clipKey(name) {
   name = String(name || '').toLowerCase();
   if (/shuffle|strafe|side/.test(name)) return 'shuffle';
+  // Checked before the generic backpedal/back-movement pattern below: a clip
+  // literally named "backhand" (e.g. player-male-v1.glb, pickleball-swings.glb)
+  // otherwise matches the bare "back" alternative there and gets misfiled as
+  // backpedal locomotion, silently losing the backhand swing to the 'fh'
+  // fallback in playOnce().
+  if (/backhand|bh/.test(name)) return 'bh';
   if (/backpedal|backward|back/.test(name)) return 'backpedal';
   if (/lunge|reach/.test(name)) return 'lunge';
   if (/split/.test(name)) return 'split';
@@ -234,7 +244,6 @@ function clipKey(name) {
   if (/ready/.test(name)) return 'ready';
   if (/idle|stand/.test(name)) return 'idle';
   if (/run|jog|walk|move/.test(name)) return 'run';
-  if (/backhand|bh/.test(name)) return 'bh';
   if (/forehand|fh|drive|swing/.test(name)) return 'fh';
   if (/serve/.test(name)) return 'serve';
   if (/smash|overhead/.test(name)) return 'smash';
@@ -311,8 +320,8 @@ function installAuthoredModel(api, opts) {
 
   model.name = 'AuthoredPlayerModel';
   configureAuthoredModel(model, record.item);
-  applyModelMaterials(model, opts);
-  applyAuthoredIdentity(model, opts);
+  applyModelMaterials(model, opts, record.item);
+  applyAuthoredIdentity(model, opts, record.item);
   hidePrimitiveBody(api, record.item);
   api.object.add(model);
 

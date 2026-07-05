@@ -46,7 +46,13 @@ export const GARMENT_COLORS = {
 
 export const GENDERS = {
   male: {
-    playerModelKey: 'player-male-v1',
+    // TEMPORARY verification substitution: pointed at the new Mixamo ch12
+    // proof-of-concept model (see character-preview/CONTEXT.md and
+    // assets/manifest.js's 'player-ch12-v1' entry) to confirm it renders
+    // correctly in a real match. Revert to 'player-male-v1' once reviewed --
+    // this is not a wired-up chooser yet, and hairOptions below are inert
+    // for ch12 (customizable: false, no hair-variant nodes on that model).
+    playerModelKey: 'player-ch12-v1',
     hairOptions: ['simpleParted', 'buzzed'],
     defaultHair: 'simpleParted',
     facialHairOptions: ['none', 'beard']
