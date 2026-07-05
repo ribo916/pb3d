@@ -6,10 +6,11 @@ with the procedural fallback when any of these files are absent.
 For the broader graphics-overhaul state, visual verification baseline, and next
 character-model priorities, see [`../GRAPHICS.md`](../GRAPHICS.md).
 
-To import a real CC0 humanoid into a `player-*` slot (download flow, the
-`tools/build-player-model.mjs` pipeline, and the traps), see
+For the retired Quaternius CC0 humanoid pipeline (download flow,
+`tools/build-player-model.mjs`, and its traps), see
 [`../PLAYER-IMPORT.md`](../PLAYER-IMPORT.md). `player-male-v1` and
-`player-female-v1` were built this way.
+`player-female-v1` were built this way, but the active roster now uses the
+Mixamo `player-ch01-v1` through `player-ch12-v1` slots.
 
 ## Structure
 
@@ -17,13 +18,11 @@ To import a real CC0 humanoid into a `player-*` slot (download flow, the
 assets/
   models/
     venues/       Optional `.glb` / `.gltf` venue props or full venue shells.
-    players/      Future skinned or static player models.
-      mixamo/     Full raw Mixamo character catalog (ch01-ch12). Catalog-only
-                  in `assets/manifest.js` until individually calibrated
-                  (facing, scale, paddle-socket) -- see `../GRAPHICS.md`'s
-                  "Mixamo Character Pipeline" section. Also read by
-                  `character-preview/` (the standalone rig/clip viewer), so
-                  this is the one common location for these files.
+    players/      Skinned or static player models.
+      mixamo/     Active optimized Mixamo character catalog (ch01-ch12), wired
+                  in `assets/manifest.js` as `player-ch01-v1`...`player-ch12-v1`.
+                  Also read by `character-preview/`, so this is the one common
+                  location for these files.
   textures/
     court/        Optional court/surface texture sets.
     venues/       Optional prop and venue texture sets.
@@ -49,10 +48,9 @@ entries are safe and do not produce missing-file requests.
 
 ## Player Model Contract
 
-- Put a real authored GLB under `assets/models/players/` and set the
-  `player-male-v1` / `player-female-v1` manifest URL. Both slots are shared by
-  all 4 roster positions (selected per-slot by gender) and fall back to
-  `player-poc` while the URL is empty.
+- Put a real authored GLB under `assets/models/players/` and add or update a
+  `player-*` manifest entry. If it should be selectable in the active roster,
+  add it to `src/characters.js`.
 - Use `player-base` only for future shared roster-wide replacement work.
 - Authored player GLBs should face local `+z`, use an origin at the feet, and
   arrive at real-world scale around 1.7-1.9 m before manifest alignment.
@@ -72,9 +70,9 @@ entries are safe and do not produce missing-file requests.
   align authored models with the primitive rig.
 - Optional manifest field `fallbackKey` lets an empty or failed optional player
   slot resolve to another loaded model, such as `player-poc`.
-- Roster `height` still scales the player root for authored and primitive
-  players; roster `build` scales authored-model width/depth in addition to the
-  primitive fallback.
+- Legacy roster `height`/`build` fields still scale authored and primitive
+  players when present; the active Mixamo chooser does not expose those
+  cosmetic controls.
 - `syncPrimitiveArms: true` lets named authored arm nodes follow the existing
   primitive swing rotations during transition work. The expected node names are
   `visual_left_upper_arm`, `visual_left_forearm`, `visual_right_upper_arm`, and
@@ -106,19 +104,17 @@ entries are safe and do not produce missing-file requests.
   GLB, and 1k-2k PBR textures where they materially improve face, skin, hair,
   clothes, and shoes. Provide a lower LOD or rely on the existing POC/primitive
   fallback for mobile if needed.
-- All 4 roster slots (`nearYou`/`nearMate`/`farA`/`farB`) resolve to one of the
-  two shared models above based on each slot's chosen gender
-  (`src/characters.js`); both fall back to `player-poc` if their GLB is
-  absent or fails to load. Keep the same visual-only primitive-rig contract
-  for all four players.
+- All active roster slots (`nearYou`/`nearMate`/`farA`/`farB`) resolve through
+  `src/characters.js` to one of the selectable Mixamo model keys. Keep the same
+  visual-only primitive-rig contract for all four players.
 - Optional manifest field `customizable: false` opts a model out of the
   roster's cosmetic system entirely: `applyModelMaterials`/
   `applyAuthoredIdentity` (`src/players.js`) skip jersey/shorts/hair/headwear
   tinting and variant-node hiding, leaving the model's own imported look
-  untouched. Used by the in-progress Mixamo character pipeline (see
+  untouched. Used by the active Mixamo character pipeline (see
   `GRAPHICS.md`'s "Mixamo Character Pipeline" section and
   `character-preview/CONTEXT.md`) for characters that are not meant to be
-  customized the way `player-male-v1`/`player-female-v1` are. Defaults to
+  customized the way `player-male-v1`/`player-female-v1` were. Defaults to
   customizable (omit the field, or set `true`) for existing models.
 
 Validate a candidate player GLB without rendering:
@@ -135,16 +131,16 @@ npm run player:check
 
 ## Player POC
 
-`assets/models/players/player-poc.glb` is a generated visual POC used by all
-four roster slots when it loads. Regenerate it with:
+`assets/models/players/player-poc.glb` is a generated visual POC used as an
+adapter/fallback test asset. Regenerate it with:
 
 ```bash
 node tools/generate-player-poc.mjs
 ```
 
-It is deliberately not final character art. Its job is to prove that a visibly
-different authored-style player can sit on top of the current gameplay rig while
-the primitive fallback, swing timing, socketed paddle, identity variants, and
+It is deliberately not final character art. Its job is to prove that an
+authored-style player can sit on top of the current gameplay rig while the
+primitive fallback, swing timing, socketed paddle, identity variants, and
 `paddleWorld` contract stay intact.
 
 Do not use this POC as the target quality bar for premium or photoreal players.

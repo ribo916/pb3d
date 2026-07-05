@@ -26,8 +26,9 @@ difficulties, and desktop + mobile controls.
 The gameplay was ported from a larger project's 3D match and is now fully
 self-contained: **real track-based music, no 2D overworld, no save system** —
 pure gameplay plus audio. The graphics-overhaul branch adds a verified rendering
-and authored-asset scaffold, but the generated player model is only a technical
-POC, not final character art. See [`GRAPHICS.md`](GRAPHICS.md).
+and authored-asset scaffold, plus a 12-character Mixamo chooser. Character art
+is improved, but the animation set and team-identity treatment are still not
+final. See [`GRAPHICS.md`](GRAPHICS.md).
 
 **The single most important quality bar is swing + ball-contact feel** — it should
 read like polished arcade tennis (Wii Sports / Mario Tennis energy). Treat the
@@ -103,6 +104,8 @@ src/
   scene.js        court, net, lighting, ball + trail, fence, trees            (Three)
   players.js      Mii-style rig + cross-body swing animation                  (Three)
   camera.js       broadcast camera + follow/shake                             (Three)
+  characters.js   12-character Mixamo chooser data + slot/team identity        (pure)
+  characterPreview.js live 3D preview used by the chooser modal                (Three)
   game.js         orchestrator: STATE machine, hit model, movement, aim marker, HUD wiring
   hud.js          DOM HUD (score, serve dots, callout, banner, shot tag, SERVE button)
   modes.js        shared mode normalization (`doubles` / `singles` / `practice`)
@@ -279,27 +282,18 @@ The important implementation contract:
 - **Night mode** — add a `nightMode` flag to `scene.build` and lerp sky/fog/light
   intensities + the ball's `emissiveIntensity` (the original raised it to ~1.2 at
   night so the ball stays visible).
-- **Character models** — the branch has an authored-player adapter. All 4
-  roster slots share two real CC0 Quaternius base bodies
-  (`player-male-v1`/`player-female-v1`), each with multiple hairstyles merged
-  in as runtime-toggleable variants (male also gets an independent beard
-  layer, combinable with any hairstyle); the character picker lets each slot
-  independently choose gender/hair/hair color/beard (`src/characters.js`). A
-  free "pants" attachment was tried and removed — the donor asset was never
-  designed to fit this body, see `PLAYER-IMPORT.md`'s "Retired" note before
-  attempting clothing again. Keep the primitive rig as gameplay authority. To
-  import/replace a player, follow
-  [`PLAYER-IMPORT.md`](PLAYER-IMPORT.md) (download flow +
-  `tools/build-player-model.mjs` + wiring), with [`GRAPHICS.md`](GRAPHICS.md) and
-  `assets/README.md` for the adapter contract. A second, in-progress
-  character source (12 Mixamo characters + a shared swing-clip library) is
-  being wired in alongside the Quaternius bodies — one character (`ch12`) is
-  live as a proof of concept; see `GRAPHICS.md`'s "Mixamo Character
-  Pipeline" section and [`character-preview/CONTEXT.md`](character-preview/CONTEXT.md)
-  for the full pipeline, bugs found/fixed, and tracked open TODOs (missing
-  idle/serve/run/ready clips, importing the remaining 11 characters, a
-  mocap-licensing question, and replacing/coexisting with the character
-  creator).
+- **Character models** — the active roster uses 12 optimized Mixamo characters
+  (`ch01`-`ch12`) selected per slot through a fighting-game-style chooser
+  (`src/characters.js`, `src/main.js`, `src/characterPreview.js`). Slots
+  (`nearYou`/`nearMate`/`farA`/`farB`) keep their own paddle/ring identity, so
+  duplicate character picks are allowed without losing team distinction. The
+  old gender/hair/beard Quaternius customization UI is retired; its GLBs and
+  build notes remain as legacy fallback/reference material in
+  [`PLAYER-IMPORT.md`](PLAYER-IMPORT.md). Keep the primitive rig as gameplay
+  authority. Before changing the active Mixamo pipeline, read
+  [`GRAPHICS.md`](GRAPHICS.md)'s "Mixamo Character Pipeline" section and
+  [`character-preview/CONTEXT.md`](character-preview/CONTEXT.md) for the open
+  animation/licensing/team-identity TODOs.
 - **Singles mode** — implemented via `opts.mode` on `Game`; it uses one player
   per side, immediate receiver side-outs, and a two-number HUD callout.
 - **Difficulty/venue gating, pre-match cards, rankings** — layer above `main.js`;

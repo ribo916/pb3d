@@ -17,8 +17,8 @@ The game now has:
 - Optional asset loading through `assets/manifest.js` and `src/assets.js`.
 - Placeholder GLB venue props for park, tropical, and indoor venues.
 - Instanced/shared-material repeated props for selected procedural scenery.
-- A generated player-model POC (`assets/models/players/player-poc.glb`) loaded
-  through the authored-player adapter.
+- A generated player-model POC (`assets/models/players/player-poc.glb`) still
+  available as a fallback/test asset through the authored-player adapter.
 - The gendered Quaternius-customization roster (`player-male-v1`/
   `player-female-v1`, gender/hair/hair-color/facial-hair/shirt-color/
   pants-color picker) has been **fully retired**. All 4 roster slots now pick
@@ -30,8 +30,9 @@ The game now has:
   `tools/paint-player-clothing.mjs`; see `PLAYER-IMPORT.md`) still exist on
   disk and remain reachable as `fallbackKey`/`player-poc` targets, but are no
   longer selectable from the menu.
-- Authored-player identity hooks for color slots, scale/build, hair/headwear
-  variants, paddle socket, and animation clip names.
+- Authored-player identity hooks for color slots, scale/build, cosmetic variants,
+  paddle socket, and animation clip names. The active Mixamo roster opts out of
+  cosmetic tinting with `customizable: false`.
 - Visual-only idle/ready/run/forehand/backhand/serve/smash animation blending.
 - Player GLB validation and Player 1 comparison screenshot tooling.
 - Visual-only paddle-hit, bounce/contact, net-hit, serve camera shake, and point
@@ -42,9 +43,9 @@ The game now has:
 - Compact mobile HUD fixes for portrait and short landscape viewports.
 
 The result is crisper and more presentable than the original primitive-only
-version, but it is not final premium character art. The generated player POC is
-intentionally a technical proof, not an acceptable final or photoreal player
-model. Do not treat it as the target quality bar.
+version, but it is not final premium character presentation. The 12 Mixamo
+characters are the active roster, while `player-poc` is only a fallback/adapter
+test asset. Do not treat the old generated POC as the target quality bar.
 
 ## Branch And Release Status
 
@@ -52,8 +53,9 @@ model. Do not treat it as the target quality bar.
 - Work remains on `feature/graphics-overhaul`.
 - Do not merge this branch to `master` as-is.
 - The branch is useful as a verified rendering/asset/animation scaffold.
-- The next serious graphics investment should focus on real character models,
-  not further code-only crispness.
+- The next serious graphics investment should focus on animation completion,
+  team/role identity, and final character presentation, not further code-only
+  crispness.
 
 ## Non-Negotiable Gameplay Invariants
 
@@ -119,9 +121,9 @@ assets/
 Important contracts:
 
 - `assets/manifest.js` is the runtime slot map.
-- `player-male-v1` and `player-female-v1` are the two filled authored
-  character slots, shared by all 4 roster positions (gender picked per slot);
-  each falls back to `player-poc` if its GLB is absent or fails to load.
+- `player-ch01-v1` through `player-ch12-v1` are the active selectable player
+  slots, resolved from `src/characters.js`; each falls back to `player-poc` if
+  its GLB is absent or fails to load.
 - `src/assets.js` loads optional GLB assets and provides fallback-safe access.
 - Optional entries should stay optional until their procedural fallback has been
   replaced and verified.
@@ -133,9 +135,10 @@ Important contracts:
 - Keep music discovery data-driven through `music/catalog.js`; do not introduce
   browser-side folder enumeration.
 
-See `assets/README.md` for the detailed player-model adapter contract, and
-`PLAYER-IMPORT.md` for the Quaternius CC0 download + `tools/build-player-model.mjs`
-pipeline used to build `player-male-v1` and `player-female-v1`.
+See `assets/README.md` for the detailed player-model adapter contract.
+`PLAYER-IMPORT.md` is retained as the historical Quaternius CC0 pipeline used
+to build `player-male-v1` and `player-female-v1`; it is not the active roster
+workflow.
 
 ## Current Player POC Reality Check
 
@@ -184,11 +187,11 @@ method, not just missing polish:
 - Animation silhouette preserves gameplay timing, but it is broad POC body
   language rather than real shoulder, wrist, spine, and weight-transfer motion.
 
-### Player 1 Import Target
+### Future Player Import Target
 
-For true photoreal or near-photoreal Player 1 graphics, import a real authored
-or licensed `.glb` into the `player-male-v1` manifest slot (shared by
-`nearYou` and any other male-gendered slot). The expected contract is:
+For future premium or near-photoreal player graphics, import a real authored or
+licensed `.glb` into a new or replacement `player-*` manifest slot and expose it
+through `src/characters.js` if it should be selectable. The expected contract is:
 
 - Local `+z` faces forward, origin at the feet, real-world height around
   1.7-1.9 m before manifest scale/offset.
@@ -208,8 +211,7 @@ or licensed `.glb` into the `player-male-v1` manifest slot (shared by
 
 ### Mixamo Character Pipeline
 
-A second, higher-quality character source is now in progress alongside the
-Quaternius bodies above: 12 Mixamo characters + a shared pickleball
+The active character source is 12 Mixamo characters + a shared pickleball
 swing-clip library, converted/optimized via a Blender + `@gltf-transform`
 pipeline (`tools/blender-fbx-to-gltf.py`, `tools/build-mixamo-character.mjs`,
 `tools/build-mixamo-clip-library.mjs`, `tools/lib/mixamo-bones.mjs`). Full
@@ -298,14 +300,12 @@ there is no separate dev-server process anymore. Status summary:
 
 ### Roster-Wide Players
 
-The full doubles roster shares the two authored base models (`player-male-v1`,
-`player-female-v1`) described above — every slot (`nearYou`/`nearMate`/`farA`/
-`farB`) independently picks a gender, hairstyle, hair color, and (male only)
-a beard through the character picker, resolved by `src/characters.js`; see
-`PLAYER-IMPORT.md` for how the base+hair GLBs were built and sourced. Keep
-the primitive rig authoritative for every player and reuse the same
-socket/material/clip contract for any future replacement or upgrade of these
-models.
+The full doubles roster resolves all active slots through `src/characters.js`.
+Each slot independently picks one of `ch01`-`ch12`, while team/role identity
+stays keyed by slot rather than by character. Keep the primitive rig
+authoritative for every player and reuse the same socket/material/clip contract
+for any future replacement or upgrade of these models. `player-male-v1` and
+`player-female-v1` remain on disk only as legacy fallback/reference assets.
 `roster-closeup.png` (via `npm run shots`) is the roster comparison shot — check
 it after touching any player slot.
 
@@ -426,35 +426,14 @@ described below. The history/workflow notes below are kept for background on
 how the Quaternius bodies were built, not as an active plan.
 
 Do not spend the next pass on minor procedural crispness. The visual bottleneck
-is player quality.
+is now character presentation:
 
-All four roster slots share the two authored base models
-(`player-male-v1`/`player-female-v1`) behind the adapter, built with this
-workflow:
-
-1. Decide whether the target is premium stylized or genuinely photoreal.
-2. Pick a real character asset source/workflow.
-3. Add one high-quality player model behind the existing adapter.
-4. Keep the primitive rig as gameplay authority.
-5. Verify paddle socket, contact frame, `paddleWorld`, and gameplay readability.
-6. Compare close-up and gameplay-camera screenshots against the current POC.
-
-The old fantasy "Ranger" opponent outfits (thematically mismatched with a
-pickleball court) have been removed; opponents now use the same sport-neutral
-base bodies as everyone else, customized via gender/hair/hair color/beard
-like any other slot. A free "peasant pants" option was tried and removed —
-the free Quaternius pack it came from was never designed to attach to this
-body (see `PLAYER-IMPORT.md`'s "Retired" note), and no amount of
-`polygonOffset` tuning made the z-fighting against the base body's own leg
-geometry reliable across every animated pose. Both bodies now instead get a
-colorable shirt/pants by splitting the body's own triangles into
-skin/jersey/shorts primitives (no added geometry, so no z-fighting) via
-`tools/paint-player-clothing.mjs` — see `PLAYER-IMPORT.md`'s "Done: colorable
-shirt/pants via mesh splitting" section. A future pass could still add real
-garment geometry (proper shorts/skirt with folds) once a CC0/licensed asset
-actually modeled for "Universal Base Characters" proportions is found; the
-adapter/manifest/build pipeline (including the `extraMeshes` multi-variant
-merge) does not need to change, only the source GLB.
+1. Add missing idle/ready/run/serve animation states.
+2. Calibrate clip contact frames to `contactT = 0.5`.
+3. Resolve swing/sports mocap licensing before commercial release.
+4. Improve team/role identity for fixed, non-customizable characters.
+5. Keep the primitive rig as gameplay authority.
+6. Verify paddle socket, contact frame, `paddleWorld`, and gameplay readability.
 
 Only after the full roster reads as premium/appropriate should broader
 venue/material polish resume.

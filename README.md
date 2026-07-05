@@ -8,7 +8,8 @@ music picker that supports genre folders such as `KPOP`, `RAP`, `COUNTRY`, and `
 It started life as the 3D match inside a larger browser game and was extracted into
 this clean, decoupled project — focused on gameplay, music, and presentation
 without a 2D overworld or save system. The graphics-overhaul branch now has an
-authored-player adapter, but the current generated player POC is not final art.
+authored-player adapter and a 12-character Mixamo chooser; animation completion
+and team-identity polish are still active follow-up areas.
 
 > **Working on this with an AI agent?** Read [`AGENTS.md`](AGENTS.md) — it's the
 > primary context for both Claude Code and Codex. [`GAMEPLAY.md`](GAMEPLAY.md)
@@ -102,7 +103,9 @@ src/
   utils.js        clamp / dist2D / lerp                                        (pure)
   input.js        desktop (WASD/mouse/keys) + dual-thumb touch controls
   scene.js        court, net, lighting, ball + trail, fence, trees            (Three)
-  players.js      Mii-style rig + cross-body swing animation                  (Three)
+  players.js      Mii-style rig + visual authored-player adapter              (Three)
+  characters.js   12-character Mixamo chooser catalog                         (pure)
+  characterPreview.js live 3D preview for the character chooser               (Three)
   camera.js       broadcast camera + follow/shake                             (Three)
   game.js         orchestrator: state machine, hit model, movement, aim marker
   hud.js          DOM HUD (score, serve dots, callout, banner, shot tag)
@@ -169,14 +172,14 @@ npm run music:generate
 ## Graphics status
 
 The graphics-overhaul branch has a verified rendering and asset-loading scaffold:
-upgraded procedural courts/lighting/effects, optional GLB venue props, a generated
-player-model POC, animation blending, and mobile HUD fixes.
+upgraded procedural courts/lighting/effects, optional GLB venue props, a
+12-character Mixamo roster, animation blending, and mobile HUD fixes.
 
-The current player model is not final art and should not be mistaken for a
-premium or photoreal target. Future graphics work should focus on replacing the
-generated player POC with a real authored character model while preserving the
-primitive rig as the gameplay source for swing timing, contact, `contactT`, and
-`paddleWorld`. See [`GRAPHICS.md`](GRAPHICS.md) and `assets/README.md`.
+The character roster is improved but not final: idle/ready/run/serve animations,
+clip contact calibration, mocap licensing, and stronger team/role identity remain
+important follow-ups. The primitive rig still owns swing timing, contact,
+`contactT`, and `paddleWorld`. See [`GRAPHICS.md`](GRAPHICS.md) and
+`assets/README.md`.
 
 ## Extending the game (venues, graphics, more)
 
@@ -191,9 +194,8 @@ The most likely additions all have clean seams, documented in detail in
 ### Other planned-friendly extensions
 - **More venues** (e.g. a pro stadium) — parameterize `scene.build(scene, opts)`.
 - **Night mode** — lerp sky/fog/light intensities + the ball's emissive glow.
-- **Character models** — replace the generated POC with real authored character
-  assets using the adapter contracts in [`GRAPHICS.md`](GRAPHICS.md) and
-  `assets/README.md`.
+- **Character models** — extend or replace the active Mixamo roster using the
+  adapter contracts in [`GRAPHICS.md`](GRAPHICS.md) and `assets/README.md`.
 - **Singles mode** — available from the main menu via `opts.mode` on `Game`.
 - **Rankings / pre-match cards / venue gating** — layer above `main.js`; `Game`
   already accepts `difficulty`, `partnerDiff`, and an `onMatchOver` hook.
