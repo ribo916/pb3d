@@ -9,8 +9,9 @@ character-model priorities, see [`../GRAPHICS.md`](../GRAPHICS.md).
 For the retired Quaternius CC0 humanoid pipeline (download flow,
 `tools/build-player-model.mjs`, and its traps), see
 [`../PLAYER-IMPORT.md`](../PLAYER-IMPORT.md). `player-male-v1` and
-`player-female-v1` were built this way, but the active roster now uses the
-Mixamo `player-ch01-v1` through `player-ch12-v1` slots.
+`player-female-v1` were built this way historically, but their runtime GLBs and
+manifest slots have been removed. The active roster now uses the Mixamo
+`player-ch01-v1` through `player-ch12-v1` slots.
 
 ## Structure
 
@@ -69,7 +70,8 @@ entries are safe and do not produce missing-file requests.
 - Optional manifest fields `playerScale`, `playerOffset`, and `playerRotation`
   align authored models with the primitive rig.
 - Optional manifest field `fallbackKey` lets an empty or failed optional player
-  slot resolve to another loaded model, such as `player-poc`.
+  slot resolve to another loaded model. The active roster uses
+  `player-ch01-v1` as the shared Mixamo fallback for the other Mixamo slots.
 - Legacy roster `height`/`build` fields still scale authored and primitive
   players when present; the active Mixamo chooser does not expose those
   cosmetic controls.
@@ -102,8 +104,8 @@ entries are safe and do not produce missing-file requests.
   line up with `contactT = 0.5`. Do not change gameplay timing to fit the art.
 - Player 1 high-quality target budget is roughly 30k-60k triangles, optimized
   GLB, and 1k-2k PBR textures where they materially improve face, skin, hair,
-  clothes, and shoes. Provide a lower LOD or rely on the existing POC/primitive
-  fallback for mobile if needed.
+  clothes, and shoes. Provide a lower LOD or rely on the primitive fallback for
+  mobile if needed.
 - All active roster slots (`nearYou`/`nearMate`/`farA`/`farB`) resolve through
   `src/characters.js` to one of the selectable Mixamo model keys. Keep the same
   visual-only primitive-rig contract for all four players.
@@ -114,13 +116,13 @@ entries are safe and do not produce missing-file requests.
   untouched. Used by the active Mixamo character pipeline (see
   `GRAPHICS.md`'s "Mixamo Character Pipeline" section and
   `character-preview/CONTEXT.md`) for characters that are not meant to be
-  customized the way `player-male-v1`/`player-female-v1` were. Defaults to
+  customized the way the retired Quaternius bodies were. Defaults to
   customizable (omit the field, or set `true`) for existing models.
 
 Validate a candidate player GLB without rendering:
 
 ```bash
-node tools/validate-player-glb.mjs assets/models/players/player-poc.glb
+node tools/validate-player-glb.mjs assets/models/players/mixamo/ch01.glb
 ```
 
 Capture Player 1 comparison screenshots:
@@ -128,22 +130,6 @@ Capture Player 1 comparison screenshots:
 ```bash
 npm run player:check
 ```
-
-## Player POC
-
-`assets/models/players/player-poc.glb` is a generated visual POC used as an
-adapter/fallback test asset. Regenerate it with:
-
-```bash
-node tools/generate-player-poc.mjs
-```
-
-It is deliberately not final character art. Its job is to prove that an
-authored-style player can sit on top of the current gameplay rig while the
-primitive fallback, swing timing, socketed paddle, identity variants, and
-`paddleWorld` contract stay intact.
-
-Do not use this POC as the target quality bar for premium or photoreal players.
 
 ## Optimization Path
 

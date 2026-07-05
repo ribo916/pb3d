@@ -1,8 +1,9 @@
 # Importing Authored Player Models (Quaternius CC0)
 
-How the two shared base models (`player-male-v1`, `player-female-v1`) used by
-all 4 roster slots were built. This is the durable record of the download +
-optimization pipeline and the non-obvious traps in it.
+How the two retired shared base models (`player-male-v1`,
+`player-female-v1`) that once backed all 4 roster slots were built. This is
+the durable record of the download + optimization pipeline and the non-obvious
+traps in it; the runtime GLBs and manifest slots are no longer shipped.
 
 Read alongside [`GRAPHICS.md`](GRAPHICS.md) (adapter contract, verification
 baseline) and [`assets/README.md`](assets/README.md) (manifest field reference).
@@ -438,9 +439,10 @@ mesh-split classification.
    OK`, height ~1.7–1.9 m, all 7 clips recognized; slot/arm-sync warnings are
    expected for this asset (single-material body, see the team-color trap
    above).
-4. Wire it up: `assets/manifest.js` `models[]` entry (`player-male-v1`/
-   `player-female-v1`), and `src/characters.js`'s `GENDERS` map
-   (`playerModelKey`, `hairOptions`, `defaultHair`, `facialHairOptions`).
+4. Wire it up in a historical Quaternius-style branch: `assets/manifest.js`
+   `models[]` entry (`player-male-v1`/`player-female-v1`), and
+   `src/characters.js`'s old `GENDERS` map (`playerModelKey`, `hairOptions`,
+   `defaultHair`, `facialHairOptions`).
 5. `npm run player:check` + `npm run shots` — **look at the PNGs** (facing,
    paddle, scale vs teammates, hair/facial-hair toggling across all
    combinations), then `npm test` + `npm run build`.

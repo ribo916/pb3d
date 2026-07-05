@@ -234,8 +234,8 @@ the position/scale fix.
   node-matrix bounds silently read a Mixamo/Blender-exported asset's true
   ~1.6×2.1×0.7m T-pose shape as a bogus 0.02×1.45×0.02 "needle" — fixed by
   switching to `THREE.Box3.setFromObject(root, true)`, which applies real
-  per-vertex skin deformation; verified non-regressive against the existing
-  player-poc/male/female GLBs, whose reported heights didn't move).
+  per-vertex skin deformation; originally verified non-regressive against the
+  now-retired generated/gendered GLBs, whose reported heights didn't move).
 
   All 12 converted/built GLBs live in the gitignored
   `tools/.cache/mixamo-converted/` scratch dir (source of truth for

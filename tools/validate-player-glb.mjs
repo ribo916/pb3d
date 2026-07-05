@@ -1,6 +1,6 @@
 /* Validate the visual-player GLB import contract without rendering.
  * Usage:
- *   node tools/validate-player-glb.mjs assets/models/players/player-poc.glb
+ *   node tools/validate-player-glb.mjs assets/models/players/mixamo/ch01.glb
  */
 
 /* Headless texture shims: real authored character GLBs embed compressed
@@ -43,11 +43,10 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 
-const file = process.argv[2] || 'assets/models/players/player-poc.glb';
+const file = process.argv[2] || 'assets/models/players/mixamo/ch01.glb';
 const abs = path.resolve(process.cwd(), file);
-// Budget applies to the new, richer Mixamo-sourced roster (see
-// character-preview/CONTEXT.md, GRAPHICS.md); the existing tiny
-// player-poc/player-male-v1/player-female-v1 GLBs stay well under it too.
+// Budget applies to the Mixamo-sourced roster (see
+// character-preview/CONTEXT.md, GRAPHICS.md).
 const SIZE_BUDGET_MB = Number(process.argv[3]) || 3;
 
 function slotFor(mesh, mat) {

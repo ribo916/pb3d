@@ -232,7 +232,7 @@ function clipKey(name) {
   name = String(name || '').toLowerCase();
   if (/shuffle|strafe|side/.test(name)) return 'shuffle';
   // Checked before the generic backpedal/back-movement pattern below: a clip
-  // literally named "backhand" (e.g. player-male-v1.glb, pickleball-swings.glb)
+  // literally named "backhand" (e.g. pickleball-swings.glb)
   // otherwise matches the bare "back" alternative there and gets misfiled as
   // backpedal locomotion, silently losing the backhand swing to the 'fh'
   // fallback in playOnce().

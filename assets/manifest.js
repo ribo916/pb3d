@@ -49,48 +49,6 @@ export const ASSET_MANIFEST = {
       optional: true
     },
     {
-      key: 'player-male-v1',
-      label: 'Male base authored human model',
-      url: '/assets/models/players/player-male-v1.glb',
-      scope: 'player',
-      fallbackKey: 'player-poc',
-      playerScale: 1,
-      playerOffset: [0, 0, 0],
-      playerRotation: [0, 0, 0],
-      paddleSocketOffset: [0, 0, 0],
-      paddleSocketRotation: [Math.PI, 0, 0],
-      swingClipOverrides: { serve: 'fh' },
-      syncPrimitiveArms: false,
-      optional: true
-    },
-    {
-      key: 'player-female-v1',
-      label: 'Female base authored human model',
-      url: '/assets/models/players/player-female-v1.glb',
-      scope: 'player',
-      fallbackKey: 'player-poc',
-      playerScale: 1,
-      playerOffset: [0, 0, 0],
-      playerRotation: [0, 0, 0],
-      paddleSocketOffset: [0, 0, 0],
-      paddleSocketRotation: [Math.PI, 0, 0],
-      swingClipOverrides: { serve: 'fh' },
-      syncPrimitiveArms: false,
-      optional: true
-    },
-    {
-      key: 'player-poc',
-      label: 'Human player visual POC',
-      url: '/assets/models/players/player-poc.glb',
-      scope: 'player',
-      playerScale: 1,
-      playerOffset: [0, 0, 0],
-      playerRotation: [0, 0, 0],
-      paddleSocketOffset: [0, 0, 0],
-      syncPrimitiveArms: true,
-      optional: true
-    },
-    {
       // First Mixamo-sourced character wired in as a proof of concept (see
       // character-preview/CONTEXT.md). Facing measured via
       // `node tools/validate-player-glb.mjs` (toe-vs-foot points +Z at rest,
@@ -103,7 +61,7 @@ export const ASSET_MANIFEST = {
       label: 'Mixamo character (ch12)',
       url: '/assets/models/players/mixamo/ch12.glb',
       scope: 'player',
-      fallbackKey: 'player-poc',
+      fallbackKey: 'player-ch01-v1',
       playerScale: 0.85,
       playerOffset: [0, 0, 0],
       playerRotation: [0, 0, 0],
@@ -134,7 +92,7 @@ export const ASSET_MANIFEST = {
     {
       key: 'player-ch01-v1', label: 'Mixamo character (ch01)',
       url: '/assets/models/players/mixamo/ch01.glb', scope: 'player',
-      fallbackKey: 'player-poc', playerScale: 0.97, playerOffset: [0, 0, 0],
+      playerScale: 0.97, playerOffset: [0, 0, 0],
       playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
       paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
       swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
@@ -143,7 +101,7 @@ export const ASSET_MANIFEST = {
     {
       key: 'player-ch02-v1', label: 'Mixamo character (ch02)',
       url: '/assets/models/players/mixamo/ch02.glb', scope: 'player',
-      fallbackKey: 'player-poc', playerScale: 1.02, playerOffset: [0, 0, 0],
+      fallbackKey: 'player-ch01-v1', playerScale: 1.02, playerOffset: [0, 0, 0],
       playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
       paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
       swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
@@ -152,7 +110,7 @@ export const ASSET_MANIFEST = {
     {
       key: 'player-ch03-v1', label: 'Mixamo character (ch03)',
       url: '/assets/models/players/mixamo/ch03.glb', scope: 'player',
-      fallbackKey: 'player-poc', playerScale: 1.08, playerOffset: [0, 0, 0],
+      fallbackKey: 'player-ch01-v1', playerScale: 1.08, playerOffset: [0, 0, 0],
       playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
       paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
       swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
@@ -161,7 +119,7 @@ export const ASSET_MANIFEST = {
     {
       key: 'player-ch04-v1', label: 'Mixamo character (ch04)',
       url: '/assets/models/players/mixamo/ch04.glb', scope: 'player',
-      fallbackKey: 'player-poc', playerScale: 1.12, playerOffset: [0, 0, 0],
+      fallbackKey: 'player-ch01-v1', playerScale: 1.12, playerOffset: [0, 0, 0],
       playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
       paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
       swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
@@ -170,7 +128,7 @@ export const ASSET_MANIFEST = {
     {
       key: 'player-ch05-v1', label: 'Mixamo character (ch05)',
       url: '/assets/models/players/mixamo/ch05.glb', scope: 'player',
-      fallbackKey: 'player-poc', playerScale: 1.02, playerOffset: [0, 0, 0],
+      fallbackKey: 'player-ch01-v1', playerScale: 1.02, playerOffset: [0, 0, 0],
       playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
       paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
       swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
@@ -179,7 +137,7 @@ export const ASSET_MANIFEST = {
     {
       key: 'player-ch06-v1', label: 'Mixamo character (ch06)',
       url: '/assets/models/players/mixamo/ch06.glb', scope: 'player',
-      fallbackKey: 'player-poc', playerScale: 1.03, playerOffset: [0, 0, 0],
+      fallbackKey: 'player-ch01-v1', playerScale: 1.03, playerOffset: [0, 0, 0],
       playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
       paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
       swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
@@ -188,7 +146,7 @@ export const ASSET_MANIFEST = {
     {
       key: 'player-ch07-v1', label: 'Mixamo character (ch07)',
       url: '/assets/models/players/mixamo/ch07.glb', scope: 'player',
-      fallbackKey: 'player-poc', playerScale: 1.01, playerOffset: [0, 0, 0],
+      fallbackKey: 'player-ch01-v1', playerScale: 1.01, playerOffset: [0, 0, 0],
       playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
       paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
       swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
@@ -197,7 +155,7 @@ export const ASSET_MANIFEST = {
     {
       key: 'player-ch08-v1', label: 'Mixamo character (ch08)',
       url: '/assets/models/players/mixamo/ch08.glb', scope: 'player',
-      fallbackKey: 'player-poc', playerScale: 1.00, playerOffset: [0, 0, 0],
+      fallbackKey: 'player-ch01-v1', playerScale: 1.00, playerOffset: [0, 0, 0],
       playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
       paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
       swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
@@ -206,7 +164,7 @@ export const ASSET_MANIFEST = {
     {
       key: 'player-ch09-v1', label: 'Mixamo character (ch09)',
       url: '/assets/models/players/mixamo/ch09.glb', scope: 'player',
-      fallbackKey: 'player-poc', playerScale: 1.22, playerOffset: [0, 0, 0],
+      fallbackKey: 'player-ch01-v1', playerScale: 1.22, playerOffset: [0, 0, 0],
       playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
       paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
       swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
@@ -215,7 +173,7 @@ export const ASSET_MANIFEST = {
     {
       key: 'player-ch10-v1', label: 'Mixamo character (ch10)',
       url: '/assets/models/players/mixamo/ch10.glb', scope: 'player',
-      fallbackKey: 'player-poc', playerScale: 0.99, playerOffset: [0, 0, 0],
+      fallbackKey: 'player-ch01-v1', playerScale: 0.99, playerOffset: [0, 0, 0],
       playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
       paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
       swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
@@ -224,7 +182,7 @@ export const ASSET_MANIFEST = {
     {
       key: 'player-ch11-v1', label: 'Mixamo character (ch11)',
       url: '/assets/models/players/mixamo/ch11.glb', scope: 'player',
-      fallbackKey: 'player-poc', playerScale: 0.87, playerOffset: [0, 0, 0],
+      fallbackKey: 'player-ch01-v1', playerScale: 0.87, playerOffset: [0, 0, 0],
       playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
       paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
       swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
