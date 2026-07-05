@@ -31,8 +31,11 @@ The game now has:
   material SPLIT into skin/jersey/shorts primitives via
   `tools/paint-player-clothing.mjs` (shoulder-cap coverage on the jersey
   region, not just the chest, so it reads as a tank top rather than a
-  bra/bikini cut; the female body's shorts region is full leggings, the male
-  body's is a short brief only — bare thighs/calves stay bare). This makes
+  bra/bikini cut; both bodies' shorts region is full leggings — a male-only
+  bare-thigh "brief" cut was tried but its hip-height trim always landed on
+  coarse mesh geometry and read as a jagged hem, so it now matches the
+  female body instead, pushing that same hem down to the ankle where it's
+  far less visible). This makes
   the body's jersey/shorts materials tint at runtime from each roster
   position's `shirtColor`/`pantsColor` pick (`GARMENT_COLORS` in
   `src/characters.js`, "Shirt"/"Pants" rows in the character modal) through

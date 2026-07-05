@@ -33,14 +33,18 @@
  * original bake's muscle/fold shading as luminance detail).
  *
  * `--legs` controls how much of the leg is a colorable "shorts" region:
- * `full` (pelvis+spine_01+thigh+calf — full leggings, used for the female
- * body) or `brief` (pelvis only — a short brief, used for the male body,
- * which keeps bare thighs/calves per prior direction to remove leggings
- * from the male look; only the small brief itself becomes colorable).
+ * `full` (pelvis+spine_01+thigh+calf — full leggings) or `brief` (pelvis
+ * only, trimmed further to a short band at the hip — bare thighs/calves).
+ * Both bodies now use `full`: an earlier male-only `brief` cut (bare
+ * thighs/calves) left a hard height-trimmed hem low on the thigh where the
+ * mesh is coarse, producing a visibly jagged edge; `full` pushes that same
+ * jagged hem down to the ankle (matching the female body), where it's far
+ * less noticeable. `brief` is kept as an option, not removed, in case the
+ * bare-thigh look is wanted again with a better hem fix.
  *
  * OFFLINE, ONE-OFF TOOL (same category as build-player-model.mjs) — not
  * wired into npm scripts. Usage:
- *   node tools/paint-player-clothing.mjs assets/models/players/player-male-v1.glb --legs=brief
+ *   node tools/paint-player-clothing.mjs assets/models/players/player-male-v1.glb --legs=full
  *   node tools/paint-player-clothing.mjs assets/models/players/player-female-v1.glb --legs=full
  */
 import fs from 'node:fs';
@@ -51,6 +55,7 @@ import sharp from 'sharp';
 const SPINE_JOINTS = new Set(['spine_01', 'spine_02', 'spine_03']);
 const CLAVICLE_JOINTS = new Set(['clavicle_l', 'clavicle_r']);
 const UPPERARM_JOINTS = new Set(['upperarm_l', 'upperarm_r']);
+const NECK_JOINTS = new Set(['neck_01', 'Head']);
 
 const args = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const flags = process.argv.slice(2).filter((a) => a.startsWith('--'));
@@ -78,6 +83,38 @@ const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
 const doc = await io.read(inPath);
 const root = doc.getRoot();
 const scene = root.getDefaultScene() || root.listScenes()[0];
+
+// This tool is meant to be re-runnable on its own prior output (e.g. to
+// retune the classification without a from-scratch rebuild, which needs the
+// original external donor pack). A previous run left the body split into 3
+// sibling primitives (skin keeps the original triangles minus jersey/shorts,
+// which live in new `<body>_Jersey`/`<body>_Shorts` nodes). Undo that split
+// first — concatenate each garment node's indices back onto the base body's
+// index buffer and drop the garment node — so classification always starts
+// from the one full continuous surface, never a partially-carved one.
+for (const node of root.listNodes()) {
+  const suffix = ['_Jersey', '_Shorts'].find((s) => node.getName().endsWith(s));
+  if (!suffix) continue;
+  const baseName = node.getName().slice(0, -suffix.length);
+  const baseNode = root.listNodes().find((n) => n.getName() === baseName);
+  if (!baseNode) continue;
+  const basePrim = baseNode.getMesh().listPrimitives()[0];
+  const baseIndices = basePrim.getIndices();
+  const extraPrim = node.getMesh().listPrimitives()[0];
+  const baseArr = baseIndices.getArray();
+  const extraArr = extraPrim.getIndices().getArray();
+  const merged = new baseArr.constructor(baseArr.length + extraArr.length);
+  merged.set(baseArr, 0);
+  merged.set(extraArr, baseArr.length);
+  baseIndices.setArray(merged);
+  const mat = extraPrim.getMaterial();
+  const tex = mat && mat.getBaseColorTexture();
+  const mesh = node.getMesh();
+  node.dispose();
+  mesh.dispose();
+  if (mat) mat.dispose();
+  if (tex) tex.dispose();
+}
 
 const bodyMesh = root.listMeshes().find((m) =>
   m.listPrimitives().some((p) => p.getMaterial() && /Superhero/i.test(p.getMaterial().getName()))
@@ -135,24 +172,28 @@ function smoothField(field, adj, iterations) {
 // raw per-vertex weight sums
 let legW = new Float32Array(vertCount);
 let torsoW = new Float32Array(vertCount);
+let neckW = new Float32Array(vertCount);
 for (let i = 0; i < vertCount; i++) {
   const j = jointsAcc.getElement(i, [0, 0, 0, 0]);
   const w = weightsAcc.getElement(i, [0, 0, 0, 0]);
-  let leg = 0, spine = 0, clavicle = 0, upperArm = 0;
+  let leg = 0, spine = 0, clavicle = 0, upperArm = 0, neck = 0;
   for (let k = 0; k < 4; k++) {
     const name = jointNames[j[k]];
     if (LEG_JOINTS.has(name)) leg += w[k];
     if (SPINE_JOINTS.has(name)) spine += w[k];
     if (CLAVICLE_JOINTS.has(name)) clavicle += w[k];
     if (UPPERARM_JOINTS.has(name)) upperArm += w[k];
+    if (NECK_JOINTS.has(name)) neck += w[k];
   }
   legW[i] = leg;
   torsoW[i] = spine + clavicle * (1 - smoothstep(0.02, 0.15, upperArm));
+  neckW[i] = neck;
 }
 
 const adjacency = buildAdjacency();
 legW = smoothField(legW, adjacency, 45);
 torsoW = smoothField(torsoW, adjacency, 45);
+neckW = smoothField(neckW, adjacency, 45);
 
 // per-vertex region: 'shorts' | 'jersey' | 'skin'. No 0.5 "majority" gate —
 // that left a strip of vertices where NEITHER side reached 0.5 (common
@@ -163,11 +204,19 @@ torsoW = smoothField(torsoW, adjacency, 45);
 // the existing shorts/bra graphic). Only true non-candidates (near-zero
 // both sums — head, hands, feet) should stay 'skin'; everywhere else, treat
 // leg vs. torso as two competing candidates and take whichever is larger.
+//
+// `neck`/`Head` joint weight is checked FIRST as a third competing
+// candidate, not folded into `torso` — without it, any vertex with even
+// slight spine/clavicle influence defaulted to 'jersey' as soon as it
+// cleared SKIN_EPS, with nothing to out-vote it once the actual neck bone
+// took over from the spine. That let the jersey region ride all the way up
+// the neck to the jaw (a turtleneck) instead of stopping at the collar.
 const SKIN_EPS = 0.15;
 const vertRegion = new Array(vertCount);
 for (let i = 0; i < vertCount; i++) {
-  const leg = legW[i], torso = torsoW[i];
-  if (leg < SKIN_EPS && torso < SKIN_EPS) vertRegion[i] = 'skin';
+  const leg = legW[i], torso = torsoW[i], neck = neckW[i];
+  if (neck >= SKIN_EPS && neck >= torso && neck >= leg) vertRegion[i] = 'skin';
+  else if (leg < SKIN_EPS && torso < SKIN_EPS) vertRegion[i] = 'skin';
   else if (leg >= torso) vertRegion[i] = 'shorts';
   else vertRegion[i] = 'jersey';
 }
@@ -365,6 +414,15 @@ async function makeGarmentPrimitive(name, slot, indices) {
 
 await makeGarmentPrimitive(bodyNode.getName() + '_Jersey', 'jersey', buckets.jersey);
 await makeGarmentPrimitive(bodyNode.getName() + '_Shorts', 'shorts', buckets.shorts);
+
+// The donor "Superhero" body texture bakes a drawn-on brief/bra graphic
+// directly into the skin diffuse map under the shorts region. That's left
+// untouched deliberately: the "None" shirt/pants option (see players.js
+// `bareSkinMaterial`) reuses this same real skin material verbatim, so
+// picking "None" shows the character exactly as the donor asset was
+// originally imported — including its baked-in brief/bra — rather than
+// erasing it into fully bare skin or flattening it into a solid-color
+// bodysuit.
 
 if (dumpMask) {
   const posAcc = bodyPrim.getAttribute('POSITION');

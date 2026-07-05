@@ -91,6 +91,28 @@ function tintMaterial(mat, slot, opts) {
   return next;
 }
 
+// The authored body's jersey/shorts regions are separate primitives split
+// out of the same continuous body surface (see tools/paint-player-clothing.mjs)
+// — their triangles were REMOVED from the skin primitive's own index buffer,
+// not overlaid on top of it, so they can't just be hidden for "no shirt"/"no
+// pants" (that would leave a hole). Picking 'none' instead borrows the real
+// skin primitive's own untouched material (same UVs/normal map/texture,
+// since it's the same surface) so the region reads as the character's
+// original imported look — the donor body's own baked-in brief/bra graphic
+// — instead of a flat-tinted, detail-stripped garment material recolored to
+// a skin tone (which looked like a beige bodysuit — the garment material has
+// its muscle/anatomy detail deliberately flattened out during the paint
+// step).
+function bareSkinMaterial(root, garmentNode) {
+  var name = garmentNode.name || '';
+  var suffix = ['_Jersey', '_Shorts'].filter(function (s) {
+    return name.slice(-s.length) === s;
+  })[0];
+  if (!suffix) return null;
+  var baseNode = root.getObjectByName(name.slice(0, -suffix.length));
+  return (baseNode && baseNode.material) || null;
+}
+
 function applyModelMaterials(root, opts) {
   root.traverse(function (node) {
     if (!node.isMesh) return;
@@ -100,9 +122,13 @@ function applyModelMaterials(root, opts) {
       node.material = node.material.map(function (mat) {
         return tintMaterial(mat, materialSlot(node, mat), opts);
       });
-    } else {
-      node.material = tintMaterial(node.material, materialSlot(node, node.material), opts);
+      return;
     }
+    var slot = materialSlot(node, node.material);
+    var bareNone = (slot === 'jersey' && opts.shirtColor === 'none') ||
+      (slot === 'shorts' && opts.pantsColor === 'none');
+    var skinMat = bareNone && bareSkinMaterial(root, node);
+    node.material = skinMat || tintMaterial(node.material, slot, opts);
   });
 }
 

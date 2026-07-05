@@ -241,13 +241,17 @@ in whatever `opts.jersey`/`opts.shorts` the roster picks resolve to. No
 runtime plumbing had to change; the slot system already existed; the
 authored body just wasn't split into tintable pieces before.
 
-`--legs` controls how much leg becomes a colorable "pants" region:
-`full` (leggings, used for the female body) or `brief` (a short brief only,
-used for the male body — bare thighs/calves stay bare per prior direction to
-remove full leggings from the male look):
+`--legs` controls how much leg becomes a colorable "pants" region: `full`
+(leggings) or `brief` (a short brief only, trimmed by height to the hip —
+bare thighs/calves). Both bodies now use `full` — a male-only `brief` cut
+was tried to keep bare thighs/calves, but the hard height-trim needed to
+carve out just the hip band lands on coarse mesh geometry there and always
+reads as a jagged edge (see the trap notes below). `full` moves that same
+hem down to the ankle instead, matching the female body — same underlying
+jaggedness, just far less visible at that location:
 
 ```bash
-node tools/paint-player-clothing.mjs assets/models/players/player-male-v1.glb --legs=brief
+node tools/paint-player-clothing.mjs assets/models/players/player-male-v1.glb --legs=full
 node tools/paint-player-clothing.mjs assets/models/players/player-female-v1.glb --legs=full
 ```
 
