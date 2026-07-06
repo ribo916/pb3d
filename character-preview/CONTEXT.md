@@ -13,6 +13,112 @@ in, or point Claude at it.** It explains what exists, what's already been
 proven, and what's still open — so the next session doesn't have to
 re-derive any of it from scratch.
 
+## READ THIS FIRST — status as of the end of the last session
+
+**Current status: elbow AND wrist bend angle/plane are both root-caused,
+fixed, and verified** — numerically (exact match at every sampled frame for
+both joints) and visually (full regression pass across both characters × 6
+clips). **Do not assume this means everything is now perfect** — arms/
+elbows/wrists have been "fixed" SIX separate times now (items 9, 11, 13,
+15, 16, 17). Item 15 was declared fixed and numerically verified, and
+STILL had a real, severe, independent bug (item 16). Item 16 was ALSO
+declared fixed and verified for elbows specifically, and wrists turned out
+to have never even been running that fix at all (item 17 — a silent,
+un-logged fallback to old code, not a flaw in item 16's math). Treat item
+17 as "the best-verified state so far," re-check with the tools below
+before extending trust to a new character/clip/pose/bone, and read items
+9-17 in full before touching this code again. **If any bone-specific
+report comes in again ("same with X"), check `window.__RETARGET_DEBUG`'s
+`method` field for that bone FIRST (should read `"parent-relative"` for
+forearms/hands) before assuming the fix's math needs re-deriving — item 17
+was found in under a minute this way, after item 16 took a full session.**
+
+**Do not declare anything fixed again without either the user confirming it
+themselves, or genuinely rigorous verification (numeric measurement AND live
+visual comparison, in a BODY-RELATIVE frame if comparing two skeletons of
+different scale/orientation — see items 7, 12, 14, and 16's lessons, each of
+which caught the OTHER method missing something). Item 16 in particular is
+the sharpest lesson in this file: a "target matches source EXACTLY, by
+construction" numeric check (item 15) is NOT sufficient proof of
+correctness — it proves the arithmetic is self-consistent, not that the
+physical quantities being carried through it (here, "the upper arm's world
+quaternion," which silently included an uncontrolled per-rig-arbitrary
+twist) mean what you assumed. Only an independent physical measurement
+(the upper-arm quaternion DIFFERENCE between rigs, decomposed into
+aim-aligned vs. perpendicular components) revealed it.**
+
+**What IS confirmed solid** (re-verify before fully trusting on a new
+character/clip, but these have survived multiple rounds of scrutiny without
+regressing): grounding (item 7), legs during `run` (item 8, ~2-6° constant
+offset from the raw skeleton, confirmed multiple times since), the
+world-space swing method's basic soundness for spine/shoulders (item 8),
+hands no longer reverting to a flat T-pose on near-static clips (item 10),
+upper-arm lateral reach (item 13, further improved to ~0.89-1.03 by item 16),
+and elbow AND wrist bend angle/plane (items 16+17) — via a "direct
+transplant, carried through a twist-free canonical reference frame"
+mechanism, not a delta from either rig's own rest pose (item 15 found the
+two rigs' rest poses are ~129° apart at the elbow, irreconcilable from
+bind-pose data alone) and not the rigs' own real (twist-arbitrary) bone
+orientations (item 16's fix). Wrist specifically only actually started
+using any of this machinery in item 17 -- before that it was silently
+still on the oldest (pre-item-15) method the whole time.
+
+**Known, disclosed, NOT-yet-addressed gap**: forearm TWIST/roll (pronation/
+supination around the forearm's own long axis) is still not reproduced —
+`buildAimQuaternion`'s canonical frame deliberately discards it the same way
+the underlying swing method always has. If a future report is specifically
+about hand/wrist rotation looking wrong independent of elbow bend angle/
+plane, that's this gap, not a regression of item 16.
+
+**What's still open / not resolved:**
+- **RESOLVED (items 15+16+17) — arms/elbows/wrists "bend backwards" on
+  dynamic clips (item 14).** Root cause and fix in item 15 (rest-pose
+  mismatch), item 16 (twist-free carrier frame), item 17 (wrists were
+  silently never using either fix, due to a gap in `captureTargetRestPose`
+  that's now closed). Re-verify on a new character/clip before fully
+  trusting, per this file's whole history, but this is the most rigorously
+  verified state so far (exact numeric match at every sampled frame for
+  both joints + full visual regression). If a NEW bone-specific report
+  comes in, check `window.__RETARGET_DEBUG`'s `method` field for that bone
+  first (see item 17's lesson) before assuming the math is wrong again.
+- **Still open**: forearm TWIST/roll is not reproduced by any version of
+  this method (only aim direction is ever controlled). Not yet known
+  whether this is visually significant for any existing clip — no report of
+  it yet, but also never specifically checked.
+- The debug visualization the user asked for (twice) was built in item 12
+  (`window.skeletonOverlayHelper`, the "Show Skeleton Overlay" button) and
+  extended in the same session (`window.__comparisonSkeleton`, "Show Raw
+  Skeleton Beside (synced)") — use these FIRST for any new pose complaint,
+  before more numeric summaries. The color-coded Hips forward/right/up axis
+  gizmo from the original ask was NOT built; still missing if needed.
+- The user separately asked "are you sure it isn't backwards now?" (facing
+  direction). This was never rigorously re-checked after the grounding fix —
+  investigation got diverted into the grounding bug (which was real and
+  needed fixing) but the facing question itself is still technically open.
+  Use the gizmo above to actually check this once it exists.
+- **PARTIALLY SUPERSEDED by item 10** — the user showed two screenshots (a
+  run pose and a "ready stance" pose, both on realistic-textured characters
+  — traced to `player-ch06-v1` and `player-ch08-v1` specifically) that
+  looked dramatically extreme/unnatural (wide leg splits, one hand reaching
+  to the ground with splayed fingers), which an early investigation
+  attributed to genuine source mocap content via a hard-to-read visual
+  skeleton-wireframe comparison (flagged even then as "a lead, not a settled
+  fact"). Item 10 later found the splayed-finger/reaching-hand look on
+  Idle/Ready Stance clips was substantially caused by a real hand-retargeting
+  bug (hands reverting toward a flat rest pose), not (only) source content —
+  so this "genuine content" conclusion should be treated as suspect,
+  especially for the HAND/finger part of what looked extreme, until
+  specifically re-checked on `ch06`/`ch08` with the current (item 17) fixed
+  code. The leg-splay part of the original report was never specifically
+  re-investigated after any of items 11-17's fixes. If revisited, ALSO still
+  worth checking: is `Steel_Idle_PreJump_ReadyPose__steelmanny.FBX` (source
+  for "Ready Stance") simply a bad CONTENT choice (an extreme athletic
+  pre-jump crouch, not a moderate pickleball-ready stance) independent of any
+  remaining code issue? That would mean swapping which file `TOP_PICKS`
+  points to for that category (see `character-preview/local-clips/top-picks/
+  ready/` for 2 unused alternatives, and ~40 other unused clips across all
+  categories).
+
 ## Running it
 
 There is no separate dev-server process anymore — `character-preview/`
@@ -59,6 +165,26 @@ Files:
   provenance" section below. Since this folder is untracked, a fresh clone
   won't have these files — clicking their clip buttons shows a per-button
   error instead of breaking the page.
+- `character-preview/local-clips/top-picks/<category>/*.FBX` (untracked) —
+  51 candidate mocap clips the user pulled from `_top_picks` in Downloads,
+  organized into 11 category folders (`idle`, `ready`, `run`, `backpedal`,
+  `side_shuffle`, `pivot_spin`, `serve`, `jump_smash`, `dive`, `hit_react`,
+  `victory_celebration`) for a future pass at filling the still-open
+  idle/serve/run/ready gap (and adding pickleball-relevant movement clips
+  beyond that). These are **Unreal Engine 5 "Manny" mannequin** exports (Epic's
+  free Paragon animation packs retargeted to the standard UE5 skeleton, per
+  the FBX metadata: `Unreal FBX Exporter`, source path
+  `.../paragonanims/Game/RetargetedAssets/<Hero>Manny/<Clip>.FBX`) — a
+  completely different bone-naming/hierarchy convention
+  (`pelvis`/`clavicle_l`/`upperarm_l`/`calf_l`/...) than the Mixamo
+  `mixamorig*` rig these characters use, and skeleton-only (no mesh). The
+  existing name-based `retargetClipNames` path does not apply to these at
+  all. `main.js`'s `TOP_PICKS` currently surfaces **one representative clip
+  per category** (11 buttons, not all 51) per an explicit user decision to
+  scope down for the first review pass — the other ~40 files are still
+  sitting in their category folders if a different pick is wanted later.
+  See `retargetMannyClip()` in `main.js` for the actual cross-rig retarget
+  logic and the bugs found building it (next section).
 
 ## What the viewer does
 
@@ -80,12 +206,26 @@ Files:
   lazily on first click and cache their raw download; the
   retarget/strip/freeze pass re-runs (cheaply, no network) against whichever
   character is currently active.
+- **Raw Skeleton Preview row**: the same 11 top-picks clips, but played on
+  their OWN native Manny rig with a `THREE.SkeletonHelper` line visualization
+  instead of retargeted onto the active character — see `activateSkeletonClip`
+  in `main.js`. No bone-name mapping, no retargeting math of any kind
+  involved, so it's immune by construction to every retargeting bug in the
+  section below. Added after the user reported the retargeted versions
+  looking "extremely bad... like broken robots deep in the floor spazzing
+  out" and asked for a way to check the clips independent of retargeting.
+  Use this when a retargeted clip looks wrong to tell whether the SOURCE
+  MOCAP itself is the problem (it'll look equally wrong here) or the
+  retargeting math is (it'll look fine here, wrong on the character).
 - Play/Pause, a scrub slider (0–1 normalized through the clip), and a
-  playback-speed slider.
-- `window.__poc = { character, clips, mixer }` and `window.__THREE` /
-  `window.__camera` / `window.__controls` are exposed on `window` for
-  ad-hoc Playwright/devtools inspection — this is how every bug in this doc
-  was actually found, not by eyeballing alone.
+  playback-speed slider — shared across all three clip rows (Clip/Top
+  Picks/Raw Skeleton Preview); switching between rows hands off `mixer`/
+  `currentAction`/`currentClip` cleanly (`exitSkeletonPreview()` restores the
+  character's own mixer and visibility when leaving skeleton mode).
+- `window.__poc = { character, clips, mixer }`, `window.__THREE`,
+  `window.__camera`, `window.__controls`, and `window.__scene` are exposed on
+  `window` for ad-hoc Playwright/devtools inspection — this is how every bug
+  in this doc was actually found, not by eyeballing alone.
 
 ## Asset provenance
 
@@ -162,6 +302,936 @@ joint under suspicion.
    `stripNonRootPositionAndScale` deletes every `.position`/`.scale` track
    except the root Hips's position (which is legitimate root motion, not bone
    length) before the clip is registered.
+
+4. **Manny→Mixamo cross-rig retarget (`retargetMannyClip`) — two more bugs
+   found by screenshot review, same "don't trust the math, look at the
+   render" lesson as above.** Bone-name mapping (`MANNY_BONE_MAP`) plus a
+   per-bone "delta from rest" transfer (`target = targetRest *
+   (sourceRest⁻¹ * sourceLocal(t))`) is the standard quick cross-rig
+   retarget technique, and works fine for bones whose rest orientation is
+   close to identity (spine/arms/head). It does NOT work for `Hips` here:
+   - **Bug A — naive per-bone delta composition for the root→pelvis chain.**
+     An earlier version composed `deltaRoot(t) * deltaPelvis(t)` (each
+     bone's own local delta) to combine `root`+`pelvis` (source) into one
+     `Hips` (target) bone. Wrong: `pelvis`'s rest rotation is itself a large
+     (~90°) fixed offset, not near-identity, so that shortcut doesn't cancel
+     correctly — tipped the whole character sideways off the grid, on every
+     character, immediately (confirmed via screenshot at t=0, ruling out an
+     accumulation-over-time explanation). Fix: treat root→pelvis as ONE
+     combined transform (`combinedRest = rootRest*pelvisRest`,
+     `combinedCurrent(t) = rootLocal(t)*pelvisLocal(t)`) and apply the
+     single-bone delta formula to that combined transform instead.
+   - **Bug B — even fixed, full-3-axis Hips transfer was abandoned for
+     YAW-ONLY.** The per-bone axis-convention mismatch between UE Manny and
+     Mixamo is large enough at `Hips`/`pelvis` specifically that transferring
+     the full rest-relative rotation still reads wrong. Since the only part
+     that actually matters for judging locomotion clips (backpedal/pivot-spin/
+     side-shuffle) is *which way the character turns*, `Hips` now only
+     transfers YAW: project a reference vector through the rest and current
+     combined rotations onto the horizontal (Z-up — this raw FBX loads Z-up
+     in three.js, confirmed empirically from `pelvis`'s rest position landing
+     almost entirely in `.z`, not assumed) plane and read off the signed
+     angle between them (`worldYawDelta`). Pitch/roll (leaning
+     forward/tilting sideways) intentionally do not transfer for `Hips`.
+   - **Bug C — the yaw reference vector itself was unvalidated.** First
+     attempt hardcoded `(1,0,0)` as the reference axis with only a
+     `lengthSq < 1e-6` degeneracy bailout. For this rig's actual rest pose,
+     `(1,0,0)` rotates to landing ~99.7% along the vertical (Z) axis — so
+     after projecting away Z, what's left is numerical noise, not signal,
+     and it's nowhere near the 1e-6 bailout threshold. Result: a near-random
+     yaw every frame, confirmed by dumping the live character's actual
+     `mixamorigHips` world quaternion during a plain forward jog and finding
+     it ~180° off (legs thrown up over the head on screenshot). Fix:
+     `pickHorizontalRefAxis` tests all three basis vectors against the rest
+     orientation once per clip and keeps whichever lands most horizontal,
+     instead of assuming any single axis is safe — this is exactly the kind
+     of "looks fine algebraically, wrong in practice" failure this file
+     keeps warning about; the fix came from dumping actual world-space bone
+     positions and comparing to a plain-forward-jog screenshot, not from
+     re-deriving the quaternion math.
+
+5. **Bind pose vs. frame 0 as the retarget reference — first correctly
+   diagnosed, then the FIX itself introduced a second bug, then the whole
+   approach was replaced with something more robust. Read this one in full
+   before touching `retargetMannyClip` again.**
+
+   **5a — the hunch, and a wrong first write-up.** After bugs 4A-4C were
+   fixed, single-frame scrubbed screenshots of several clips (idle, run,
+   side-shuffle, victory) still showed a pronounced forward torso/head hunch.
+   Per-bone deltas measured at the time were all individually "modest"
+   (single digits to ~40°), so this got written up — wrongly — as
+   probably-genuine captured motion (a combat crouch, a bow gesture), not a
+   bug. **The user caught this as "these animations looked busted"** by
+   watching continuous playback rather than a few scrubbed frames: the
+   ~80-90 degree hunch was present through the ENTIRE clip, on every clip
+   (idle included), not one moment — a systemic bias. Root cause: using each
+   bone's skeleton-authored BIND POSE as the delta reference, when this
+   source rig's bind pose does not represent the same neutral stance as the
+   Mixamo target's, so every clip inherited a large constant misalignment
+   that compounds down the 5-bone Spine→Spine1→Spine2→Neck→Head chain.
+
+   **5b — the first fix (clip's own frame 0 as reference) created a NEW,
+   worse bug: characters sank into the ground.** Switching the ROTATION
+   reference to frame 0 was correct and fixed the hunch. But the same edit
+   also switched the Hips POSITION height reference to frame 0 — and a
+   clip's frame 0 is often mid-stride, crouched, or otherwise not a
+   "standing tall" pose (confirmed: this run clip's frame-0 pelvis height is
+   ~13 units below its bind-pose height), so the whole character shifted
+   vertically by that clip-dependent constant. Confirmed by comparing
+   retargeted Hips local Y across clips right after the fix (idle 0.2, ready
+   0.42, run 3.28 — no real standing-height difference should produce a
+   swing that size). **Lesson: rotation reference and position reference are
+   two separate decisions — fixing one by changing "the reference" without
+   being explicit about which reference (rotation vs. position; clip-frame-0
+   vs. bind-pose) breaks the other.** Fix: position height reference reverted
+   to the skeleton's bind pose (a clip-independent constant); rotation
+   reference for Hips stayed frame 0 (already verified working for yaw).
+
+   **5c — even with 5a/5b both fixed, arms (and any low-motion bone) still
+   showed a literal T-pose.** This is NOT the same bug as 5a — confirmed by
+   screenshotting the character's raw, un-animated bind pose directly
+   (`mixer.stopAllAction()`): these Mixamo rigs are authored with arms in a
+   literal horizontal T-pose, not a relaxed A-pose. ANY delta-from-a-single-
+   reference method (frame 0 OR bind pose, raw quaternion OR the swing method
+   below) necessarily shows "the target's own reference pose" whenever the
+   source bone doesn't move relative to ITS reference — and idle/victory/
+   hit-react all keep the arms fairly still for stretches, revealing the
+   T-pose underneath while legs/hips/spine (which do move) animated fine.
+   **This is a real structural limit of delta-based retargeting, not a typo**
+   — the user chose, when asked, to go further than a quick patch here.
+
+   **5d — the actual fix: geometric "swing" transfer + a measured neutral
+   pose correction, replacing the raw-quaternion-delta approach entirely.**
+   Two independent problems, two independent fixes, now both live in
+   `retargetMannyClip`:
+   - **Axis-convention robustness**: instead of transferring a raw local
+     quaternion delta (which depends on each rig's arbitrary, disagreeing
+     local bone axes — the root cause of 5a), each mapped bone now measures
+     how far its TRUE immediate scene-graph child (see `SWING_CHILD_SOURCE`
+     — NOT `children[0]`, several bones have multiple children like twist/
+     corrective helpers or backpack straps, confirmed by dumping
+     `bone.children` for both rigs) has swung, as a plain rotation between
+     two direction vectors (`Quaternion.setFromUnitVectors`). This is
+     computed entirely from the SOURCE bone's own geometry and applied onto
+     the TARGET's rest quaternion; it never reads either rig's local axis
+     definitions, so axis-convention mismatches (and the compounding hunch
+     they caused) can't happen by construction. Reference reverted to the
+     skeleton's AUTHORED BIND POSE (not frame 0 — frame 0 was only ever a
+     workaround for the axis-mismatch problem this method fixes directly).
+     Bones with no clean single child (head, hands, toe bases — leaves or
+     many-children fan-outs) fall back to the old raw-quaternion-delta method;
+     their bind rotation magnitude is small enough that the axis-mismatch
+     risk is much lower there.
+   - **The T-pose-when-still problem (5c)**: swing transfer does NOT fix
+     this on its own (still reduces to "target's own rest" when source is
+     still) — needed a genuinely separate fix. `computeHangDownOffset`
+     measures, using the character's LIVE world matrices (not a guessed
+     constant), the rotation that would swing `LeftArm`/`RightArm`'s child
+     to point straight down in world space, and this correction is composed
+     onto the bind pose BEFORE the clip's own swing layers on top
+     (`NEUTRAL_OFFSET_BONES`). Computed fresh per character activation in
+     `captureTargetRestPose` (self-calibrating, not a hardcoded magic
+     quaternion that could drift if a character's rest pose differs
+     slightly) rather than authored by hand.
+
+   Reverified via actual multi-frame continuous-playback captures (not just
+   scrubbed screenshots — see 5a's lesson) across ALL 11 top-picks clips on
+   two different characters (ch12, ch05): idle/victory/hit-react no longer
+   show T-pose arms, run/backpedal/side-shuffle/pivot-spin/dive/jump-smash/
+   ready all look like plausible natural poses throughout, hands hang
+   naturally at rest. `serve` shows a pronounced backward lean/kick
+   consistently across BOTH characters and multiple points in the clip
+   (checked specifically because it looked extreme) — since it's consistent
+   across characters, not inverted/sunk/T-posed, and this specific clip
+   (`Primary_Swing1_Medium`, a melee hero's attack from a MOBA-style game) is
+   plausibly just a theatrical windup, this was left as "the user should
+   judge the actual motion," not chased further as a suspected bug — don't
+   assume it's fixed either though; if it still looks wrong, look at
+   `upperarm_l`/`thigh_l` swing specifically for that one clip.
+
+   **Lessons for next time, all earned the hard way in this session:**
+   watching a single scrubbed frame is not enough — sample several frames of
+   ACTUAL uninterrupted playback before concluding a retarget is fine; a
+   "fix" for one symptom can silently break something adjacent if you're not
+   explicit about exactly which reference (rotation vs. position; this
+   clip's frame 0 vs. this skeleton's bind pose) you're changing; and
+   "individually modest per-bone numbers" is not proof of no bug when the
+   rendered character still looks wrong — always trust the render over the
+   arithmetic.
+
+6. **The geometric SWING approach (item 4 above) was ALSO wrong, and item 5's
+   "serve's backward lean is probably genuine content" conclusion was a
+   symptom of it, not a real finding — superseded by a full world-space FK
+   rewrite.** The user reported, of the retargeted characters: "upper body
+   facing forward, arms distorted, and legs running to the side... like the
+   skeleton is facing sideways in the body." Diagnosis: swing was computed
+   in the SOURCE bone's own local/parent-relative frame (via
+   `child.position.applyQuaternion(sourceBoneQuat)`) and then composed
+   DIRECTLY onto the TARGET bone's own, different, local/parent-relative
+   frame (`swing.multiply(effectiveTargetRest)`) — valid only if the two
+   rigs' local axis conventions happen to agree at that joint, which is
+   exactly the disease this whole retarget has been chasing since bug 1.
+   Small bind-pose rotations (spine, post-T-pose-fix) mostly hid it; large/
+   divergent ones (thigh) exposed it as a full wrong-plane mismatch between
+   torso and legs. The ONE thing that had been robust the entire time —
+   Hips's yaw — worked precisely because it was computed in genuine WORLD
+   space (a shared external reference), never either rig's local axes.
+   **Fix: generalize that principle to every bone.** New architecture,
+   entirely replacing item 4's SWING_CHILD_SOURCE/per-bone branching:
+   - `computeSourceWorldQuatsPerFrame` clones the raw source FBX and, for
+     every keyframe, applies ALL of the clip's quaternion tracks to the
+     clone (not just mapped bones — a wanted bone's world orientation
+     depends on its WHOLE ancestor chain being correctly posed, including
+     unmapped bones like spine_04/05) then reads each wanted bone's
+     `getWorldQuaternion()` — i.e. leans on three.js's own proven FK/
+     matrixWorld math instead of hand-deriving chain composition.
+   - Target's rest world quats come the same way, directly from the live
+     character's bones (`captureTargetRestPose`, extended).
+   - Per bone: `newWorld = effectiveTargetRestWorld * (sourceRestWorld^-1 *
+     sourceCurrentWorld)` — the SAME "delta from rest" shape as the very
+     first (broken) attempt in bug 1, but this time entirely in world space,
+     so it can't inherit bug 1's or item 4's axis-mismatch failure mode.
+     Converted back to the LOCAL rotation an AnimationClip track needs by
+     dividing out that bone's PARENT's world orientation for the SAME frame
+     (`TARGET_PARENT`) — parents are retargeted before children
+     (MANNY_BONE_MAP's order already respects this), so "parent's world
+     orientation" means its own just-computed retargeted value, not rest.
+   - `NEUTRAL_OFFSET_BONES`'s T-pose correction (bug 5c) still applies,
+     recomputed directly in world space (`computeHangDownOffsetWorld`).
+
+   **Two more bugs surfaced building this, both found by how catastrophically
+   wrong the render looked, not by re-reading the math:**
+   - **6a — forgot the Z-up→Y-up correction on the source clone.** First
+     version of `computeSourceWorldQuatsPerFrame` cloned the raw FBX with NO
+     rotation applied, so its "world" quaternions were computed in the
+     source's native Z-up frame while the target character's world
+     quaternions are Y-up (this scene's normal convention) — mixing a Z-up
+     "world" with a Y-up "world" is exactly the same disease as item 4's bug,
+     just moved one level up. Symptom: the character collapsed into an
+     unrecognizable blob (hair-colored mass with a hand and foot poking out
+     at random angles) — a much more total failure than a wrong-angle joint,
+     which is the tell for "these aren't even the same coordinate frame," not
+     a calibration error. Fix: apply the same `-90° about X` correction used
+     in `activateSkeletonClip` to the clone before measuring anything.
+   - **6b — conflated Hips's LOCAL quaternion with its WORLD quaternion when
+     using it as the parent reference for Spine/LeftUpLeg/RightUpLeg.** Fixing
+     6a alone did NOT fix the blob. Hips's AnimationClip track stores its
+     LOCAL rotation relative to its PARENT NODE — and these Blender-exported
+     characters wrap every bone in an "Armature" node with its own fixed
+     rotation (the "+90-about-X wrapper" from bug 3/CONTEXT.md history) — so
+     Hips's local value is NOT its world value, and Spine/UpLeg (Hips's
+     children in `TARGET_PARENT`) need the TRUE world one to divide out
+     correctly. Fix: `captureTargetRestPose` now also captures
+     `hipsParentWorldQuat` (Hips's bone-parent's world rotation, a constant),
+     and Hips's per-frame world quat is built as
+     `hipsParentWorldQuat * hipsLocalQuat(t)`, not the local value alone.
+     Fixing both 6a and 6b together resolved the blob into a correctly
+     proportioned, upright, naturally-posed character.
+
+   Reverified via actual continuous-playback screenshots (not just a single
+   scrubbed frame — see item 5's lesson) across all 11 clips on ch12, plus a
+   spot check on ch05: idle/run/backpedal/side-shuffle/pivot-spin/serve/
+   jump-smash/dive/hit-react/victory/ready all show natural, correctly-facing
+   poses, torso and legs finally agreeing on which way the body faces. Also
+   reverified the full 12-character × 11-clip matrix loads with zero console
+   errors. **"grounded" in that sentence was WRONG — see item 7 immediately
+   below, found by the user, not by this round of screenshots**, which again
+   looked fine because the sinking was large but visually easy to misjudge as
+   "the character is just standing a bit further back/small in frame" rather
+   than "half the body is below the floor" without a numeric check.
+
+7. **Every character's Hips sank to floor level for EVERY clip — caught by
+   the user ("still in the ground... half their body is in the ground"),
+   not by this tool's own screenshot review, which had just (wrongly, see
+   item 6's correction above) called this "grounded."** Root cause, found by
+   numerically nudging a live character's `Hips.position` axis-by-axis and
+   watching which one actually moved world-space height (`+Z 10` moved world
+   Y by a full unit; `+Y 10` moved it by nothing) rather than assuming: for
+   these Blender-exported GLB characters, Hips's LOCAL **Z** is the true
+   vertical axis (world Y ∝ −local Z), NOT local Y, despite Y being "up" in
+   this tool's three.js scene. Two compounding bugs followed directly from
+   assuming the old Y-up convention (correct for the OTHER clip path in this
+   tool, `activateFbxClip`'s raw unwrapped FBX clips, but not for this one):
+   - `retargetMannyClip`'s own Hips block added the source hip-bounce delta
+     to local Y (does nothing for height on this rig) instead of local Z.
+   - `activateMannyClip` then called `freezeRootHorizontalMotion` — written
+     for the OLD raw-FBX path where X/Z really are horizontal — which zeros
+     local X/Z. On this rig that zeros the VERTICAL axis outright, snapping
+     Hips to exactly floor level (`world Y = 0`, confirmed by direct
+     measurement, not approximately low — exactly zero, every character,
+     every clip, the whole time).
+   Fix: removed the `freezeRootHorizontalMotion` call from `activateMannyClip`
+   entirely (retargetMannyClip's own Hips block already freezes the correct
+   X/Y horizontal axes by construction); moved the vertical delta onto local
+   Z with the correct sign (`targetHipsPos.z - verticalDelta` — the world-Y-
+   vs-local-Z relationship is negative, confirmed empirically, not assumed).
+   Reverified NUMERICALLY this time, not just by eye: sampled
+   `Box3.setFromObject(character).min.y` at 10 points through the `run` clip
+   before (consistently ≈ −0.75 to −0.8, on a ~1.9-unit-tall character — very
+   close to "half the body") and after (consistently within ≈ ±0.06 of the
+   floor, matching normal foot-ground contact) the fix, across the full
+   12-character × 11-clip matrix (only `dive` dips further, to about −0.4,
+   which is a real tumbling roll bringing the body low, not a bug — confirmed
+   by screenshot, a believable mid-roll pose, and it's the ONE clip where
+   that's expected). **Lesson, on top of item 6's: when the user reports a
+   problem this tool's own screenshots didn't catch, don't re-verify with
+   MORE screenshots — measure the actual number (bounding box, bone world
+   position) directly.** Eyeballing a render is exactly the failure mode that
+   let this ship as "grounded" in the first place.
+
+8. **The "creepy horror film" bug — item 4/6's "world-space FK" fix turned
+   out to have items 1/3's exact disease, just hidden one level deeper.**
+   Reported directly by the user on `ch01`/AJ, `Run (Fwd Jog)`: the raw
+   skeleton preview of this clip looked perfect (correct running motion,
+   knees/elbows swinging naturally) while the SAME clip retargeted onto the
+   character mesh looked grotesque — a splayed hand reaching toward the
+   ground, contorted limbs. Since both preview modes play the identical
+   source clip, and only one path (retargeting) sits between them, this
+   proved conclusively the retarget math was still broken, not the mocap.
+   Root cause: `newWorld = targetRestWorld * (sourceRestWorld⁻¹ *
+   sourceCurrentWorld)` LOOKS axis-convention-independent because every
+   quaternion fed into it is a genuine world quaternion (via real FK/
+   `matrixWorld`, not hand-derived), but the formula itself still computes
+   `sourceRestWorld⁻¹ * sourceCurrentWorld` — a rotation expressed IN the
+   source bone's own rest-orientation frame — then reapplies that SAME
+   numeric value as if it meant the same thing in the TARGET bone's own
+   rest-orientation frame. That's only valid if the two rigs agree on what
+   "my local axes" mean at rest, which UE Manny and this Mixamo rig do not.
+   Confirmed two ways, both numeric, neither "eyeballed":
+   - Per-bone delta magnitude (`sourceRestInv * sourceCurrent`, converted to
+     an angle) for a plain jog cycle never dropped below ~20–40° for
+     spine/shoulders across the ENTIRE clip, and legs/hands ranged as high
+     as ~120° — far too large and too sustained for a jog, the tell that the
+     REFERENCE itself (not the motion) was the problem.
+   - Sampling limb-segment direction vectors (parent-bone-to-child-bone,
+     world space) from the retargeted character AND the raw-skeleton ground
+     truth at the same 10 clip-time fractions and measuring the angle
+     between them: it swung incoherently frame-to-frame (0.9° at one sample,
+     over 100° two samples later, no fixed relationship) — i.e. the limb was
+     visibly swinging in the WRONG PLANE, not just offset by some constant
+     misalignment. A 300-sample fine-grained scrub of one bone's local
+     quaternion confirmed zero discontinuities across the whole clip
+     (max per-step change ~0.006° at that sampling density), ruling out a
+     quaternion-interpolation/sign-flip artifact as an alternative
+     explanation — the wrong-plane motion is perfectly smooth, meaning every
+     individual retargeted keyframe's pose is actually wrong, not a
+     playback/interpolation glitch.
+
+   Fix: for bones with a clean single "next" bone in their own chain (spine,
+   shoulders, arms, legs, feet — see `SWING_SOURCE_CHILD`/
+   `SWING_TARGET_CHILD` in `main.js`), stop transferring a body-frame
+   rotation delta and transfer a world-space AIM/SWING instead:
+   `sourceAimRest = normalize(sourceChildRestWorldPos - sourceRestWorldPos)`,
+   `sourceAimCurrent(t) = normalize(sourceChildWorldPos(t) -
+   sourceWorldPos(t))`, `swingQ(t) = Quaternion.setFromUnitVectors(
+   sourceAimRest, sourceAimCurrent(t))`, then `newWorldQ = swingQ(t) *
+   effectiveTargetRestWorld` — a genuine world-frame (extrinsic) rotation,
+   composed the same way (pre-multiplied onto the target's rest) as the
+   Hips-yaw fix that's been robust since the very first session. This never
+   reads either rig's local bone axes, so it can't reproduce this bug (or
+   items 1/3's) by construction. The one thing it deliberately gives up is
+   TWIST around the aim axis (forearm pronation, thigh rotation) — a real,
+   bounded limitation, not an oversight, and far less damaging than a wrong
+   swing PLANE. `computeSourceWorldQuatsPerFrame` was extended (and renamed
+   `computeSourceWorldFrames`) to also return world POSITIONS, not just
+   quaternions, for both the mapped bones and their designated swing-child
+   bones (some of which, like `spine_04`/`neck_02`, aren't independently
+   retargeted bones at all — they parent-hop past MANNY_BONE_MAP's coarser
+   spine subdivision and exist here only so `spine_03`'s own true swing can
+   be measured against its own real child, confirmed via a live hierarchy
+   dump: `clavicle_l`/`clavicle_r`/`neck_01` all actually branch off
+   `spine_05`, two vertebrae past where `MANNY_BONE_MAP` stops mapping the
+   spine chain). Bones with no clean single next-bone (Head, LeftHand/
+   RightHand, LeftToeBase/RightToeBase — true leaves, or ones fanning into
+   many finger/corrective children) keep the old quaternion-delta method;
+   their bind-pose rotation magnitude and visual footprint are both small
+   enough that the same axis-mismatch risk matters much less there.
+
+   **Reverified numerically, not by eye**: resampled the same limb-direction-
+   vector comparison after the fix — the angle between retargeted-character
+   and raw-skeleton-ground-truth direction vectors is now a small, CONSTANT
+   offset per bone across all 10 sampled clip-time fractions (essentially
+   zero standard deviation): legs ~2–3°, spine ~5–10°, upper/lower arm
+   ~35–62° (arms carry a larger but STABLE bias, from the NEUTRAL_OFFSET
+   "T-pose→hang-down" correction not exactly matching the source's own rest
+   arm angle — a real, minor, and now-understood limitation, not the
+   catastrophic incoherent-per-frame failure this fix targets). Re-verified
+   grounding didn't regress (`Box3.min.y` within ±0.09 across the clip,
+   consistent with item 7's fix). Screenshotted continuous playback across
+   the full `run` clip on `ch01` — natural, coherent running poses
+   throughout, no distortion — and spot-checked `ch05`/`run`,
+   `ch01`/`idle`, `ch01`/`serve` for regressions; all correct. **Not yet
+   re-verified across the full 12-character × 11-clip matrix** — this was
+   scoped, per explicit user instruction, to `ch01`/`Run` only for this
+   session; don't assume every other clip/character combination is fixed
+   without re-running the same measurement.
+
+   Left in `main.js` for next time: `window.__RETARGET_DEBUG = true` before
+   loading a clip populates `window.__lastRetargetDebug` with full per-bone,
+   per-frame intermediate values (rest/current world quats, which method was
+   used, the resulting local quat) for exactly this kind of numeric
+   diagnosis; `activateSkeletonClip` also now exposes
+   `window.__skeletonPreview = { root, mixer, action, clip }` so the raw
+   ground-truth rig's bones can be scrubbed and measured the same way the
+   retargeted character's can via `window.__poc`.
+
+9. **Immediately after item 8 shipped, the user caught a second, distinct bug
+   by eye: retargeted arms "run like a fairy" — held out stiffly, not
+   swinging/bending like the raw-skeleton ground truth, on `ch01`/AJ/Run.**
+   This was NOT a regression of item 8's fix (legs/spine/shoulders were
+   correct) -- it was a second, narrower failure mode of the SAME swing
+   method, specific to the forearm. Numeric measurement (limb-segment aim
+   direction sampled at 10 points through the clip, this time reading the
+   raw x/y/z components, not just the angle-to-ground-truth summary that
+   item 8 used -- that summary metric turns out to be mathematically
+   incapable of catching this class of bug, see below) showed the retargeted
+   **forearm** stuck within a few percent of literal-T-pose-horizontal
+   (`~[0.9-0.99, small, small]`) for the ENTIRE clip while the source
+   forearm swept through a wide, clearly time-varying range. The **upper
+   arm** was fine (already had `NEUTRAL_OFFSET_BONES`'s hang-down rest
+   correction). Root cause: the swing method computes `newWorldQ = swingQ(t)
+   * effectiveTargetRestWorld`, which applies the SAME world rotation to
+   whatever direction the target's rest baseline points. A raw T-pose
+   forearm points almost exactly along its own natural swing axis
+   (mediolateral/left-right) -- and a running arm's elbow segment swings by
+   rotating roughly ABOUT that same axis -- so rotating a vector around an
+   axis nearly parallel to itself does almost nothing (a textbook degenerate
+   case). The forearm had no hang-down correction (`NEUTRAL_OFFSET_BONES`
+   only listed `LeftArm`/`RightArm`), so its baseline stayed at the
+   degenerate literal-T-pose direction. Fix: added `LeftForeArm`/
+   `RightForeArm` to `NEUTRAL_OFFSET_BONES`, giving the forearm the same
+   kind of hang-down rest correction as the upper arm -- moving its baseline
+   away from the degenerate direction fixes the swing transfer for the same
+   reason it already worked for legs (whose T-pose rest, pointing straight
+   down, was never parallel to the hip's own swing axis in the first place,
+   hence needing no correction at all). **A blind alley worth recording**:
+   the first hypothesis was backwards -- that the hang-down correction
+   itself was CAUSING the stiffness by conflicting with the swing method, so
+   it was removed for all swing bones as an experiment. That measurably made
+   the upper-arm mismatch WORSE (54.8° vs. 35.2° constant offset against
+   ground truth), disproving the theory before it reached any screenshot;
+   reverted immediately. **Also worth recording**: item 8's own verification
+   metric (angle between the retargeted and ground-truth direction vectors)
+   is mathematically PROVEN to always come out perfectly constant across
+   time for the swing method, by construction -- rotating two vectors by the
+   identical rotation preserves the angle between them, and swing applies
+   the exact same `swingQ(t)` to both the target's and (implicitly) the
+   source's baseline. A constant, small angle (as item 8 measured for arms:
+   35.2°/62.1°, std ≈ 0) is consistent with EITHER a working transfer with a
+   modest rest-pose mismatch, OR a completely frozen limb whose fixed
+   "resting" gap to a moving ground truth just happens to look small on
+   average -- the metric cannot tell these apart. **The lesson: for the
+   swing method specifically, always additionally inspect the RAW per-frame
+   vector components (does the retargeted limb's direction actually change
+   over time at all?), not just the summary angle-to-ground-truth** -- this
+   is what actually caught the fairy-arm bug once the user flagged it by
+   eye, and item 8's own verification pass should have run this check
+   proactively rather than treating a low, constant summary angle as
+   sufficient proof. Re-verified: forearm direction now visibly time-varying
+   across the clip (no longer pinned near one value), continuous-playback
+   screenshots across the full `run` cycle on `ch01` show a natural bent-arm
+   running pump throughout, and `ch05`/run, `ch01`/idle, `ch01`/serve,
+   `ch01`/victory were all re-checked for regressions (arms hang/bend
+   naturally, no reversion to T-pose).
+
+10. **Immediately after item 9, the user reported a THIRD distinct problem by
+   eye, with screenshots of `ch02` (blonde bun, orange sweater) on Idle and
+   Ready Stance**: Idle showed a bizarre one-foot-forward stagger with an
+   arm reaching back and fingers splayed; Ready Stance showed the torso
+   folded forward far more extremely than a reasonable ready crouch. Same
+   root disease as item 9, one bone further out the chain: `LeftHand`/
+   `RightHand` were still on the OLD quaternion-delta fallback (no clean
+   "next" bone was wired up for them), and both `Idle` and especially
+   `Ready Stance` turned out to be near-static HELD poses (`Ready Stance`'s
+   clip duration is a mere 0.067s -- 2 keyframes, not a dynamic motion at
+   all), which is exactly the condition (item 5c) under which the delta
+   method reverts to showing the target's own literal rest pose --
+   producing a flat, T-pose-ish splayed hand. Fix: extended the swing method
+   to hands too, using each rig's middle-finger metacarpal
+   (`middle_metacarpal_l`/`_r` on the source, confirmed a real child of
+   `hand_l`/`hand_r`; `LeftHandMiddle1`/`RightHandMiddle1` on the target,
+   confirmed a real child of `LeftHand`/`RightHand`) purely as an aim
+   reference -- see the `hand_l`/`hand_r` and `LeftHand`/`RightHand` entries
+   added to `SWING_SOURCE_CHILD`/`SWING_TARGET_CHILD`. Also added
+   `LeftHand`/`RightHand` to `NEUTRAL_OFFSET_BONES`, for the identical
+   degenerate-axis reason item 9 added the forearms (a raw T-pose hand also
+   points along the arm's own horizontal line). **Also directly disproved,
+   in the same investigation, the earlier (already-flagged-as-unverified)
+   "READ THIS FIRST" theory that `ch06`/`ch08`'s extreme Ready-Stance poses
+   were probably genuine source content, not a bug** -- `ch01` numerically
+   confirmed the retargeted spine bend was actually reasonably close to (if
+   anything, slightly LESS than) the raw skeleton's own bend at the one real
+   keyframe, so that specific "content, not code" conclusion may still be
+   right for the SPINE, but the earlier investigation never isolated hands
+   as a separate variable, and the visual "wrongness" people were reacting
+   to was dominated by the hand/finger bug fixed here, not the torso angle.
+   If `ch06`/`ch08`'s Ready Stance still look bad after this fix, revisit
+   whether it's a genuine content/casting problem for that specific source
+   clip (see the "READ THIS FIRST" section's original suggestion to swap
+   which file `TOP_PICKS.ready` points to). Reverified: fresh `ch02`
+   screenshots for Idle (relaxed natural stance, no stagger, relaxed hand)
+   and Ready Stance (a plausible aggressive athletic crouch, no longer a
+   grotesque fold) after the fix; `ch02` Run/Serve/Victory and `ch01`
+   Run/Idle re-checked for regressions, all still correct; grounding
+   re-sampled across the `ch01` run clip, unaffected.
+
+11. **The actual root cause underlying items 9 and 10's symptoms, found only
+   after the user demanded an actual side-by-side skeleton/character visual
+   comparison instead of another round of "looks fixed to me."** Items 9 and
+   10 each patched a SYMPTOM (forearm frozen, hand flat) by adding more
+   bones to `NEUTRAL_OFFSET_BONES`, but the CH02 Idle screenshots the user
+   posted afterward still showed a stagger/reaching-arm look. Built the
+   debug visualization requested since the very first session (better late
+   than never) -- `window.skeletonOverlayEl`/`skeletonOverlayHelper` in
+   `main.js`, a `THREE.SkeletonHelper` drawn directly on the ACTIVE
+   character, toggled via the new "Show Skeleton Overlay" button -- then
+   used it (mesh hidden, camera framed on the character's own Neck/Hips
+   bones so the crop isn't a guess) to directly compare the retargeted
+   skeleton against the raw-skeleton preview at the exact same pinned frame
+   (`action.paused = true; action.time = 0`, not just a `waitForTimeout`
+   after clicking -- an earlier attempt at this comparison was accidentally
+   comparing two DIFFERENT moments because playback kept advancing during
+   the screenshot wait).
+   
+   What direct visual comparison showed, unambiguously: on `ch02` Idle, the
+   raw skeleton's arm hangs with **increasing** lateral distance from the
+   spine going shoulder -> elbow -> hand (a normal relaxed arm-at-side
+   shape); the retargeted character's arm did the opposite -- lateral
+   distance *decreased* shoulder -> elbow -> hand, curling the hand in
+   toward the belly/centerline instead of hanging beside the thigh. Root
+   cause: `newWorldQ = swingQ(t) * effectiveTargetRestWorld` (where
+   `effectiveTargetRestWorld = neutralOffset * targetRestW`, i.e. the
+   NEUTRAL_OFFSET-corrected hang-down baseline) applies `swingQ(t)` --
+   which was MEASURED as a delta from the source's own LITERAL rest aim --
+   onto a baseline that is NOT the target's literal rest, but an already-
+   different (hang-down) one. That's only harmless when `swingQ(t)` is near
+   identity (source barely moving, which is why items 9/10's fixes still
+   looked fine on Run's dynamic motion and even improved Idle's forearm/hand
+   somewhat) -- for a genuine, non-trivial swing, replaying a rotation
+   derived from one reference frame onto a materially different one doesn't
+   produce an equivalent result, and the error COMPOUNDS down the chain
+   (upper arm picks up a bias, forearm inherits it and adds its own).
+   Fix: apply the swing against the bone's LITERAL rest -- the same
+   reference it was measured from -- and apply `neutralOffset` as a
+   separate GLOBAL realignment of the finished result instead:
+   `neutralOffset * (swingQ(t) * targetRestW)`, i.e.
+   `newWorldQ.copy(swingQ).multiply(targetRestW);
+   if (neutralOffset) newWorldQ.premultiply(neutralOffset);`. When
+   `swingQ(t)` is identity this reduces to exactly the old
+   `effectiveTargetRestWorld` -- the original T-pose-when-still fix (item
+   5c) this correction exists for is completely unaffected; only genuine,
+   sizeable swings change, and only for the better. (The quaternion-delta
+   FALLBACK method, used for leaves, already had this composition order
+   right by simple associativity -- `effectiveTargetRestWorld * deltaQ =
+   neutralOffset * (targetRestW * deltaQ)` -- which is why leaves never
+   showed this particular symptom; only the swing method had it backwards.)
+
+   **Lesson, on top of every prior one in this file**: a numeric summary
+   metric (item 8's angle-to-ground-truth, item 9's aim-direction sampling)
+   can be blind to an entire CLASS of bug if the bug's symptom doesn't
+   happen to be the thing that metric measures. This one was only found by
+   literally looking at both skeletons, at the same frame, side by side --
+   exactly what the user asked for, twice, before finally being built. If
+   another retargeting complaint comes in, reach for
+   `window.skeletonOverlayHelper` (toggle via the UI button or
+   `skeletonOverlayVisible`/`click()` on `#skeletonOverlay`) and the raw
+   `sk-*` preview FIRST, at a frame pinned with `action.paused = true`, not
+   another round of aggregate statistics.
+
+   Reverified: `ch02` Idle now shows the hand hanging naturally beside the
+   body (confirmed both visually, mesh-hidden skeleton-only front/side
+   views, and numerically -- lateral+depth distance from the spine axis now
+   increases shoulder(0.15)->upperarm(0.26)->elbow(0.21)->hand(0.26),
+   matching the raw skeleton's own monotonic-outward shape reasonably well,
+   not the inverted 0.26->0.21->0.10 curl from before). Re-screenshotted
+   `ch01` and `ch02` across Idle/Ready Stance/Run/Serve/Victory/Hit React --
+   all show natural, undistorted poses. Grounding re-sampled across `ch02`
+   Run, unaffected (within the established normal foot-contact range).
+
+12. **Built the live, synced "raw skeleton beside character" comparison
+   tool the user asked for after item 11 ("we need the models to move as
+   the skeletons move").** A "Show Raw Skeleton Beside (synced)" button
+   (`rawSkeletonBesideEl` in `main.js`) clones the currently-playing top-
+   pick clip's raw FBX, scales it to roughly the active character's height
+   (purely for legibility, no bearing on correctness), places it 1.2 world
+   units to the side, and locks its `AnimationAction.time` to the
+   character's own `currentAction.time` every frame in `animate()` --
+   because the retargeted clip's tracks reuse the source clip's own
+   keyframe `times` verbatim, the same time value lands on the same point
+   in both animations, so this is exact, not approximate, sync. Exposed as
+   `window.__comparisonSkeleton` for the same ad-hoc-inspection reasons as
+   `window.__poc`/`window.__skeletonPreview`.
+   
+   **Immediately caught an important methodological trap while verifying
+   this**: a first side-by-side screenshot (both skeletons visible, default-
+   ish 3/4 camera angle) made the retargeted character's `run` pose look
+   dramatically LESS dynamic than the source at the exact same synced time
+   -- legs looking nearly together/standing versus the source's clear high-
+   knee stride. This looked like a serious new bug. Direct numeric
+   verification (bone world positions read at that exact moment, both
+   skeletons, both confirmed at identical `action.time`) showed the leg
+   segment directions actually matched closely (same shape as item 8's
+   original measurement). Re-shot from a genuine PURE SIDE view (camera
+   along the character's own lateral axis, tightly framed on bone bounds)
+   instead of an arbitrary 3/4 angle, and the two poses turned out to match
+   well -- forward torso lean, one leg extended back, one bent forward, one
+   arm reaching down, on both. **The original "mismatch" was an artifact of
+   an ambiguous camera angle applied to two skeletons of different scale
+   sitting next to each other, not a retargeting bug.** Lesson for next
+   time (a new twist on the running "don't trust a render, verify"
+   warning): when comparing two skeletons side by side, an arbitrary or
+   default camera angle can misrepresent a CORRECT match as badly as it can
+   hide a real bug -- prefer a straight-on side view (clearest read on
+   sagittal-plane running/swinging motion) and/or the bone-position numbers
+   over a single 3/4-angle screenshot before concluding either way.
+
+   Separately, confirmed (numerically, across `ch02`/`run`, 10 sampled
+   fractions) two REAL, but stable/minor discrepancies worth being upfront
+   about, neither a new bug: legs track the source within ~2-6° at every
+   single sampled fraction (excellent); the spine leans forward ~13-14°
+   LESS than the source, consistently (a stable bias, same general class as
+   the already-documented arm biases in items 8-11, not investigated
+   further this session). Hip yaw dynamics were checked with a flawed proxy
+   metric (thigh-position cross product, which conflates leg swing with
+   actual pelvis rotation) and shouldn't be trusted from this session's
+   numbers -- the Hips bone's own local quaternion DOES vary meaningfully
+   across the clip (confirmed directly), so "hips look frozen" was likely
+   also a measurement artifact, not re-verified properly.
+
+13. **The user directly compared the two skeletons on Run using item 12's
+   new live tool and pointed at the arms: the raw skeleton swings a full
+   reach out to the side, the retargeted character stays tucked in close
+   to the body.** Confirmed immediately and severely with the same
+   lateral-distance-from-hip measurement used in item 11, sampled at 30
+   points through the whole `run` cycle: the character's hand reached only
+   ~10-50% of the raw skeleton's proportional lateral distance, EVERY
+   frame, both arms, not just an isolated pose.
+   
+   First hypothesis (composition order, `swingQ * effectiveTargetRestWorld`
+   vs. `neutralOffset * (swingQ * targetRestW)`) was tested by reverting to
+   the former -- it did NOT fix the problem, and on the left arm made the
+   ratio measurably WORSE. This ruled out composition order as the cause
+   and forced a look at the actual measured swing MAGNITUDE, not just how
+   it's applied. Dumped `sourceAimRest` (the source bone's own literal
+   rest-pose aim direction) for `LeftArm` directly: `(0.576, -0.817, 0.023)`
+   -- i.e. already ~35° off vertical, NOT a horizontal T-pose and NOT fully
+   hanging straight down either. **The source rig's own upper-arm rest is a
+   relaxed, partially-lowered A-pose, roughly 35° out from the body.**
+   `computeHangDownOffsetWorld`'s correction, though, forces the TARGET's
+   baseline all the way to dead vertical (`(0, -1, 0)`, confirmed) --
+   overshooting past where the source itself actually sits at rest. Since
+   the swing is a WORLD rotation applied on top of whatever baseline you
+   give it, starting the target ~35° closer to the body than the source's
+   own equivalent starting point means the target lands ~35° closer to the
+   body at every frame too, regardless of composition order -- a genuine
+   baseline MISMATCH, not a formula bug.
+
+   Real fix: removed `LeftArm`/`RightArm` from `NEUTRAL_OFFSET_BONES`
+   entirely (kept it for `LeftForeArm`/`RightForeArm`/`LeftHand`/
+   `RightHand`, which have a DIFFERENT, genuine reason to need it -- see
+   item 9's degenerate-swing-axis explanation, unrelated to this baseline-
+   mismatch issue). The upper arm never actually needed the correction:
+   item 8's very first swing-method measurement already showed `LeftArm`
+   swinging a modest, non-frozen 22-39° range with NO correction applied at
+   all -- the degenerate-freeze symptom item 9 fixed was specific to the
+   forearm's OWN rest-aim happening to align with its natural swing axis,
+   never diagnosed (or true) for the upper arm. Adding the correction to
+   `LeftArm`/`RightArm` back in the very first version of this whole swing
+   rewrite was over-application by analogy ("arms are T-pose-y, so correct
+   all arm-related bones") rather than a measured need.
+
+   **Reverified, numerically**: re-ran the same 30-point lateral-distance
+   scan on `ch01`/`run` after removing the upper-arm correction -- left arm
+   ratio improved from single digits (~4-15%) to ~37-55%, right arm from
+   ~27-45% to ~70-95% (near-matching). Visually re-confirmed `ch02` Idle
+   still hangs naturally (no T-pose reversion, no reintroduced curling --
+   the source's own ~35°-out rest pose is itself already a reasonable
+   "arms slightly away from the body" idle stance, so the LITERAL rest
+   baseline now used for the upper arm reproduces something natural on its
+   own, without needing an artificial correction). Full regression pass
+   (`ch01`/`ch02` × Idle/Ready Stance/Run/Serve/Victory/Hit React) all show
+   natural, undistorted poses with visibly better arm extension on Run and
+   Serve specifically.
+
+   **Left arm's remaining ~40-60% gap is not fully closed** -- likely the
+   SAME class of baseline mismatch, now on the FOREARM (which still forces
+   a hard "point straight down" correction rather than matching whatever
+   angle-off-vertical the source's own forearm rest actually sits at). If
+   revisited: measure the source forearm's own rest angle-from-vertical
+   (the same way this item measured the upper arm's) and consider
+   calibrating `computeHangDownOffsetWorld`'s target to that angle instead
+   of a hardcoded straight-down, for the bones that still need any
+   correction at all. Left deliberately unfixed this session to avoid
+   another round of unverified speculative changes -- re-measure before
+   touching it.
+
+14. **Immediately after item 13, the user reported the fix insufficient:
+   "still broke... arms and elbows look backwards," and directly asked
+   whether there's any way to validate this at all.** Ran a follow-up
+   measurement pass rather than another screenshot-only check:
+   - **Elbow bend AMPLITUDE** (`LeftArm`/`LeftForeArm`, `ch01`/`run`, 20
+     sampled frames): angle between the upper-arm and forearm direction
+     vectors. Target consistently ~85-108° (a mild, right-angle-ish bend).
+     Source consistently much tighter, ~28-52° (a sharply folded elbow).
+     This is the SAME class of bug item 13 fixed for the upper arm
+     (`computeHangDownOffsetWorld` forcing a baseline that doesn't match the
+     source rig's own actual rest angle) but `LeftForeArm`/`RightForeArm`
+     still carry that correction (kept deliberately in item 13, since the
+     forearm has a DIFFERENT, genuine reason to need some correction — the
+     degenerate-swing-axis problem from item 9). **Not yet measured**:
+     what the source's `lowerarm_l` rest angle-from-vertical actually is
+     (item 13's fix for the upper arm depended on measuring this number
+     first, not guessing) — do that before touching `NEUTRAL_OFFSET_BONES`
+     or `computeHangDownOffsetWorld` again for the forearm.
+   - **Elbow bend PLANE** (does the elbow fold the same rotational way as
+     the source, independent of how far): computed
+     `cross(shoulder→elbow, elbow→hand)` for both target and source at each
+     frame and took the dot product of the two (normalized) results --
+     `+1` would mean "folds exactly the same way," `-1` would mean a clean
+     180° mirror ("backwards" in the most literal sense). Actual result
+     across a full `run` cycle: wobbled between `-0.06` and `+0.47` -- weak
+     and inconsistent, never strongly positive, occasionally crossing to
+     slightly negative. **This is NOT a clean mirror-image bug** (that would
+     show consistently near `-1`), but it's also not remotely a confident
+     match -- consistent with an elbow that looks like it's folding in a
+     subtly-to-moderately wrong plane at various points in the stride,
+     which plausibly reads as "backwards" to a human eye without being a
+     single simple sign flip anywhere in the code.
+   - A tightly-cropped, camera-matched visual close-up of just the
+     shoulder-elbow-hand chain (both target and source, same synced frame,
+     mesh hidden, skeleton-only) was captured but was NOT conclusive either
+     way on quick inspection -- the crop framing differed enough between
+     the two (different bone-length scales) that a confident "yes this
+     looks backwards" or "no it doesn't" call couldn't be made from it.
+     If picking this up again, get BOTH skeletons into the exact same
+     camera frame with a shared, deliberately-chosen scale (not just
+     "fit bounds"), not two separately-framed screenshots.
+   
+   **Honest bottom line, stated directly to the user**: validation tools
+   exist and were used (this is not a "no way to validate" situation), and
+   they found real, quantified, disclosed signal -- but that signal did not
+   converge on a single fixable root cause within this session. Do not
+   read the amplitude and bend-plane measurements above as two independent
+   confirmed bugs to go fix separately without re-verifying each is real
+   and distinct; they were measured together and might share one cause.
+
+15. **Item 14's "elbows bend the wrong way" root-caused and fixed, via a
+   more rigorous version of the same visual check the user asked for.** The
+   user posted a screenshot of the character-plus-skeleton-overlay next to
+   the raw skeleton and asked directly "can you tell elbows bend the wrong
+   way?" That prompted redoing item 14's bend-plane measurement properly:
+   the ORIGINAL check compared bend axes in raw WORLD space, which is
+   invalid here because the target and source skeletons can have (and do
+   have) different, independently time-varying overall body yaw -- so a
+   world-space mismatch doesn't distinguish "the elbow itself bends wrong"
+   from "the two bodies just happen to be turned differently from each
+   other at this instant." Redone in a BODY-RELATIVE frame (bend axis
+   decomposed against each figure's own spine-up direction): still showed a
+   consistent, non-wobbly mismatch -- target's bend-plane component landed
+   at a near-constant 0.96-1.00 on EVERY sampled frame of a full `run`
+   cycle, while source's was consistently smaller and OPPOSITE in sign.
+   That ruled out "camera/measurement artifact" and confirmed a real, fixed
+   (not intermittent) bug.
+
+   Root cause, found by dumping the actual intermediate vectors rather than
+   further aggregate statistics: `LeftForeArm`'s world-space swing method
+   (used since item 8) only ever constrains the elbow's AIM direction
+   (elbow -> hand); it never constrains TWIST around that axis. Both the
+   `neutralOffset` correction (built from the TARGET's own geometry) and
+   `swingQ` (built from the SOURCE's) each independently pick their own
+   "shortest path" twist via `setFromUnitVectors`, and composing two
+   geometrically-arbitrary twists produces a bend plane that's an artifact
+   of that composition, not a reproduction of the source's actual elbow
+   articulation -- and because neither twist depends on the frame's actual
+   pose, the artifact is highly consistent (matching the near-constant
+   0.96-1.00 reading), not random.
+
+   First fix attempt: compute the elbow's bend RELATIVE TO THE UPPER ARM's
+   own current world rotation (undo the upper arm's rotation from the aim
+   vector, for both source and target, then replay the relative delta) --
+   conceptually sound (a genuinely local, twist-reduced quantity, still
+   computed from measured world vectors, not named local axes) but it
+   recreated the EXACT SAME degenerate-freeze bug one level deeper: the
+   target's parent-relative rest aim (whether computed from the hang-down
+   baseline OR the literal T-pose rest) landed almost perfectly parallel to
+   the relative swing's rotation axis, so the elbow barely moved either
+   way. Confirmed by direct measurement both times (frozen at `~(0,0,1)`
+   with the hang-down reference, frozen at `~(0,1,0)` with the literal
+   reference) before diagnosing why.
+
+   **The actual, deeper problem, found by dumping the raw rest-pose
+   vectors**: the SOURCE rig's own bind pose has the elbow ALREADY bent
+   ~129° away from straight (`sourceAimRestLocal` measured as
+   `(0.777, -0.629, 0)`) -- this Manny rig's rest pose is a relaxed,
+   already-bent stance, not a T-pose (consistent with item 13's finding
+   that its upper-arm rest is also ~35° off vertical, not horizontal). The
+   target's literal rest is a dead-straight `(0, 1, 0)` T-pose forearm --
+   129° apart from source's rest. Computing "how much has the elbow moved
+   FURTHER from its own already-bent rest" (a small, ~5-12° swing, since
+   the elbow doesn't flex much MORE during a jog beyond its resting bend)
+   and replaying that small delta onto a completely different (dead
+   straight) target baseline reproduces "dead straight plus a small
+   wobble" -- technically a correct delta, on two baselines too far apart
+   to reconcile from bind-pose data alone. Same disease as item 13's
+   amplitude bug, but here the baselines are so far apart (129° vs. 35°)
+   that no baseline correction fixes it -- there is no principled single
+   angle to rotate a straight T-pose toward to match a 129°-bent rest
+   without knowing which direction/plane that bend should be in, which the
+   bind pose alone doesn't tell you.
+
+   **Actual fix**: stop trying to preserve "delta from rest" for the elbow/
+   wrist entirely. Directly transplant the source's CURRENT elbow aim,
+   expressed relative to its own upper arm's current world rotation, onto
+   the target's own upper arm's ACTUAL current world rotation
+   (`parentFrames[i]`, already correctly retargeted) -- see the
+   `useParentRelative` branch in `retargetMannyClip`. This gives up
+   matching the target's own rest-pose bend angle exactly (there's no
+   principled way to reconcile a 129° rest mismatch from bind-pose data
+   alone) in exchange for directly reproducing the source's real elbow
+   configuration every single frame, which is what actually looks correct.
+   `NEUTRAL_OFFSET_BONES`/`computeHangDownOffsetWorld` are now COMPLETELY
+   UNUSED for `LeftForeArm`/`RightForeArm`/`LeftHand`/`RightHand` in
+   practice (the parent-relative path never reads `effectiveTargetRestWorld`
+   at all) -- they still exist and are still applied to nothing, since
+   removing the constant/map entries isn't necessary and the dead branch
+   costs nothing.
+
+   **Reverified, numerically and by construction**: after the fix, the
+   angle between the target's and source's parent-relative forearm
+   direction is exactly 0.0° at all 20 sampled frames of a `run` cycle --
+   expected, since it's now a direct transplant, but this confirms the
+   plumbing (which world quaternion is "current," which is "rest," the
+   re-attachment via `parentFrames[i]`) is wired correctly with no sign
+   errors or stale references. Full visual regression across `ch01`/`ch02`
+   × Idle/Ready Stance/Run/Serve/Victory/Hit React: every clip now shows a
+   clearly natural, correctly-bent elbow (visibly more so than any prior
+   session's screenshots) with no reintroduced T-pose stiffness on Idle
+   (removing the hang-down correction from this path turned out not to
+   matter -- the direct transplant already reproduces a natural relaxed
+   bend since it's copying the source's own genuinely-relaxed rest
+   configuration, frame by frame, rather than needing a separate
+   correction). Grounding re-sampled across `ch01` `run`, unaffected.
+
+   **What this does NOT claim to fix**: the twist/roll around the forearm's
+   own long axis is still not reproduced (never was, this whole method
+   family only ever controls aim) -- if a clip's forearm PRONATION
+   specifically looks wrong (not the bend angle/plane, but the hand's own
+   rotation independent of elbow bend), that is a separate, known,
+   undocumented-until-now gap, not covered by this fix.
+
+16. **Immediately after item 15 shipped, the user reported the elbow now
+   bends "90 degrees backwards, when they should be bent slightly forward."**
+   Item 15's fix was numerically self-consistent (target's parent-relative
+   forearm direction matched source's EXACTLY, confirmed) but that
+   consistency check was blind to a second, independent problem, found only
+   by taking the report seriously and measuring further rather than
+   defending the existing fix.
+
+   Root cause: item 15's "carry the elbow's relative configuration through
+   the upper arm's own current world rotation" step used each rig's REAL
+   upper-arm world quaternion for both the "undo" (source) and "redo"
+   (target) steps. But the upper-arm swing method (item 13, and every swing
+   bone in this file) only ever constrains AIM direction, never TWIST
+   (rotation around the bone's own long axis) -- so each rig's real
+   upper-arm quaternion carries its own independent, arbitrary "shortest
+   path" twist convention from `setFromUnitVectors`. Measured directly: the
+   quaternion difference between target's and source's upper arm, at
+   matching synced frames, was a 120-140° rotation, with 70-80% of that
+   rotation's axis aligned with the arm's own aim direction -- i.e.
+   overwhelmingly pure TWIST mismatch, not an aim disagreement (aim itself
+   was already confirmed tracking well). Carrying the elbow's relative
+   configuration through each rig's own twist-laden frame rotated the
+   elbow's bend PLANE by that same ~100+ degree mismatch, even though the
+   underlying delta transfer was mathematically correct -- explaining
+   exactly the reported symptom (a real bend, just rotated around the arm's
+   own axis into approximately the wrong orientation).
+
+   Fix: stop using either rig's REAL upper-arm world quaternion as the
+   carrier frame. Build a "canonical," twist-free reference quaternion for
+   each side instead (`buildAimQuaternion` in `main.js`), using ONLY the
+   upper arm's own (correctly-tracked) aim direction plus ONE shared,
+   externally-fixed up-hint (`TARGET_UP`, world +Y) -- i.e. construct an
+   orthonormal basis from the aim direction and the up-hint the SAME way
+   for both rigs, so neither rig's own internal twist convention is ever
+   consulted. Use these canonical quaternions (not `sourceParentFrames[i]`/
+   `parentFrames[i]`) for the undo/redo steps in the `useParentRelative`
+   branch.
+
+   **Reverified, numerically**: elbow bend ANGLE (angle between upper-arm
+   and forearm direction vectors) now matches the source EXACTLY at all 20
+   sampled frames of a `run` cycle (e.g. both read 45.9° at t=0, 28.2° at
+   the tightest-bend frame, 52.0° at the most-extended) -- and, as a
+   direct consequence of the elbow no longer distorting the arm's overall
+   shape, the upper-arm lateral-reach measurement (item 13's original
+   metric) also improved further, from item 13's ~0.70-0.95 ratio to a
+   near-perfect ~0.89-1.03 across the whole cycle. Full visual regression
+   (`ch01`/`ch02` × Idle/Ready Stance/Run/Serve/Victory/Hit React):
+   consistently natural, correctly-bent elbows, no T-pose regression on
+   Idle. Grounding re-sampled, unaffected.
+
+   **Lesson, on top of item 12's**: a numeric self-consistency check
+   (item 15's "target matches source exactly, by construction") proves the
+   ARITHMETIC is internally coherent -- it does NOT prove the physical
+   quantities being carried through that arithmetic mean what you think
+   they mean. Here, "the upper arm's world quaternion" silently included an
+   uncontrolled, per-rig-arbitrary twist component that the self-consistency
+   check couldn't see, because IT was ALSO carried through consistently
+   (garbage in, garbage out, but consistently so). Only a fresh, independent
+   physical measurement (the upper-arm quaternion DIFFERENCE, decomposed
+   into aim-aligned vs. perpendicular components) revealed it.
+
+17. **Immediately after item 16, the user said "same with wrists."** Given
+   item 16's fix was written generically (any bone with `neutralOffset` +
+   a clean swing child goes through `useParentRelative`, not elbow-specific
+   code), the instinct was to assume the SAME mechanism must be broken for
+   hands too and re-derive another twist-fix. Checked the actual
+   `window.__RETARGET_DEBUG` method label for `LeftHand` FIRST instead of
+   assuming: it read `"swing"`, not `"parent-relative"` -- i.e.
+   `useParentRelative` was silently evaluating to `false` for hands the
+   whole time, meaning item 16's fix had never actually been engaging for
+   wrists at all, and they were still running the OLD, pre-item-15
+   world-space swing method with none of items 15/16's work applied.
+
+   Root cause: `useParentRelative` requires `childLocalOffsetTarget =
+   restPositions.get(targetChildSuffix)` to be truthy.  For `LeftForeArm`,
+   `targetChildSuffix` is `"LeftHand"` -- an independently-retargeted bone,
+   already captured in `restPositions` via `Object.values(MANNY_BONE_MAP)`.
+   But for `LeftHand`, `targetChildSuffix` (from `SWING_TARGET_CHILD`) is
+   `"LeftHandMiddle1"` -- a finger bone that exists ONLY to give the hand an
+   aim reference (see item 10) and was NEVER independently retargeted, so
+   it was never added to `captureTargetRestPose`'s `wantedSuffixes` set and
+   `restPositions.get("LeftHandMiddle1")` was always `undefined`. Every
+   other swing bone's child happens to also be a MANNY_BONE_MAP value
+   (Spine's child Spine1, LeftArm's child LeftForeArm, etc.), which is
+   exactly why this gap was invisible until a bone whose swing-child is a
+   non-retargeted leaf (only hands, of the currently-mapped bones) was
+   checked specifically.
+
+   Fix: `wantedSuffixes` in `captureTargetRestPose` now unions in
+   `Object.values(SWING_TARGET_CHILD)` as well, not just
+   `Object.values(MANNY_BONE_MAP)` -- guaranteeing every bone's OWN swing-
+   child reference gets its rest position captured, independently retargeted
+   or not.
+
+   **Reverified**: `window.__RETARGET_DEBUG` now shows `"parent-relative"`
+   for `LeftHand` (confirmed on `ch01`/`run`). Wrist bend angle (forearm
+   direction vs. hand-to-middle-finger direction) matches the source
+   EXACTLY at all 21 sampled frames of a `run` cycle (constant 19.3° both
+   sides -- the wrist itself barely flexes relative to the forearm during
+   this particular gait, which is why it doesn't vary, not a sign the check
+   is broken). Full visual regression across `ch01`/`ch02` ×
+   Idle/Ready Stance/Run/Serve/Victory/Hit React: hands look relaxed and
+   natural throughout, no stiff/backwards wrist bend.
+
+   **Lesson, sharper than item 16's**: when a fix is written generically
+   (intended to cover a whole class of bones), do not assume a report of
+   "the same bug elsewhere" means the SAME mechanism needs re-diagnosing --
+   check FIRST whether the generic fix actually engaged for that specific
+   bone at all (here, one `console`/`window.__RETARGET_DEBUG` read revealed
+   it silently hadn't, in under a minute) before spending time re-deriving
+   physics. The bug here wasn't in the twist-fix math from item 16 at all --
+   it was a silent, un-thrown, un-logged fallback to completely different,
+   older code, one precondition (`childLocalOffsetTarget`) away from firing.
 
 Also tried and **reverted** (don't redo without a reason): programmatically
 re-cutting forehand/backhand/overhead straight from the pristine source via
@@ -374,6 +1444,28 @@ the abstract.
 
 ## Open TODOs (tracked here — keep this list current)
 
+- [x] **DONE (partial) — the debug visualization the user explicitly asked
+   for (twice), finally built in item 12:** a "Show Skeleton
+   Overlay" toggle button draws a `THREE.SkeletonHelper` directly on the
+   active character (`skeletonOverlayHelper`/`skeletonOverlayVisible` in
+   `main.js`) — no mesh-transparency toggle was added (the helper draws
+   through the mesh by default, which was sufficient in practice; hiding
+   the mesh entirely, via `character.traverse` setting `visible = false`,
+   worked even better for a clean comparison and needed no new UI). **Still
+   missing**: the color-coded Hips forward/right/up axis gizmo + static
+   world-reference-direction arrow — the still-open "is it facing backwards"
+   question below has NOT been re-checked with this tool yet. Do that before
+   trusting facing on any new character/clip.
+- [ ] **Re-verify the "backwards" facing question**, using the gizmo above.
+   Never rigorously re-checked after the grounding fix (item 7) — got
+   diverted into that bug, which was real, but the facing question itself is
+   still open. See the "READ THIS FIRST" section at the top of this file.
+- [ ] **Decide whether "Ready Stance" (and possibly other) `TOP_PICKS`
+   entries are just bad content choices**, not a code bug — see "READ THIS
+   FIRST" above for the ch06/ch08 investigation. If so, swap
+   `Steel_Idle_PreJump_ReadyPose__steelmanny.FBX` for one of the other two
+   files in `character-preview/local-clips/top-picks/ready/`, or pull from
+   the ~40 still-unused clips across all categories.
 - [ ] **Add the missing animations: idle, serve, run, ready.** Only
    forehand/backhand/overhead exist today. Without these, any wired-in
    character freezes in its bind pose whenever not mid-swing (confirmed
@@ -383,6 +1475,14 @@ the abstract.
    double-check the `freezeRootHorizontalMotion` axis fix above applies
    correctly to whatever new clips get added (rebuild + re-measure Hips
    world Y across the clip, don't assume).
+   **Progress this session:** 51 candidate clips (idle/ready/run/backpedal/
+   side_shuffle/pivot_spin/serve/jump_smash/dive/hit_react/victory —
+   see the `top-picks` bullet above) are now previewable, live-retargeted
+   onto any of the 12 Mixamo characters, in this viewer for the user to
+   pick from — this is PREVIEW ONLY, not the build-time pipeline. Once the
+   user has picked favorites, they still need to go through
+   `tools/build-mixamo-clip-library.mjs` (or an equivalent) to actually ship
+   them, same as forehand/backhand/overhead did.
 - [x] **DONE — all 12 characters are wired into the real game.** All of
    `ch01`-`ch12` have full `assets/manifest.js` entries (facing measured per
    character via `tools/validate-player-glb.mjs`, all `+Z`;
