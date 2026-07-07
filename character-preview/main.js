@@ -1484,6 +1484,91 @@ function mirrorRightLegOntoLeft(clip, bonePrefix, targetRestPose) {
   }
 }
 
+// The same Ready source clip has a good low crouch, but its arm pose reads
+// like the elbows are tucked behind the player. Keep the clip and the leg fix
+// above; only replace the ready arm aim directions with a compact, hands-in-
+// front stance.
+const READY_ARM_AIMS = {
+  LeftArm: new THREE.Vector3(0.16, -0.72, 0.68).normalize(),
+  LeftForeArm: new THREE.Vector3(0.03, -0.08, 0.99).normalize(),
+  RightArm: new THREE.Vector3(-0.16, -0.72, 0.68).normalize(),
+  RightForeArm: new THREE.Vector3(-0.03, -0.08, 0.99).normalize(),
+};
+const READY_HAND_ROLL = {
+  LeftHand: -Math.PI * 0.5,
+  RightHand: Math.PI * 0.5,
+};
+const TARGET_FK_ORDER = [
+  'Hips',
+  ...Object.values(MANNY_BONE_MAP).filter((suffix) => suffix !== 'Hips'),
+];
+function pushReadyArmsForward(clip, bonePrefix, targetRestPose) {
+  const { restWorldQuats, restPositions, hipsParentWorldQuat } = targetRestPose;
+  const findTrack = (suffix) => clip.tracks.find((t) => t.name === `${bonePrefix}${suffix}.quaternion`);
+  const hipsTrack = findTrack('Hips');
+  if (!hipsTrack) return;
+  const n = hipsTrack.times.length;
+
+  const worldFrames = new Map();
+  const localQ = new THREE.Quaternion();
+  for (const suffix of TARGET_FK_ORDER) {
+    const track = findTrack(suffix);
+    const parentSuffix = TARGET_PARENT[suffix];
+    const parentFrames = suffix === 'Hips' ? null : worldFrames.get(parentSuffix);
+    if (!track || (parentSuffix && !parentFrames)) continue;
+    const frames = [];
+    for (let i = 0; i < n; i++) {
+      localQ.fromArray(track.values, i * 4);
+      frames.push(suffix === 'Hips'
+        ? hipsParentWorldQuat.clone().multiply(localQ)
+        : parentFrames[i].clone().multiply(localQ));
+    }
+    worldFrames.set(suffix, frames);
+  }
+
+  const restAim = new THREE.Vector3();
+  const swingQ = new THREE.Quaternion();
+  for (const suffix of ['LeftArm', 'RightArm', 'LeftForeArm', 'RightForeArm']) {
+    const track = findTrack(suffix);
+    const childSuffix = SWING_TARGET_CHILD[suffix];
+    const childOffset = childSuffix ? restPositions.get(childSuffix) : null;
+    const restWorld = restWorldQuats.get(suffix);
+    const parentFrames = worldFrames.get(TARGET_PARENT[suffix]);
+    if (!track || !childOffset || !restWorld || !parentFrames) return;
+
+    restAim.copy(childOffset).applyQuaternion(restWorld).normalize();
+    swingQ.setFromUnitVectors(restAim, READY_ARM_AIMS[suffix]);
+    const newWorld = swingQ.clone().multiply(restWorld);
+    const newWorldFrames = [];
+    for (let i = 0; i < n; i++) {
+      newWorldFrames.push(newWorld.clone());
+      const newLocal = parentFrames[i].clone().invert().multiply(newWorld);
+      newLocal.toArray(track.values, i * 4);
+    }
+    worldFrames.set(suffix, newWorldFrames);
+  }
+
+  const handAim = new THREE.Vector3();
+  const rollQ = new THREE.Quaternion();
+  for (const suffix of ['LeftHand', 'RightHand']) {
+    const track = findTrack(suffix);
+    const childSuffix = SWING_TARGET_CHILD[suffix];
+    const childOffset = childSuffix ? restPositions.get(childSuffix) : null;
+    const parentFrames = worldFrames.get(TARGET_PARENT[suffix]);
+    if (!track || !childOffset || !parentFrames) return;
+
+    for (let i = 0; i < n; i++) {
+      localQ.fromArray(track.values, i * 4);
+      const currentWorld = parentFrames[i].clone().multiply(localQ);
+      handAim.copy(childOffset).applyQuaternion(currentWorld).normalize();
+      rollQ.setFromAxisAngle(handAim, READY_HAND_ROLL[suffix]);
+      const newWorld = rollQ.clone().multiply(currentWorld);
+      const newLocal = parentFrames[i].clone().invert().multiply(newWorld);
+      newLocal.toArray(track.values, i * 4);
+    }
+  }
+}
+
 function loadFbxSource(clipKey, url) {
   if (rawFbxCache.has(clipKey)) return Promise.resolve(rawFbxCache.get(clipKey));
   let promise = fbxLoadPromises.get(clipKey);
@@ -1520,7 +1605,10 @@ async function activateMannyClip(clipKey, url, label, btn) {
     // own left leg is a straight, forward sprinter's-stance leg, not a
     // symmetric ready crouch -- fix that one pose here rather than picking
     // different (worse, too-upright) source content for the whole clip.
-    if (clipKey === 'tp-ready') mirrorRightLegOntoLeft(clip, currentBonePrefix, currentTargetRestPose);
+    if (clipKey === 'tp-ready') {
+      mirrorRightLegOntoLeft(clip, currentBonePrefix, currentTargetRestPose);
+      pushReadyArmsForward(clip, currentBonePrefix, currentTargetRestPose);
+    }
     // NOT freezeRootHorizontalMotion here -- that function assumes local
     // X/Z are horizontal and Y is vertical (true for the OLD raw-FBX Mixamo
     // clips it was written for, loaded Y-up with no wrapper). These

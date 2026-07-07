@@ -15,6 +15,38 @@ re-derive any of it from scratch.
 
 ## READ THIS FIRST — status as of the end of the last session
 
+**Current Codex pass — READY elbows moved forward/down in preview only.** Kept
+`Steel_Idle_PreJump_ReadyPose__steelmanny.FBX` and the existing
+`mirrorRightLegOntoLeft()` crouch fix, but added a second `tp-ready`-only
+post-process in `main.js`: `pushReadyArmsForward()`. It rewrites the
+retargeted `LeftArm`/`RightArm` and `LeftForeArm`/`RightForeArm` world-space aim
+directions into a compact hands-in-front ready stance with enough palm spacing
+to read like holding an invisible basketball, then applies a
+READY-only hand roll so the palms face each other more like hands on a steering
+wheel. **Important sign note:** the verified roll is `LeftHand = -PI/2`,
+`RightHand = +PI/2`; the opposite signs broke the wrists 180 degrees the wrong
+way, palms outward/thumbs down. **Spacing note:** the verified forearm aim is
+slightly outward (`LeftForeArm = (0.03, -0.08, 0.99)`, `RightForeArm =
+(-0.03, -0.08, 0.99)` before normalize); the previous inward version made the
+stylized characters' hands nearly touch/overlap. This avoids both the source
+pose's behind-the-body elbows and the first Codex attempt's too-flared elbows.
+Verified through the live `character-preview` path with Playwright on all 12
+characters for spacing, plus screenshots on `ch01`, `ch06`, and tightest-case
+`ch12`; screenshots were captured to
+`tools/shots/ready-elbows-ch01-front.png`,
+`tools/shots/ready-elbows-ch01-3q.png`,
+`tools/shots/ready-elbows-ch06-front.png`,
+`tools/shots/ready-elbows-ch06-3q.png`,
+`tools/shots/ready-elbows-ch12-front.png`, and
+`tools/shots/ready-elbows-ch12-3q.png`. Numeric spacing check after the final
+tune: all 12 characters have at least `0.247m` hand-to-hand distance, with most
+in the `0.30m-0.53m` range. After preview approval, the shipped game GLB
+`assets/animations/pickleball-locomotion.glb` was rebaked with
+`node tools/bake-locomotion-clips.mjs`, so the real game now uses the same
+READY clip. Game-side verification screenshots were captured to
+`tools/shots/game-ready-baked-front.png` and
+`tools/shots/game-ready-baked-3q.png`.
+
 **Latest session — swapped 4 `TOP_PICKS` source clips for better ones; NOT a
 retarget-math fix, a content-choice fix.** The user judged the actual motion
 (exactly the open call CONTEXT.md's item 5 left for later) and rejected two of

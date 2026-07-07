@@ -220,6 +220,15 @@ there is no separate dev-server process anymore. Status summary:
   exactly, verified via the screenshot loop. `src/players.js` picks strafe
   direction (`shuffle_left`/`shuffle_right`) from the player's `localSide`
   sign; `serve` no longer falls back to the forehand clip.
+- **READY stance is a modified source clip, not raw mocap.**
+  `Steel_Idle_PreJump_ReadyPose__steelmanny.FBX` is still the source because
+  its low athletic crouch is the right content choice, but
+  `character-preview/main.js` applies two targeted `tp-ready` fixes before
+  baking: `mirrorRightLegOntoLeft()` repairs the original asymmetric leg, and
+  `pushReadyArmsForward()` moves elbows forward/down with palms facing each
+  other and enough hand spacing to read like holding an invisible ball. These
+  fixes are included in `assets/animations/pickleball-locomotion.glb`; rebake
+  with `node tools/bake-locomotion-clips.mjs` after changing them.
 - **All 12 characters are sourced from the single common location**
   `assets/models/players/mixamo/chNN.glb` (also the file
   `character-preview/` reads — no duplicated GLB bytes between the two
