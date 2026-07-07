@@ -54,9 +54,9 @@ export const ASSET_MANIFEST = {
       // `node tools/validate-player-glb.mjs` (toe-vs-foot points +Z at rest,
       // matching the primitive rig's forward convention, so no rotation
       // correction needed). Bind-pose height measured at 2.12m; playerScale
-      // brings it into the ~1.7-1.9m authored-player range. No idle/run/
-      // ready/serve clips exist yet -- only forehand/backhand/overhead via
-      // the shared 'mixamo-swings' animation bucket entry below.
+      // brings it into the ~1.7-1.9m authored-player range. idle/run/ready/
+      // serve/backpedal/shuffle come from the shared 'mixamo-locomotion'
+      // bucket entry, and forehand/backhand/overhead from 'mixamo-swings'.
       key: 'player-ch12-v1',
       label: 'Mixamo character (ch12)',
       url: '/assets/models/players/mixamo/ch12.glb',
@@ -74,7 +74,6 @@ export const ASSET_MANIFEST = {
       // deformation is computed consistently in that same space). 100x
       // compensates back to the primitive paddle's real-world size.
       paddleSocketScale: 100,
-      swingClipOverrides: { serve: 'fh' },
       syncPrimitiveArms: false,
       customizable: false,
       optional: true
@@ -95,7 +94,7 @@ export const ASSET_MANIFEST = {
       playerScale: 0.97, playerOffset: [0, 0, 0],
       playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
       paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
-      swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
+      syncPrimitiveArms: false,
       customizable: false, optional: true
     },
     {
@@ -104,7 +103,7 @@ export const ASSET_MANIFEST = {
       fallbackKey: 'player-ch01-v1', playerScale: 1.02, playerOffset: [0, 0, 0],
       playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
       paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
-      swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
+      syncPrimitiveArms: false,
       customizable: false, optional: true
     },
     {
@@ -113,7 +112,7 @@ export const ASSET_MANIFEST = {
       fallbackKey: 'player-ch01-v1', playerScale: 1.08, playerOffset: [0, 0, 0],
       playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
       paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
-      swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
+      syncPrimitiveArms: false,
       customizable: false, optional: true
     },
     {
@@ -122,7 +121,7 @@ export const ASSET_MANIFEST = {
       fallbackKey: 'player-ch01-v1', playerScale: 1.12, playerOffset: [0, 0, 0],
       playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
       paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
-      swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
+      syncPrimitiveArms: false,
       customizable: false, optional: true
     },
     {
@@ -131,7 +130,7 @@ export const ASSET_MANIFEST = {
       fallbackKey: 'player-ch01-v1', playerScale: 1.02, playerOffset: [0, 0, 0],
       playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
       paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
-      swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
+      syncPrimitiveArms: false,
       customizable: false, optional: true
     },
     {
@@ -140,7 +139,7 @@ export const ASSET_MANIFEST = {
       fallbackKey: 'player-ch01-v1', playerScale: 1.03, playerOffset: [0, 0, 0],
       playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
       paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
-      swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
+      syncPrimitiveArms: false,
       customizable: false, optional: true
     },
     {
@@ -149,7 +148,7 @@ export const ASSET_MANIFEST = {
       fallbackKey: 'player-ch01-v1', playerScale: 1.01, playerOffset: [0, 0, 0],
       playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
       paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
-      swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
+      syncPrimitiveArms: false,
       customizable: false, optional: true
     },
     {
@@ -158,7 +157,7 @@ export const ASSET_MANIFEST = {
       fallbackKey: 'player-ch01-v1', playerScale: 1.00, playerOffset: [0, 0, 0],
       playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
       paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
-      swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
+      syncPrimitiveArms: false,
       customizable: false, optional: true
     },
     {
@@ -167,7 +166,7 @@ export const ASSET_MANIFEST = {
       fallbackKey: 'player-ch01-v1', playerScale: 1.22, playerOffset: [0, 0, 0],
       playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
       paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
-      swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
+      syncPrimitiveArms: false,
       customizable: false, optional: true
     },
     {
@@ -176,7 +175,7 @@ export const ASSET_MANIFEST = {
       fallbackKey: 'player-ch01-v1', playerScale: 0.99, playerOffset: [0, 0, 0],
       playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
       paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
-      swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
+      syncPrimitiveArms: false,
       customizable: false, optional: true
     },
     {
@@ -185,7 +184,7 @@ export const ASSET_MANIFEST = {
       fallbackKey: 'player-ch01-v1', playerScale: 0.87, playerOffset: [0, 0, 0],
       playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
       paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
-      swingClipOverrides: { serve: 'fh' }, syncPrimitiveArms: false,
+      syncPrimitiveArms: false,
       customizable: false, optional: true
     }
   ],
@@ -286,6 +285,19 @@ export const ASSET_MANIFEST = {
       key: 'mixamo-swings',
       label: 'Mixamo pickleball swing clips',
       url: '/assets/animations/pickleball-swings.glb',
+      scope: 'player-animation',
+      optional: true
+    },
+    {
+      // Shared locomotion/serve clip library baked from the character-preview's
+      // perfected UE5-Manny retargets (see tools/bake-locomotion-clips.mjs).
+      // Clip names idle/ready/run/serve/backpedal/shuffle_left/shuffle_right
+      // match src/players.js's clipKey() directly (shuffle_left/right split so
+      // the game can pick strafe direction from localSide). Merged onto every
+      // player model via collectAnimationClips(), same as the swings above.
+      key: 'mixamo-locomotion',
+      label: 'Mixamo locomotion + serve clips',
+      url: '/assets/animations/pickleball-locomotion.glb',
       scope: 'player-animation',
       optional: true
     }

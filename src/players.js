@@ -228,9 +228,29 @@ function configureAuthoredModel(model, item) {
   }
 }
 
+// Ordered loop-clip fallbacks: if the perfected clip for a state isn't loaded,
+// degrade gracefully rather than freezing. Directional strafe falls back to a
+// generic shuffle, then to run.
+var LOOP_FALLBACKS = {
+  shuffle_left: ['shuffle', 'run'],
+  shuffle_right: ['shuffle', 'run'],
+  shuffle: ['run'],
+  backpedal: ['run'],
+  lunge: ['run'],
+  split: ['ready'],
+  plant: ['ready']
+};
+
 function clipKey(name) {
   name = String(name || '').toLowerCase();
-  if (/shuffle|strafe|side/.test(name)) return 'shuffle';
+  // Directional strafe first: baked as shuffle_left/shuffle_right so api.update
+  // can pick the correct one from the player's localSide sign. A bare
+  // shuffle/strafe/side name (no direction) still collapses to 'shuffle'.
+  if (/shuffle|strafe|side/.test(name)) {
+    if (/left|_l\b|-l\b/.test(name)) return 'shuffle_left';
+    if (/right|_r\b|-r\b/.test(name)) return 'shuffle_right';
+    return 'shuffle';
+  }
   // Checked before the generic backpedal/back-movement pattern below: a clip
   // literally named "backhand" (e.g. pickleball-swings.glb)
   // otherwise matches the bare "back" alternative there and gets misfiled as
@@ -353,9 +373,11 @@ function installAuthoredModel(api, opts) {
   var baseSwing = api.swing;
 
   function playLoop(name) {
-    var fallback = (name === 'shuffle' || name === 'backpedal' || name === 'lunge') ? 'run' :
-      ((name === 'split' || name === 'plant') ? 'ready' : name);
-    var action = actions[name] || actions[fallback];
+    var action = actions[name];
+    if (!action) {
+      var chain = LOOP_FALLBACKS[name] || [];
+      for (var i = 0; i < chain.length && !action; i++) action = actions[chain[i]];
+    }
     if (!action || api.authored.locomotion === action) return;
     action.reset().setLoop(THREE.LoopRepeat, Infinity).fadeIn(0.12).play();
     if (api.authored.locomotion) api.authored.locomotion.fadeOut(0.12);
@@ -389,6 +411,13 @@ function installAuthoredModel(api, opts) {
           this.authored.activeName = '';
         }
         var visualMove = st && st.visualMove;
+        if (visualMove === 'shuffle') {
+          // Pick strafe direction from the player's lateral velocity sign.
+          // localSide > 0 means sliding to the player's own left (verified via
+          // the screenshot loop: rightward travel gives localSide < 0), which
+          // is the shuffle_left clip's authored direction.
+          visualMove = (st && st.localSide > 0) ? 'shuffle_left' : 'shuffle_right';
+        }
         playLoop(visualMove || (st && st.speed > 0.15 ? 'run' : ((st && st.ready && actions.ready) ? 'ready' : 'idle')));
       }
       syncAuthoredArms(this);

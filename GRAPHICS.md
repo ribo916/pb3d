@@ -208,10 +208,18 @@ there is no separate dev-server process anymore. Status summary:
      wrapper-free coordinate frame, but wrong for these Blender-glTF-wrapped
      assets), pinning every swinging character's hips to the floor for the
      whole clip. Fixed; `pickleball-swings.glb` was rebuilt and reverified.
-- **Known, accepted gap:** no idle/ready/run/serve clips exist yet (only
-  forehand/backhand/overhead), so every character freezes in its bind pose
-  whenever not mid-swing. Documented, not yet fixed — see the TODO list in
-  `character-preview/CONTEXT.md`.
+- **Locomotion + serve clips now ship** in a second shared library,
+  `assets/animations/pickleball-locomotion.glb` (manifest key
+  `mixamo-locomotion`), alongside the swings: `idle`, `ready`, `run`, `serve`,
+  `backpedal`, `shuffle_left`, `shuffle_right`. Characters no longer freeze in
+  bind pose when not mid-swing. These were baked from the `character-preview`'s
+  perfected UE5-Manny retargets by driving the actual preview in headless
+  Chromium and exporting the live clips via `GLTFExporter` (see
+  `tools/bake-locomotion-clips.mjs` + the `window.__bake` hook in
+  `character-preview/main.js`) — so the in-game render matches the preview
+  exactly, verified via the screenshot loop. `src/players.js` picks strafe
+  direction (`shuffle_left`/`shuffle_right`) from the player's `localSide`
+  sign; `serve` no longer falls back to the forehand clip.
 - **All 12 characters are sourced from the single common location**
   `assets/models/players/mixamo/chNN.glb` (also the file
   `character-preview/` reads — no duplicated GLB bytes between the two
@@ -236,7 +244,8 @@ there is no separate dev-server process anymore. Status summary:
   Duplicate picks across slots are allowed. This fully replaces the old
   gender/hair/color customization modal.
 - **Not yet done:** real team-color/identity art beyond the flat swatch
-  tiles, and the missing idle/run/serve clips above. Full tracked list:
+  tiles, and the not-yet-shipped `hit_react`/`jump_smash`/`victory` states
+  (those need gameplay hooks, not just clips). Full tracked list:
   `character-preview/CONTEXT.md`'s "Open TODOs" section.
 - **Licensing is resolved.** The 12 characters are confirmed Mixamo content,
   free for unlimited commercial use (checked against Adobe's current terms)
@@ -376,7 +385,9 @@ how the Quaternius bodies were built, not as an active plan.
 Do not spend the next pass on minor procedural crispness. The visual bottleneck
 is now character presentation:
 
-- [ ] Add missing idle/ready/run/serve animation states.
+- [x] Add missing idle/ready/run/serve animation states (shipped in
+      `pickleball-locomotion.glb`, plus backpedal + strafe L/R). Next up:
+      `hit_react`/`jump_smash`/`victory` (need gameplay hooks).
 - [ ] Calibrate clip contact frames to `contactT = 0.5`.
 - [ ] Improve team/role identity for fixed, non-customizable characters.
 - [ ] Keep the primitive rig as gameplay authority.

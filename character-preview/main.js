@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { ASSET_MANIFEST } from '../assets/manifest.js';
 import { makeGltfLoader, preloadPlayerModels } from '../src/assets.js';
@@ -1763,6 +1764,56 @@ function animate() {
   controls.update();
   renderer.render(scene, camera);
 }
+
+// --- Offline bake hook (driven by tools/bake-locomotion-clips.mjs via Playwright) ---
+// No UI. Reuses the EXACT same activateCharacter -> activateMannyClip ->
+// retargetMannyClip path the on-screen top-picks row uses, so a baked clip is
+// byte-for-byte the animation this preview renders. It then serializes the
+// retargeted clips (bound to the live character skeleton) to a GLB via
+// GLTFExporter -- the offline node tool strips the mesh and optimizes for size.
+// GLTFExporter is dynamically imported so it never loads during normal preview.
+window.__bake = {
+  topPicks: TOP_PICKS.map(({ key, category, label }) => ({ key, category, label })),
+  async loadCharacter(key) {
+    await activateCharacter(key);
+    if (!character || !currentTargetRestPose) throw new Error('character did not load: ' + key);
+    return { key, prefix: currentBonePrefix };
+  },
+  // Retarget one top-pick onto the currently-loaded character and cache it in
+  // the shared `clips` Map (same as clicking its button). Returns the clip name.
+  async retarget(pickKey) {
+    const pick = TOP_PICKS.find((p) => p.key === pickKey);
+    if (!pick) throw new Error('unknown pick: ' + pickKey);
+    const btn = document.createElement('button');
+    await activateMannyClip(pick.key, pick.url, pick.label, btn);
+    if (btn.classList.contains('error')) throw new Error('retarget failed: ' + pickKey);
+    const clip = clips.get(pick.key);
+    if (!clip) throw new Error('no clip produced: ' + pickKey);
+    return clip.name;
+  },
+  // Export the live character + the named retargeted clips to a binary GLB.
+  // `entries` = [{ pickKey, name }] -- `name` becomes the clip's adapter name
+  // (must match src/players.js clipKey(): idle/ready/run/serve/backpedal/
+  // shuffle_left/shuffle_right). Returns base64 for transport over Playwright.
+  async exportGlb(entries) {
+    const anims = entries.map((e) => {
+      const clip = clips.get(e.pickKey);
+      if (!clip) throw new Error('clip not retargeted yet: ' + e.pickKey);
+      clip.name = e.name;
+      return clip;
+    });
+    const exporter = new GLTFExporter();
+    const buf = await new Promise((resolve, reject) => {
+      exporter.parse(character, resolve, reject, { binary: true, animations: anims, onlyVisible: false });
+    });
+    const bytes = new Uint8Array(buf);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    }
+    return btoa(bin);
+  }
+};
 
 init();
 animate();
