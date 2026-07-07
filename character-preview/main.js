@@ -128,13 +128,31 @@ const GLB_CLIP_LABELS = { forehand: 'Forehand', backhand: 'Backhand', overhead: 
 // character.
 const TOP_PICKS = [
   { key: 'tp-idle', category: 'idle', label: 'Idle', url: './local-clips/top-picks/idle/Idle__AuroraManny.FBX' },
+  // Steel_Idle_PreJump_ReadyPose IS the right pick for an athletic, low,
+  // bent-knee ready crouch (tried swapping to Throw_Ready_Loop, which is a
+  // much more upright stance-and-a-half-standing pose -- wrong for a
+  // pickleball/tennis ready position, reverted). Its one real flaw -- the
+  // left leg straight/forward instead of a symmetric crouch like the right --
+  // is fixed below by mirroring the right leg's pose onto the left
+  // (see mirrorRightLegOntoLeft, applied in activateMannyClip for this key
+  // only), instead of by picking different source content.
   { key: 'tp-ready', category: 'ready', label: 'Ready Stance', url: './local-clips/top-picks/ready/Steel_Idle_PreJump_ReadyPose__steelmanny.FBX' },
   { key: 'tp-run', category: 'run', label: 'Run (Fwd Jog)', url: './local-clips/top-picks/run/Jog_Fwd__AuroraManny.FBX' },
   { key: 'tp-backpedal', category: 'backpedal', label: 'Backpedal', url: './local-clips/top-picks/backpedal/Sprint_Backpedal__KallariManny.FBX' },
-  { key: 'tp-side-shuffle', category: 'side_shuffle', label: 'Side Shuffle (Strafe L)', url: './local-clips/top-picks/side_shuffle/Strafe_Left__KhaimeraManny.FBX' },
-  { key: 'tp-serve', category: 'serve', label: 'Serve (Swing, Medium)', url: './local-clips/top-picks/serve/Primary_Swing1_Medium__NarbashManny.FBX' },
+  { key: 'tp-side-shuffle-left', category: 'side_shuffle', label: 'Side Shuffle (Left)', url: './local-clips/top-picks/side_shuffle/Strafe_Left__KhaimeraManny.FBX' },
+  { key: 'tp-side-shuffle-right', category: 'side_shuffle', label: 'Side Shuffle (Right)', url: './local-clips/top-picks/side_shuffle/Strafe_Right__KhaimeraManny.FBX' },
+  // Was Primary_Swing1_Medium, a MOBA melee hero's two-handed weapon swing --
+  // a huge, non-human windup that reads as a grotesque hip/torso distortion
+  // on realistic-proportioned characters (see CONTEXT.md item 5's "backward
+  // lean" note -- genuine source content, not a retarget bug, but the wrong
+  // content for this sport). RMB_Throw is a plausible, subtle, forward-
+  // leaning underhand-ish toss motion instead.
+  { key: 'tp-serve', category: 'serve', label: 'Serve (Throw)', url: './local-clips/top-picks/serve/RMB_Throw__PhaseManny.FBX' },
   { key: 'tp-jump-smash', category: 'jump_smash', label: 'Jump Smash (Apex)', url: './local-clips/top-picks/jump_smash/Jump_Apex__CrunchManny.FBX' },
-  { key: 'tp-hit-react', category: 'hit_react', label: 'Hit React (Front)', url: './local-clips/top-picks/hit_react/HitReact_Front__AuroraManny.FBX' },
+  // Was HitReact_Front, which snaps the head/neck back at an extreme angle
+  // far beyond how far the rest of the torso moves ("broken neck" look).
+  // HitReact_Left is a much subtler, natural-looking recoil.
+  { key: 'tp-hit-react', category: 'hit_react', label: 'Hit React', url: './local-clips/top-picks/hit_react/HitReact_Left__AuroraManny.FBX' },
   { key: 'tp-victory', category: 'victory_celebration', label: 'Victory Emote', url: './local-clips/top-picks/victory_celebration/Victory_Emote__KallariManny.FBX' },
 ];
 
@@ -1376,6 +1394,95 @@ function retargetMannyClip(clipKey, rawFbx, rawClip, bonePrefix, targetRestPose)
   return new THREE.AnimationClip(clipKey, rawClip.duration, tracks);
 }
 
+// The Steel_Idle_PreJump_ReadyPose source clip's own mocap has a straight,
+// forward-pointing left leg (a sprinter's pre-jump stance) while the right
+// leg is genuinely bent into a good crouch -- confirmed against the raw
+// skeleton preview, not a retargeting artifact. Its low, bent-knee crouch is
+// otherwise exactly the right "tennis/pickleball ready position" quality
+// (unlike either Throw_Ready alternative, which reads as standing near-
+// upright), so rather than replacing the whole clip, mirror the right leg's
+// retargeted pose onto the left leg for this one clip.
+//
+// A first attempt did this as a plain LOCAL quaternion mirror (negate the
+// rest-relative delta's Y/Z axes) -- it visibly broke the pose (legs
+// collapsed/crossed into a contorted knot). That's the same disease this
+// whole file's history warns about: local bone axis conventions aren't
+// guaranteed to mirror by a simple component negation. Fixed by mirroring in
+// WORLD space instead, reusing the exact same "aim direction" swing method
+// `retargetMannyClip` already uses for these same leg bones (see its
+// `useSwing` branch): for each leg bone, take the RIGHT side's world-space
+// aim direction (bone -> its child), mirror that direction across the
+// character's own sagittal plane (negate world X -- these characters face
+// +Z, so X is the left/right axis), then apply that mirrored aim to the
+// LEFT bone's own rest orientation, exactly like a normal swing retarget.
+// Chained hip->knee->ankle so each bone's parent is that SAME frame's
+// just-computed new left-side world quat, not its rest.
+const MIRROR_LEG_CHAIN = [
+  { rightSuffix: 'RightUpLeg', leftSuffix: 'LeftUpLeg', rightChildSuffix: 'RightLeg', leftChildSuffix: 'LeftLeg' },
+  { rightSuffix: 'RightLeg', leftSuffix: 'LeftLeg', rightChildSuffix: 'RightFoot', leftChildSuffix: 'LeftFoot' },
+  { rightSuffix: 'RightFoot', leftSuffix: 'LeftFoot', rightChildSuffix: 'RightToeBase', leftChildSuffix: 'LeftToeBase' },
+];
+function mirrorRightLegOntoLeft(clip, bonePrefix, targetRestPose) {
+  const { restWorldQuats, restPositions, hipsParentWorldQuat } = targetRestPose;
+  const findTrack = (suffix) => clip.tracks.find((t) => t.name === `${bonePrefix}${suffix}.quaternion`);
+  const hipsTrack = findTrack('Hips');
+  if (!hipsTrack) return;
+  const n = hipsTrack.times.length;
+
+  const q = new THREE.Quaternion();
+  const hipsLocalQ = new THREE.Quaternion();
+  const hipsWorldFrames = [];
+  for (let i = 0; i < n; i++) {
+    hipsLocalQ.fromArray(hipsTrack.values, i * 4);
+    hipsWorldFrames.push(hipsParentWorldQuat.clone().multiply(hipsLocalQ));
+  }
+  // Both UpLeg bones' parent is Hips; each subsequent chain link's parent
+  // frames get replaced with that link's own just-computed world quats below.
+  let rightParentWorldFrames = hipsWorldFrames;
+  let leftParentWorldFrames = hipsWorldFrames;
+
+  const rightAim = new THREE.Vector3();
+  const leftAimRest = new THREE.Vector3();
+  const mirroredAim = new THREE.Vector3();
+  const swingQ = new THREE.Quaternion();
+  for (const { rightSuffix, leftSuffix, rightChildSuffix, leftChildSuffix } of MIRROR_LEG_CHAIN) {
+    const rightTrack = findTrack(rightSuffix);
+    const leftTrack = findTrack(leftSuffix);
+    const rightChildOffset = restPositions.get(rightChildSuffix);
+    const leftChildOffset = restPositions.get(leftChildSuffix);
+    const leftRestWorld = restWorldQuats.get(leftSuffix);
+    if (!rightTrack || !leftTrack || !rightChildOffset || !leftChildOffset || !leftRestWorld) return;
+
+    leftAimRest.copy(leftChildOffset).applyQuaternion(leftRestWorld).normalize();
+    const newRightWorldFrames = [];
+    const newLeftWorldFrames = [];
+    for (let i = 0; i < n; i++) {
+      // Right leg was never touched by this function, but its world
+      // orientation still needs to be chained frame-by-frame down from Hips
+      // (RightUpLeg's parent) / the previous joint (RightLeg's parent is
+      // RightUpLeg, etc.) -- computed here alongside the mirrored left side
+      // rather than trusting any pre-existing per-bone world-frame data.
+      q.fromArray(rightTrack.values, i * 4);
+      const rightWorldQ = rightParentWorldFrames[i].clone().multiply(q);
+      newRightWorldFrames.push(rightWorldQ);
+
+      rightAim.copy(rightChildOffset).applyQuaternion(rightWorldQ).normalize();
+      // These characters face +Z with X as the left/right axis (confirmed by
+      // GRAPHICS.md's Mixamo facing measurements), so mirroring a world-space
+      // direction across the body's own sagittal plane is a plain negate-X.
+      mirroredAim.set(-rightAim.x, rightAim.y, rightAim.z);
+      swingQ.setFromUnitVectors(leftAimRest, mirroredAim);
+      const newLeftWorldQ = swingQ.clone().multiply(leftRestWorld);
+      newLeftWorldFrames.push(newLeftWorldQ);
+
+      const newLeftLocalQ = leftParentWorldFrames[i].clone().invert().multiply(newLeftWorldQ);
+      newLeftLocalQ.toArray(leftTrack.values, i * 4);
+    }
+    rightParentWorldFrames = newRightWorldFrames;
+    leftParentWorldFrames = newLeftWorldFrames;
+  }
+}
+
 function loadFbxSource(clipKey, url) {
   if (rawFbxCache.has(clipKey)) return Promise.resolve(rawFbxCache.get(clipKey));
   let promise = fbxLoadPromises.get(clipKey);
@@ -1408,6 +1515,11 @@ async function activateMannyClip(clipKey, url, label, btn) {
     if (!fbx.animations || fbx.animations.length === 0) throw new Error('no animation track in source file');
     if (!currentTargetRestPose) throw new Error('no active character rest pose captured');
     const clip = retargetMannyClip(clipKey, fbx, fbx.animations[0], currentBonePrefix, currentTargetRestPose);
+    // See mirrorRightLegOntoLeft's doc comment: Steel_Idle_PreJump_ReadyPose's
+    // own left leg is a straight, forward sprinter's-stance leg, not a
+    // symmetric ready crouch -- fix that one pose here rather than picking
+    // different (worse, too-upright) source content for the whole clip.
+    if (clipKey === 'tp-ready') mirrorRightLegOntoLeft(clip, currentBonePrefix, currentTargetRestPose);
     // NOT freezeRootHorizontalMotion here -- that function assumes local
     // X/Z are horizontal and Y is vertical (true for the OLD raw-FBX Mixamo
     // clips it was written for, loaded Y-up with no wrapper). These

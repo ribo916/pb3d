@@ -15,7 +15,92 @@ re-derive any of it from scratch.
 
 ## READ THIS FIRST — status as of the end of the last session
 
-**Latest session (3 targeted fixes, unrelated to the elbow/wrist saga below):**
+**Latest session — swapped 4 `TOP_PICKS` source clips for better ones; NOT a
+retarget-math fix, a content-choice fix.** The user judged the actual motion
+(exactly the open call CONTEXT.md's item 5 left for later) and rejected two of
+them, plus flagged a missing mirrored variant and a bad `ready` pick already
+called out in the Open TODOs below:
+1. **Serve looked "creepy"/distorted** (aggressive hip swing bending the body
+   out of proportion, more vertical than forward). Root cause confirmed NOT a
+   retarget bug: `Primary_Swing1_Medium__NarbashManny.FBX` (a MOBA melee
+   hero's big two-handed weapon swing) is genuinely a huge, non-human windup
+   in the SOURCE data (measured Hips world Y bounce ~9cm — modest — but the
+   thigh/spine swing amplitude itself is just a huge pose, confirmed by eye
+   across ch01/ch03/ch04/ch06/ch07/ch09/ch10). Swapped to
+   `RMB_Throw__PhaseManny.FBX` — a subtle, forward-leaning toss motion that
+   looks natural across every character tested, no leg/hip distortion.
+   `Ability_Grenade_Throw__DrongoManny.FBX` was also a reasonable, more
+   crouched alternative if `RMB_Throw` ever needs revisiting.
+2. **Hit React looked like a broken neck** (head snaps back at an extreme
+   angle far beyond the torso's own motion). `HitReact_Front__AuroraManny.FBX`
+   confirmed to genuinely do this on ch06. Swapped to
+   `HitReact_Left__AuroraManny.FBX` — subtle, natural recoil, no extreme neck
+   bend. (`HitReact_Back` has the same neck problem; `KnockBack_Front` is a
+   full backward-launch/knockdown, way too dramatic for a paddle hit — neither
+   is a good fallback if `HitReact_Left` needs revisiting; try
+   `HitReact_Right` instead, which is comparably subtle.)
+3. **Side Shuffle had no mirrored variant.** `Strafe_Left__KhaimeraManny.FBX`
+   was the only entry (`tp-side-shuffle`, now renamed `tp-side-shuffle-left`).
+   Added `tp-side-shuffle-right` using the already-present
+   `Strafe_Right__KhaimeraManny.FBX` raw clip — no mirroring math needed, the
+   source pack already ships both directions. Both retarget cleanly and look
+   like genuine mirror images of each other.
+4. **Ready Stance — first swapped content, then reverted per explicit user
+   correction; fixed the actual pose instead.** First tried replacing
+   `Steel_Idle_PreJump_ReadyPose__steelmanny.FBX` (a sprinter's pre-jump
+   crouch, only 0.067s long) with `Throw_Ready_Loop__gadgetManny.FBX`. The
+   user immediately rejected that swap: `Throw_Ready_Loop` reads as standing
+   near-upright, and an athletic *bent-knee, low* crouch matters more for a
+   tennis/pickleball ready stance than leg symmetry — "the old animation was
+   odd with the leg out, but still far better than the new one where you just
+   have them standing straight up." Reverted to
+   `Steel_Idle_PreJump_ReadyPose__steelmanny.FBX`, then fixed its one real
+   flaw (left leg straight/forward, not a symmetric crouch like the right)
+   directly: `mirrorRightLegOntoLeft()` (new function, applied only for
+   `clipKey === 'tp-ready'` in `activateMannyClip`) mirrors the right leg's
+   retargeted WORLD-space pose onto the left, chained hip->knee->ankle, using
+   the exact same aim-direction swing method `retargetMannyClip` already uses
+   for these bones (mirror the right leg's world aim direction across the
+   character's own sagittal plane — negate world X, since these characters
+   face +Z — then apply that direction to the left leg's own rest, just like
+   a normal swing retarget).
+   **A first attempt at this mirror did it as a plain LOCAL quaternion
+   mirror** (negate the rest-relative delta's Y/Z components) **and it
+   visibly broke the pose** (legs collapsed into a contorted knot) — the
+   exact same "local bone axis conventions don't mirror by simple component
+   negation" disease this file's whole history warns about. Don't repeat that
+   approach; the WORLD-space aim-mirror in `mirrorRightLegOntoLeft` is the
+   one that's actually verified correct.
+   **Verification pitfall worth recording**: this tool's default 3/4 auto-
+   framed camera makes THIS pose (a deep forward torso lean, by design in the
+   source clip) look foreshortened/contorted-ish regardless of whether the
+   leg mirror is even applied — confirmed by screenshotting with the mirror
+   explicitly disabled and seeing the same apparent "brokenness" on `ch01`.
+   Don't judge this pose's correctness from that default camera angle alone;
+   force a dead-on front view (`camera.position.set(center.x, center.y,
+   center.z + dist)` looking down -Z at the character's own bounding-box
+   center, per `window.__camera`/`window.__controls`) to actually see left/
+   right symmetry. Confirmed correct that way on both `ch01` and `ch06`.
+   `Throw_Ready__gadgetManny.FBX` (the non-loop, 1.2s sibling of
+   `Throw_Ready_Loop`) remains a fallback idea ONLY if a future session
+   revisits the "upright vs. crouched" content question — it was not what the
+   user asked for this time.
+   The residual "scrub bar moves fast" feel on the reinstated 0.067s clip is
+   inherent to any short static-pose clip, not a bug — expected for a
+   held-pose category, not a defect to keep chasing.
+
+All 4 changes are in `TOP_PICKS` in `main.js`; the ready-stance leg fix also
+added `mirrorRightLegOntoLeft()` and one call site in `activateMannyClip` --
+no changes to `retargetMannyClip`'s own general retarget math. Verified via a
+throwaway Playwright screenshot driver (character button click -> top-pick
+click -> scrub -> screenshot), not left in the repo; recreate similarly if
+revisiting (start the repo's normal Vite dev server via
+`tools/vite-test-server.mjs`, navigate to `/character-preview/`, drive
+`#characterButtons`/`#topPicksButtons` buttons and the `#scrub` input,
+screenshot the page). For symmetry judgments specifically, force the front
+camera view described above rather than trusting the default angle.
+
+**Previous session (3 targeted fixes, unrelated to the elbow/wrist saga below):**
 1. **Fixed — losing the character when leaving Raw Skeleton Preview.**
    `activateSkeletonClip` reframes the camera/grid onto the skeleton
    preview's own bounds (`frameCameraToBounds`), but `exitSkeletonPreview()`
@@ -1585,12 +1670,14 @@ the abstract.
    Never rigorously re-checked after the grounding fix (item 7) — got
    diverted into that bug, which was real, but the facing question itself is
    still open. See the "READ THIS FIRST" section at the top of this file.
-- [ ] **Decide whether "Ready Stance" (and possibly other) `TOP_PICKS`
-   entries are just bad content choices**, not a code bug — see "READ THIS
-   FIRST" above for the ch06/ch08 investigation. If so, swap
-   `Steel_Idle_PreJump_ReadyPose__steelmanny.FBX` for one of the other two
-   files in `character-preview/local-clips/top-picks/ready/`, or pull from
-   the ~40 still-unused clips across all categories.
+- [x] **DONE — Serve and Hit React were bad content choices, not code bugs**
+   — confirmed and fixed this session, swapping to `RMB_Throw__PhaseManny.FBX`
+   (serve) and `HitReact_Left__AuroraManny.FBX` (hit react). **Ready Stance
+   was NOT a bad content choice** — `Steel_Idle_PreJump_ReadyPose` was kept
+   (a swap to `Throw_Ready_Loop` was tried and explicitly rejected by the
+   user as too upright) and its one real flaw, the asymmetric left leg, was
+   fixed directly via `mirrorRightLegOntoLeft()` instead. See "READ THIS
+   FIRST" above.
 - [ ] **Add the missing animations: idle, serve, run, ready.** Only
    forehand/backhand/overhead exist today. Without these, any wired-in
    character freezes in its bind pose whenever not mid-swing (confirmed
