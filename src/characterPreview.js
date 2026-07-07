@@ -10,9 +10,15 @@
 
 import * as THREE from 'three';
 import { makePlayer } from './players.js';
-import { preloadPlayerModels } from './assets.js';
+import { preloadPlayerModels, preloadClipLibraries } from './assets.js';
 
 var FOV = 28;
+// Shots the preview cycles through, at each clip's NATURAL duration (timeScale
+// 1 — the same speed the character-preview viewer plays them), with a short
+// idle beat between each.
+var SHOT_SEQUENCE = ['fh', 'bh', 'smash'];
+var SHOT_GAP = 0.85;      // idle seconds between shots
+var SHOT_START_DELAY = 0.6; // idle beat before the first shot on a new character
 // Framing presets as fractions of the model's bounding-box height.
 var FRAMINGS = {
   bust: { lookY: 0.8, visibleH: 0.55 },
@@ -64,8 +70,36 @@ export function makeCharacterPreview(container, options) {
     yaw: 0,
     dragging: false,
     dragX: 0,
-    disposed: false
+    disposed: false,
+    shotsReady: false,
+    shotIdx: 0,
+    shotCooldown: SHOT_START_DELAY
   };
+
+  // Trigger a swing at the clip's natural duration (timeScale 1) instead of the
+  // compressed gameplay speed. Setting _swingDur to the clip length makes
+  // playOnce()'s scale = duration/_swingDur = 1, and keeps isSwinging() true for
+  // the whole clip so the player's own update() won't cut back to idle mid-shot.
+  function previewSwing(type) {
+    var player = state.player;
+    if (!player || !player.swing) return;
+    var authored = player.authored;
+    var actions = authored && authored.actions;
+    var action = actions && (actions[type] || actions.fh);
+    var clip = action && action.getClip && action.getClip();
+    if (clip && clip.duration) player._swingDur = clip.duration;
+    // Fade the idle loop fully out so the swing plays at FULL amplitude. The
+    // player's own playOnce() only fades the previous *swing*, not the idle
+    // locomotion — leaving idle at weight 1 blends 50/50 with the swing and
+    // makes it look sluggish/subdued vs. the character-preview viewer (which
+    // stops its idle outright before playing a swing).
+    if (authored && authored.locomotion) {
+      authored.locomotion.fadeOut(0.06);
+      authored.locomotion = null;
+      authored.locomotionName = '';
+    }
+    player.swing(type);
+  }
 
   function resize() {
     var w = container.clientWidth || 1;
@@ -107,8 +141,21 @@ export function makeCharacterPreview(container, options) {
     var dt = state.last ? Math.min((now - state.last) / 1000, 0.05) : 0.016;
     state.last = now;
     if (state.player) {
+      // Cycle forehand → backhand → overhead with an idle beat between each.
+      if (state.shotsReady) {
+        var swinging = state.player.isSwinging && state.player.isSwinging();
+        if (!swinging) {
+          state.shotCooldown -= dt;
+          if (state.shotCooldown <= 0) {
+            previewSwing(SHOT_SEQUENCE[state.shotIdx]);
+            state.shotIdx = (state.shotIdx + 1) % SHOT_SEQUENCE.length;
+            state.shotCooldown = SHOT_GAP;
+          }
+        }
+      }
       state.player.update(dt, { speed: 0, facing: 0, ready: false });
       state.player.object.rotation.y = 0; // facing lerps; pin it so only the turntable spins
+      state.player.object.position.set(0, 0, 0); // pin root so swing clips don't drift
       if (state.rotationMode === 'turntable' && !state.dragging) state.yaw += dt * 0.55;
       turntable.rotation.y = state.yaw;
     }
@@ -143,6 +190,14 @@ export function makeCharacterPreview(container, options) {
       var pack = null;
       try {
         pack = await preloadPlayerModels([character.playerModelKey]);
+        // Merge the shared swing/locomotion clip libraries so the preview can
+        // idle and perform shots (the model GLBs carry no clips of their own).
+        var clipLibs = await preloadClipLibraries();
+        if (pack && clipLibs) {
+          Object.keys(clipLibs).forEach(function (k) {
+            if (!pack.animations[k]) pack.animations[k] = clipLibs[k];
+          });
+        }
       } catch (e) {
         console.warn('Character preview: player model preload failed; using primitive fallback.', e);
       }
@@ -162,6 +217,11 @@ export function makeCharacterPreview(container, options) {
       if (player.authored && player.authored.mixer) player.authored.mixer.update(0.15);
       turntable.add(player.object);
       state.player = player;
+      // Enable the shot cycle only if the swing clips actually loaded.
+      var actions = player.authored && player.authored.actions;
+      state.shotsReady = !!(actions && (actions.fh || actions.bh || actions.smash));
+      state.shotIdx = 0;
+      state.shotCooldown = SHOT_START_DELAY;
       frameCamera();
       if (!state.running) renderer.render(scene, camera);
     },

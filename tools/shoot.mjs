@@ -50,9 +50,19 @@ expect(menuCheck.afterIndoor.timeOfDay === 'day', 'indoor config did not force d
 expect(menuCheck.disabledIndoor === true, 'indoor selection did not disable time-of-day controls');
 expect(menuCheck.disabledPark === false, 'park selection did not restore time-of-day controls');
 
+// Radios now live inside the (sometimes hidden) arcade-flow screens, so set
+// them programmatically rather than relying on click actionability.
 async function selectOption(name, value) {
-  await page.check('input[name="' + name + '"][value="' + value + '"]', { force: true });
-  await page.evaluate(() => window.__pb3dMenu.syncMenuSummary());
+  await page.evaluate(({ name, value }) => {
+    var el = document.querySelector('input[name="' + name + '"][value="' + value + '"]');
+    if (el) { el.checked = true; el.dispatchEvent(new Event('change', { bubbles: true })); }
+    window.__pb3dMenu.syncMenuSummary();
+  }, { name, value });
+}
+
+// The visible flow ends with a GO step; tooling launches via the same handoff.
+async function launchMatch() {
+  await page.evaluate(() => window.__pb3dMenu.launch());
 }
 
 async function captureMatch(cfg) {
@@ -61,8 +71,8 @@ async function captureMatch(cfg) {
   await selectOption('palette', cfg.palette);
   if (cfg.tod) await selectOption('tod', cfg.tod);
   await page.screenshot({ path: path.join(OUT, cfg.menuShot) });
-  await page.check('input[name="difficulty"][value="4.5"]', { force: true });
-  await page.click('#startBtn');
+  await selectOption('difficulty', '4.5');
+  await launchMatch();
   await page.waitForTimeout(cfg.wait || 900);
   await page.screenshot({ path: path.join(OUT, cfg.courtShot) });
 }
@@ -72,8 +82,8 @@ async function captureRosterCloseup(cfg) {
   await selectOption('venue', cfg.venue);
   await selectOption('palette', cfg.palette);
   if (cfg.tod) await selectOption('tod', cfg.tod);
-  await page.check('input[name="difficulty"][value="4.5"]', { force: true });
-  await page.click('#startBtn');
+  await selectOption('difficulty', '4.5');
+  await launchMatch();
   await page.waitForTimeout(900);
   await page.evaluate(() => {
     var g = window.__game;
@@ -110,43 +120,40 @@ async function captureRosterCloseup(cfg) {
 
 async function waitForCharacterPreview() {
   await page.waitForFunction(() => {
-    const loading = document.getElementById('characterPreviewLoading');
+    const loading = document.getElementById('flowCharPreviewLoading');
     return loading && loading.style.display === 'none';
   }, { timeout: 20000 });
   await page.waitForTimeout(250);
 }
 
-async function captureCharacterModal() {
+async function captureCharacterScreen() {
   await page.reload({ waitUntil: 'networkidle' });
-  await page.click('#menuCharactersBtn');
+  await page.evaluate(() => window.__pb3dMenu.openCharacterScreen());
   await waitForCharacterPreview();
-  await page.screenshot({ path: path.join(OUT, 'character-modal.png') });
+  await page.screenshot({ path: path.join(OUT, 'character-screen.png') });
 
-  // Cycle every character tile on the default (P1) tab, screenshotting the
+  // Cycle every character tile on the first slot (P1 / You), screenshotting the
   // live preview so the selectable GLBs get loaded and visually checked at once.
   const ids = ['ch01', 'ch02', 'ch03', 'ch04', 'ch05', 'ch06', 'ch07', 'ch08', 'ch09', 'ch10', 'ch11', 'ch12', 'ch14', 'ch15'];
   for (const id of ids) {
-    await page.click(`#characterGrid [data-character-id="${id}"]`);
+    await page.click(`#flowCharGrid [data-character-id="${id}"]`);
     await waitForCharacterPreview();
     await page.screenshot({ path: path.join(OUT, `character-nearYou-${id}.png`) });
   }
 
-  // Spot-check the tab strip: switch tabs and assign characters (including
-  // a deliberate duplicate) to confirm per-slot assignment and the
-  // duplicates-allowed behavior both work.
-  const tabPicks = [
-    { position: 'nearMate', id: 'ch05' },
-    { position: 'farA', id: 'ch12' },
-    { position: 'farB', id: 'ch05' } // duplicate of nearMate's pick, intentional
+  // Select each slot chip and assign a character (including a deliberate
+  // duplicate) to confirm per-slot assignment + duplicates-allowed both work.
+  const walk = [
+    { slot: 'nearMate', id: 'ch05' },
+    { slot: 'farA', id: 'ch12' },
+    { slot: 'farB', id: 'ch05' } // duplicate of Partner's pick, intentional
   ];
-  for (const { position, id } of tabPicks) {
-    await page.click(`#characterTabStrip [data-position="${position}"]`);
-    await page.click(`#characterGrid [data-character-id="${id}"]`);
+  for (const { slot, id } of walk) {
+    await page.click(`#flowCharSlots [data-slot="${slot}"]`);
+    await page.click(`#flowCharGrid [data-character-id="${id}"]`);
     await waitForCharacterPreview();
-    await page.screenshot({ path: path.join(OUT, `character-${position}-${id}.png`) });
+    await page.screenshot({ path: path.join(OUT, `character-${slot}-${id}.png`) });
   }
-
-  await page.click('#characterDoneBtn');
 }
 
 async function captureSinglesSmoke() {
@@ -155,8 +162,8 @@ async function captureSinglesSmoke() {
   await selectOption('venue', 'park');
   await selectOption('palette', 'blue');
   await selectOption('tod', 'day');
-  await page.check('input[name="difficulty"][value="4.5"]', { force: true });
-  await page.click('#startBtn');
+  await selectOption('difficulty', '4.5');
+  await launchMatch();
   await page.waitForTimeout(900);
   const snap = await page.evaluate(() => {
     const g = window.__game;
@@ -182,7 +189,7 @@ await captureMatch({ venue: 'tropical', palette: 'green', tod: 'night', menuShot
 await captureMatch({ venue: 'indoor', palette: 'blue', menuShot: 'menu-indoor-blue.png', courtShot: 'court-indoor-blue.png', wait: 850 });
 await captureMatch({ venue: 'indoor', palette: 'green', menuShot: 'menu-indoor-green.png', courtShot: 'court-indoor-green.png', wait: 850 });
 await captureRosterCloseup({ venue: 'park', palette: 'blue', tod: 'day', shot: 'roster-closeup.png' });
-await captureCharacterModal();
+await captureCharacterScreen();
 await captureSinglesSmoke();
 
 await page.reload({ waitUntil: 'networkidle' });
@@ -190,8 +197,8 @@ await selectOption('mode', 'doubles');
 await selectOption('venue', 'park');
 await selectOption('palette', 'blue');
 await selectOption('tod', 'day');
-await page.check('input[name="difficulty"][value="4.5"]', { force: true });
-await page.click('#startBtn');
+await selectOption('difficulty', '4.5');
+await launchMatch();
 await page.waitForTimeout(900);
 
 // Drive the match: auto-serve whenever it's the human's serve and keep swinging,

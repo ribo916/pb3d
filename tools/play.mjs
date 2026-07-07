@@ -49,9 +49,13 @@ const errors = [];
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 page.on('pageerror', (e) => errors.push(String(e)));
 
+// Radios live inside the arcade-flow screens now; set them programmatically.
 async function selectOption(name, value) {
-  await page.check(`input[name="${name}"][value="${value}"]`, { force: true });
-  if (name === 'venue') await page.evaluate(() => window.__pb3dMenu.syncMenuSummary());
+  await page.evaluate(({ name, value }) => {
+    const el = document.querySelector(`input[name="${name}"][value="${value}"]`);
+    if (el) { el.checked = true; el.dispatchEvent(new Event('change', { bubbles: true })); }
+    window.__pb3dMenu.syncMenuSummary();
+  }, { name, value });
 }
 
 // Convert players[0] into an AI-driven player and start fast-forwarding the sim.
@@ -97,8 +101,8 @@ async function playOneMatch(i) {
   await selectOption('venue', VENUE);
   await selectOption('palette', PALETTE);
   if (VENUE !== 'indoor') await selectOption('tod', TOD);
-  await page.check(`input[name="difficulty"][value="${DIFF}"]`, { force: true });
-  await page.click('#startBtn');
+  await selectOption('difficulty', DIFF);
+  await page.evaluate(() => window.__pb3dMenu.launch());
   await page.waitForTimeout(600);
   await autoDrive(SPEED);
 

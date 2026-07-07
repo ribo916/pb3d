@@ -245,7 +245,10 @@ function quitToMenu() {
   closeMusicModal();
   $('pauseModal').classList.remove('active');
   $('hud').style.display = 'none';
-  $('menu').style.display = '';
+  // Return to the arcade flow's Start screen; #menu stays a hidden harness.
+  // flowState (radios + rosterPicks) persists, so prior picks are remembered.
+  $('flowRoot').style.display = '';
+  goToFlow('start');
   game = null;
   input = null;
   last = 0;
@@ -276,6 +279,7 @@ async function startMatch(difficulty, config) {
   startBtn.textContent = startLabel;
 
   $('menu').style.display = 'none';
+  $('flowRoot').style.display = 'none';
 
   const hudRefs = {
     scoreNear: $('scoreNear'), scoreFar: $('scoreFar'),
@@ -330,14 +334,18 @@ document.querySelectorAll('input[name="musicStart"]').forEach(function (el) {
   });
 });
 
-$('startBtn').addEventListener('click', function () {
-  if (starting) return;
+// Shared launch handoff: the exact audio dance both the (now hidden) #startBtn
+// and the arcade flow's GO step run before entering the match.
+function beginMatch() {
+  if (starting) return Promise.resolve();
   var cfg = syncMenuSummary();
   applyMenuMusicStart(true);
   audio.unlock();
   applyMenuMusicStart(false);
-  startMatch(cfg.difficulty, cfg);
-});
+  return startMatch(cfg.difficulty, cfg);
+}
+
+$('startBtn').addEventListener('click', function () { beginMatch(); });
 
 syncMenuSummary();
 syncMenuMusicStartFromState();
@@ -346,7 +354,11 @@ updateAudioUI();
 window.__pb3dMenu = {
   readConfig: readMenuConfig,
   syncTimeOfDayUI: syncTimeOfDayUI,
-  syncMenuSummary: syncMenuSummary
+  syncMenuSummary: syncMenuSummary,
+  // Test/tooling entry points (the visible flow drives these too):
+  launch: function () { return launchFromFlow(); },
+  goToFlow: function (id) { goToFlow(id); },
+  openCharacterScreen: function () { goToFlow('character'); }
 };
 
 $('pauseBtn').addEventListener('click', function (e) { e.preventDefault(); if (running && !paused) pauseGame(); });
@@ -527,3 +539,208 @@ $('infoBtn').addEventListener('touchstart', function (e) { e.preventDefault(); $
 $('infoCloseBtn').addEventListener('click', function (e) { e.preventDefault(); $('infoModal').classList.remove('active'); });
 $('infoCloseBtn').addEventListener('touchstart', function (e) { e.preventDefault(); $('infoModal').classList.remove('active'); }, { passive: false });
 $('infoModal').addEventListener('click', function (e) { if (e.target === $('infoModal')) $('infoModal').classList.remove('active'); });
+
+/* ============================================================================
+ * Arcade launch flow — Street-Fighter-style one-decision-per-screen router.
+ * The visible screens drive the same source of truth (radios + rosterPicks)
+ * readMenuConfig() reads, so the launch handoff stays unchanged.
+ * ==========================================================================*/
+var FLOW_ACTIVE = 'start';
+var flowPreview = null;      // single shared characterPreview instance
+var flowPreviewMount = null;
+var flowSlotOrder = [];      // active slot positions for the character screen
+var flowActiveSlot = 'nearYou'; // the slot currently being edited
+var flowVsTimer = null;
+
+function flowScreenEl(id) {
+  return $('scr' + id.charAt(0).toUpperCase() + id.slice(1));
+}
+
+// Keep at most one turntable alive; recreate when the mount changes.
+function ensureFlowPreview(mountEl, framing) {
+  if (flowPreview && flowPreviewMount === mountEl) {
+    flowPreview.setFraming(framing);
+    return flowPreview;
+  }
+  disposeFlowPreview();
+  // 'drag' mode: no auto-spin (the player faces forward), but pointer-drag still rotates.
+  flowPreview = makeCharacterPreview(mountEl, { framing: framing, rotationMode: 'drag' });
+  flowPreviewMount = mountEl;
+  return flowPreview;
+}
+function disposeFlowPreview() {
+  if (flowPreview) { flowPreview.dispose(); flowPreview = null; flowPreviewMount = null; }
+}
+
+function goToFlow(id) {
+  if (flowVsTimer) { clearTimeout(flowVsTimer); flowVsTimer = null; }
+  var current = flowScreenEl(FLOW_ACTIVE);
+  if (current) current.classList.remove('active');
+  FLOW_ACTIVE = id;
+  var next = flowScreenEl(id);
+  if (next) next.classList.add('active');
+  enterFlowScreen(id);
+}
+
+function enterFlowScreen(id) {
+  if (id === 'start') {
+    var p = ensureFlowPreview($('startPreviewMount'), 'full');
+    p.start();
+    // Title screen always shows AJ (CH01), regardless of roster picks.
+    p.show(resolveSlotCharacter('nearYou', 'ch01'));
+  } else if (id === 'character') {
+    enterCharacter();
+  } else if (id === 'venue') {
+    if (flowPreview) flowPreview.stop();
+    syncTimeOfDayUI();
+  } else if (id === 'vs') {
+    if (flowPreview) flowPreview.stop();
+    enterVs();
+  } else if (id === 'loading') {
+    disposeFlowPreview();
+  } else {
+    if (flowPreview) flowPreview.stop();
+  }
+}
+
+// ---- Character screen (all active slots pre-filled, edit any in any order) ----
+function enterCharacter() {
+  flowSlotOrder = activePositions();
+  if (flowSlotOrder.indexOf(flowActiveSlot) === -1) flowActiveSlot = flowSlotOrder[0];
+  ensureFlowPreview($('flowCharPreviewMount'), 'full').start();
+  renderFlowCharacter();
+}
+
+function renderFlowCharacter() {
+  renderFlowCharSlots();
+  renderFlowCharGrid();
+  showFlowCharPreview(flowActiveSlot, rosterPicks[flowActiveSlot]);
+}
+
+function renderFlowCharSlots() {
+  $('flowCharSlots').innerHTML = flowSlotOrder.map(function (pos) {
+    var c = getCharacter(rosterPicks[pos]);
+    var hex = '#' + ((c && c.swatch) || 0x888888).toString(16).padStart(6, '0');
+    return '<button class="flow-slot-chip' + (pos === flowActiveSlot ? ' active' : '') + '" data-slot="' + pos + '">' +
+      '<span class="flow-slot-swatch" style="background:' + hex + '"></span>' +
+      '<span class="flow-slot-meta">' +
+      '<span class="flow-slot-role">' + POSITION_TAB_NUMBER[pos] + ' · ' + positionLabel(pos) + '</span>' +
+      '<span class="flow-slot-char">' + (c ? c.label : '—') + '</span></span></button>';
+  }).join('');
+}
+
+function renderFlowCharGrid() {
+  var slot = flowActiveSlot;
+  $('flowCharGrid').innerHTML = CHARACTERS.map(function (c) {
+    var hex = '#' + c.swatch.toString(16).padStart(6, '0');
+    var badges = flowSlotOrder.filter(function (pos) { return rosterPicks[pos] === c.id; })
+      .map(function (pos) { return '<span class="flow-char-badge">' + POSITION_TAB_NUMBER[pos] + '</span>'; }).join('');
+    var isActive = rosterPicks[slot] === c.id;
+    return '<button class="flow-char-tile' + (isActive ? ' active' : '') + '" data-character-id="' + c.id + '" tabindex="0">' +
+      '<span class="flow-char-tile-badges">' + badges + '</span>' +
+      '<span class="flow-char-portrait" style="background:' + hex + '"><span>' + c.label.replace('CH', '') + '</span></span>' +
+      '<span class="flow-char-cap">' + c.label + '</span></button>';
+  }).join('');
+}
+
+function showFlowCharPreview(slot, characterId) {
+  var ch = resolveSlotCharacter(slot, characterId);
+  $('flowCharName').textContent = positionLabel(slot) + ' — ' + ch.label;
+  if (!flowPreview) return;
+  $('flowCharPreviewLoading').style.display = '';
+  flowPreview.show(ch).then(function () { $('flowCharPreviewLoading').style.display = 'none'; });
+}
+
+function randomCharacterId() {
+  return CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)].id;
+}
+
+// ---- VS splash ----
+function flowVsPortrait(slot, characterId) {
+  var ch = resolveSlotCharacter(slot, characterId);
+  var base = getCharacter(characterId) || getCharacter(ch.id);
+  var hex = '#' + ((base && base.swatch) || 0x888888).toString(16).padStart(6, '0');
+  return '<div class="flow-vs-card">' +
+    '<div class="flow-vs-portrait" style="background:' + hex + '"><span>' + ch.label.replace('CH', '') + '</span></div>' +
+    '<div><div class="flow-vs-name">' + ch.label + '</div><div class="flow-vs-role">' + positionLabel(slot) + '</div></div>' +
+    '</div>';
+}
+
+function enterVs() {
+  var mode = normalizeMode(checkedValue('mode', 'doubles'));
+  var left, right;
+  if (mode === 'singles') { left = ['nearYou']; right = ['farA']; }
+  else if (mode === 'practice') { left = ['nearYou']; right = []; }
+  else { left = ['nearYou', 'nearMate']; right = ['farA', 'farB']; }
+  $('flowVsLeft').innerHTML = left.map(function (s) { return flowVsPortrait(s, rosterPicks[s]); }).join('');
+  $('flowVsRight').innerHTML = right.length
+    ? right.map(function (s) { return flowVsPortrait(s, rosterPicks[s]); }).join('')
+    : '<div class="flow-vs-role" style="opacity:.6">Solo practice</div>';
+  flowVsTimer = setTimeout(function () { launchFromFlow(); }, 1200);
+}
+
+// ---- Launch handoff ----
+function launchFromFlow() {
+  if (starting || running) return Promise.resolve();
+  goToFlow('loading');
+  return beginMatch();
+}
+
+// ---- Wiring ----
+// Start: advance on tap anywhere (the START button bubbles up here too).
+$('scrStart').addEventListener('click', function () { goToFlow('format'); });
+
+// Generic next/back buttons that just navigate to a named screen.
+$('flowRoot').addEventListener('click', function (e) {
+  var next = e.target.closest('[data-flow-next]');
+  if (next) { goToFlow(next.getAttribute('data-flow-next')); return; }
+  var back = e.target.closest('[data-flow-back]');
+  if (back) { goToFlow(back.getAttribute('data-flow-back')); return; }
+});
+
+// Character screen controls.
+$('flowCharSlots').addEventListener('click', function (e) {
+  var chip = e.target.closest('[data-slot]');
+  if (!chip) return;
+  flowActiveSlot = chip.getAttribute('data-slot');
+  renderFlowCharacter();
+});
+$('flowCharGrid').addEventListener('click', function (e) {
+  var tile = e.target.closest('[data-character-id]');
+  if (!tile) return;
+  rosterPicks[flowActiveSlot] = tile.getAttribute('data-character-id');
+  updateCharactersSummary();
+  renderFlowCharSlots();
+  renderFlowCharGrid();
+  showFlowCharPreview(flowActiveSlot, rosterPicks[flowActiveSlot]);
+});
+$('flowRollSlot').addEventListener('click', function () {
+  rosterPicks[flowActiveSlot] = randomCharacterId();
+  updateCharactersSummary();
+  renderFlowCharSlots();
+  renderFlowCharGrid();
+  showFlowCharPreview(flowActiveSlot, rosterPicks[flowActiveSlot]);
+});
+$('flowRollAll').addEventListener('click', function () {
+  flowSlotOrder.forEach(function (slot) { rosterPicks[slot] = randomCharacterId(); });
+  updateCharactersSummary();
+  renderFlowCharacter();
+});
+$('flowCharNext').addEventListener('click', function () { goToFlow('venue'); });
+$('flowCharBack').addEventListener('click', function () { goToFlow('format'); });
+
+// Venue back → return to the character screen.
+$('flowVenueBack').addEventListener('click', function () { goToFlow('character'); });
+
+// VS: tap anywhere advances immediately.
+$('scrVs').addEventListener('click', function () { launchFromFlow(); });
+
+// Keyboard affordances (only while the flow is showing, not mid-match).
+document.addEventListener('keydown', function (e) {
+  if ($('flowRoot').style.display === 'none') return;
+  if (FLOW_ACTIVE === 'start' && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); goToFlow('format'); }
+  else if (FLOW_ACTIVE === 'vs' && e.key === 'Enter') { e.preventDefault(); launchFromFlow(); }
+});
+
+// Boot the flow on the Start screen (kicks off AJ's turntable).
+enterFlowScreen('start');

@@ -216,6 +216,37 @@ export function preloadPlayerModels(neededKeys) {
   return promise;
 }
 
+/* Loads the shared clip libraries (mixamo-swings + mixamo-locomotion, the only
+ * `animations`-kind manifest entries with real URLs) once and caches them, so
+ * the character preview can play idle + forehand/backhand/overhead without
+ * pulling in the full match asset pack. Tiny (~0.07MB swings + locomotion) and
+ * shared across every character, so it doesn't meaningfully affect how fast a
+ * character model itself appears. Returns a map keyed by animation key →
+ * { key, item, payload } records, mergeable into a preview pack's `animations`
+ * bucket for collectAnimationClips(). */
+var clipLibraryPromise = null;
+export function preloadClipLibraries() {
+  if (clipLibraryPromise) return clipLibraryPromise;
+  clipLibraryPromise = (async function () {
+    var out = {};
+    var loader = makeGltfLoader();
+    var items = list('animations');
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      if (!hasUrl(item)) continue;
+      try {
+        out[item.key] = { key: item.key, item: item, payload: await loader.loadAsync(item.url) };
+      } catch (e) {
+        // Optional: a missing swing/locomotion lib just means no preview animation.
+        console.warn('Clip library preload failed:', item.key, e);
+      }
+    }
+    return out;
+  })();
+  clipLibraryPromise.catch(function () { clipLibraryPromise = null; });
+  return clipLibraryPromise;
+}
+
 export function cloneModelScene(record) {
   var gltf = record && record.payload;
   var root = gltf && gltf.scene;

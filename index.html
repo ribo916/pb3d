@@ -132,7 +132,8 @@
       --focus:rgba(126,240,255,.85);
     }
 
-    /* ---- Start menu ---- */
+    /* ---- Start menu (retired card — kept as a hidden source-of-truth harness
+       for #startBtn + the summary spans main.js writes to) ---- */
     #menu {
       --menu-border: rgba(160, 224, 255, 0.12);
       --menu-border-strong: rgba(118, 214, 255, 0.4);
@@ -143,7 +144,7 @@
       position: fixed;
       inset: 0;
       z-index: 30;
-      display: flex;
+      display: none;
       flex-direction: column;
       align-items: center;
       justify-content: flex-start;
@@ -512,6 +513,225 @@
       .menu-compact-row .menu-seg strong,
       .menu-compact-row .menu-swatch strong { font-size: 10px; }
     }
+
+    /* ============================================================
+       Arcade launch flow — one decision per full-screen step.
+       Built on the chalk theme tokens + one restrained hot accent.
+       ============================================================ */
+    #flowRoot {
+      --menu-fast: 0.18s;              /* consumed by reused .menu-seg transitions */
+      --flow-accent: #ff3b30;          /* single hot accent for arcade energy */
+      --flow-accent-ink: #fff;
+      position: fixed; inset: 0; z-index: 30;
+      background: var(--bg); color: var(--text);
+      font-family: var(--body-font);
+    }
+    .flow-screen {
+      position: fixed; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 20px;
+      padding: max(20px, env(safe-area-inset-top, 0px)) clamp(16px, 5vw, 48px) max(20px, env(safe-area-inset-bottom, 0px));
+      overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
+      opacity: 0; pointer-events: none; z-index: 0;
+      transform: translateX(3%) skewX(-2deg);
+      transition: opacity .24s ease, transform .24s ease;
+    }
+    .flow-screen.active {
+      opacity: 1; pointer-events: auto; z-index: 2;
+      transform: none;
+    }
+    .flow-screen.leaving { transform: translateX(-3%) skewX(2deg); }
+    @media (prefers-reduced-motion: reduce) {
+      .flow-screen { transition: opacity .12s linear; transform: none; }
+      .flow-screen.leaving { transform: none; }
+    }
+    /* Shared flow chrome */
+    .flow-kicker {
+      font-size: 11px; font-weight: 800; letter-spacing: 3px;
+      text-transform: uppercase; color: var(--label);
+    }
+    .flow-title {
+      font-family: var(--title-font); font-weight: var(--title-weight);
+      text-transform: uppercase; letter-spacing: var(--title-spacing);
+      line-height: .95; text-align: center;
+    }
+    .flow-nav {
+      display: flex; gap: 12px; align-items: center; justify-content: center;
+      flex-wrap: wrap; width: min(560px, 100%);
+    }
+    .flow-btn {
+      min-height: 48px; padding: 12px 22px;
+      border: 1px solid var(--seg-border); border-radius: var(--btn-radius);
+      background: var(--seg-bg); color: var(--text);
+      font-family: inherit; font-size: 13px; font-weight: 800; letter-spacing: 1.4px;
+      text-transform: uppercase; cursor: pointer;
+      transition: transform var(--menu-fast) ease, box-shadow var(--menu-fast) ease, background var(--menu-fast) ease;
+    }
+    .flow-btn:hover { transform: translateY(-1px); }
+    .flow-btn:active { transform: scale(.98); }
+    .flow-btn-primary {
+      background: var(--flow-accent); color: var(--flow-accent-ink);
+      border-color: var(--flow-accent);
+      box-shadow: 0 12px 26px color-mix(in srgb, var(--flow-accent) 34%, transparent);
+      flex: 1 1 auto; justify-content: center;
+    }
+    .flow-btn-ghost { flex: 0 0 auto; }
+    .flow-btn:disabled { opacity: .4; cursor: default; transform: none; }
+
+    /* 01 · Start */
+    #scrStart { justify-content: center; gap: 14px; }
+    /* TEMP debug icon — top-left of the title screen only. */
+    #flowDebugBtn {
+      position: absolute; top: max(12px, env(safe-area-inset-top, 0px)); left: 14px;
+      width: 34px; height: 34px; border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; text-decoration: none; line-height: 1; opacity: 0.5;
+      border: 1px solid var(--seg-border); background: var(--seg-bg);
+    }
+    #flowDebugBtn:hover { opacity: 1; }
+    #startPreviewWrap {
+      position: relative; width: min(360px, 74vw); aspect-ratio: 3 / 4;
+      display: flex; align-items: flex-end; justify-content: center;
+    }
+    #startPreviewMount { position: absolute; inset: 0; }
+    .flow-contact-shadow {
+      position: absolute; bottom: 4%; left: 50%; transform: translateX(-50%);
+      width: 56%; height: 8%;
+      background: radial-gradient(ellipse at center, rgba(0,0,0,.20), rgba(0,0,0,0) 70%);
+      pointer-events: none;
+    }
+    #scrStart .flow-title { font-size: clamp(40px, 13vw, 96px); }
+    .flow-wordmark-sub { font-family: var(--title-font); font-size: clamp(20px, 6vw, 34px); opacity: .55; }
+    #startGameBtn {
+      min-height: 56px; padding: 16px 40px;
+      border: var(--start-bw) solid var(--card-border); border-radius: var(--btn-radius);
+      background: var(--start-bg); color: var(--start-text);
+      font-family: inherit; font-size: 18px; font-weight: 900; letter-spacing: 2px;
+      text-transform: uppercase; cursor: pointer; box-shadow: var(--start-shadow);
+      transition: transform var(--menu-fast) ease;
+    }
+    #startGameBtn:hover { transform: translateY(-2px); }
+    .flow-taphint {
+      font-size: 11px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase;
+      color: var(--text-faint); animation: flowBlink 1.8s ease-in-out infinite;
+    }
+    @keyframes flowBlink { 0%,100% { opacity: .35; } 50% { opacity: .9; } }
+
+    /* Shared: big segmented groups (reuse .menu-option + .menu-seg / .menu-diff-card) */
+    .flow-group { width: min(560px, 100%); display: flex; flex-direction: column; gap: 10px; }
+    .flow-seg-row { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 10px; }
+    .flow-seg-row.diff { grid-template-columns: repeat(3, 1fr); }
+    #flowRoot .flow-seg-row .menu-seg { min-height: 56px; padding: 12px 10px; display: flex; align-items: center; justify-content: center; border-radius: 14px; }
+    #flowRoot .flow-seg-row .menu-seg strong { font-size: 15px; font-weight: 800; letter-spacing: .6px; }
+    #flowRoot .flow-seg-row .menu-seg::after { top: 8px; right: 8px; }
+    #flowRoot .flow-seg-row .menu-diff-card { min-height: 96px; }
+    #flowRoot .flow-seg-row .dupr-rating { font-size: 30px; }
+
+    /* 02 · Format — advanced drawer */
+    .flow-adv { width: min(560px, 100%); border: 1px solid var(--seg-border); border-radius: 14px; background: var(--seg-bg); overflow: hidden; }
+    .flow-adv > summary {
+      list-style: none; cursor: pointer; padding: 14px 16px;
+      font-size: 12px; font-weight: 800; letter-spacing: 1.6px; text-transform: uppercase;
+      color: var(--text-soft); display: flex; align-items: center; justify-content: space-between;
+    }
+    .flow-adv > summary::-webkit-details-marker { display: none; }
+    .flow-adv > summary::after { content: "▾"; transition: transform .2s ease; }
+    .flow-adv[open] > summary::after { transform: rotate(180deg); }
+    .flow-adv-body { padding: 4px 16px 16px; display: flex; flex-direction: column; }
+    .flow-adv-row { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 0; }
+    .flow-adv-row + .flow-adv-row { border-top: 1px solid var(--divider); }
+    .flow-adv-label { width: 74px; flex-shrink: 0; font-size: 10px; font-weight: 800; letter-spacing: 1.4px; text-transform: uppercase; color: var(--label); }
+    .flow-adv-ctrl { flex: 1; display: flex; gap: 6px; min-width: 0; flex-wrap: wrap; }
+    .flow-adv-ctrl .menu-option { flex: 1 1 auto; }
+    #flowRoot .flow-adv-ctrl .menu-seg,
+    #flowRoot .flow-adv-ctrl .menu-swatch { min-height: 34px; padding: 6px 8px; display: flex; align-items: center; justify-content: center; border-radius: 9px; }
+    #flowRoot .flow-adv-ctrl .menu-seg strong { font-size: 11px; }
+    #flowRoot .flow-adv-ctrl .menu-seg::after,
+    #flowRoot .flow-adv-ctrl .menu-swatch::after { display: none; }
+    #flowRoot .flow-adv-ctrl .menu-swatch { padding-left: 30px; justify-content: flex-start; }
+    .flow-theme-dots { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    /* 03 · Character */
+    #scrCharacter { justify-content: flex-start; padding-top: max(24px, env(safe-area-inset-top, 0px)); gap: 14px; }
+    .flow-char-head { text-align: center; }
+    .flow-char-head .flow-title { font-size: clamp(22px, 6vw, 34px); }
+    .flow-char-slots { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; width: min(880px, 100%); }
+    .flow-slot-chip {
+      display: flex; align-items: center; gap: 8px; padding: 7px 12px; min-height: 44px;
+      border: 1px solid var(--seg-border); border-radius: 12px; background: var(--seg-bg);
+      color: var(--text); font-family: inherit; cursor: pointer;
+      transition: border-color var(--menu-fast) ease, box-shadow var(--menu-fast) ease;
+    }
+    .flow-slot-chip.active { border-color: var(--flow-accent); box-shadow: inset 0 0 0 2px var(--flow-accent); }
+    .flow-slot-swatch { width: 20px; height: 20px; border-radius: 6px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.25); flex-shrink: 0; }
+    .flow-slot-meta { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.15; }
+    .flow-slot-role { font-size: 9px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--label); }
+    .flow-slot-char { font-size: 12px; font-weight: 800; letter-spacing: .5px; }
+    .flow-char-layout {
+      width: min(880px, 100%); display: grid; grid-template-columns: 1fr minmax(200px, 260px);
+      gap: 20px; align-items: start;
+    }
+    .flow-char-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; align-content: start; }
+    .flow-char-tile {
+      position: relative; border: 1px solid var(--seg-border); border-radius: 12px;
+      background: var(--seg-bg); cursor: pointer; font-family: inherit; color: var(--seg-text);
+      padding: 0; overflow: hidden; display: flex; flex-direction: column; align-items: stretch;
+    }
+    .flow-char-portrait { aspect-ratio: 1 / 1; width: 100%; display: flex; align-items: center; justify-content: center; }
+    .flow-char-portrait span { font-size: 14px; font-weight: 900; letter-spacing: .5px; color: rgba(255,255,255,.9); text-shadow: 0 1px 4px rgba(0,0,0,.35); }
+    .flow-char-cap { font-size: 9.5px; font-weight: 800; letter-spacing: .6px; padding: 5px 2px; text-align: center; }
+    .flow-char-tile.active { border-color: var(--flow-accent); box-shadow: inset 0 0 0 2px var(--flow-accent); }
+    .flow-char-tile-badges { position: absolute; top: 4px; left: 4px; display: flex; gap: 3px; flex-wrap: wrap; }
+    .flow-char-badge { font-size: 8px; font-weight: 800; padding: 1px 4px; border-radius: 5px; background: var(--flow-accent); color: var(--flow-accent-ink); }
+    .flow-char-preview-col { display: flex; flex-direction: column; gap: 10px; }
+    #flowCharPreviewMount {
+      width: 100%; aspect-ratio: 3 / 4; border-radius: 16px; overflow: hidden; position: relative;
+      border: 1px solid var(--seg-border);
+      background: radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--flow-accent) 12%, transparent), transparent 60%), var(--card-bg);
+    }
+    #flowCharPreviewLoading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 800; letter-spacing: 2px; color: var(--text-soft); }
+    .flow-char-actions { display: flex; gap: 8px; }
+    .flow-icon-btn {
+      min-height: 44px; min-width: 44px; padding: 8px 12px; border-radius: 10px;
+      border: 1px solid var(--seg-border); background: var(--seg-bg); color: var(--text);
+      font-family: inherit; font-size: 13px; font-weight: 800; letter-spacing: 1px; cursor: pointer;
+    }
+    .flow-icon-btn:active { transform: scale(.97); }
+    @media (max-width: 640px) {
+      .flow-char-layout { grid-template-columns: 1fr; }
+      .flow-char-preview-col { order: -1; width: min(220px, 62vw); margin: 0 auto; }
+      .flow-char-grid { grid-template-columns: repeat(4, 1fr); }
+    }
+
+    /* 04 · Venue */
+    .flow-venue-grid { width: min(720px, 100%); display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+    #flowRoot .flow-venue-grid .menu-seg { min-height: 110px; border-radius: 16px; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-end; padding: 14px; }
+    #flowRoot .flow-venue-grid .menu-seg strong { font-size: 17px; }
+    .flow-tod-row { display: flex; align-items: center; gap: 10px; }
+
+    /* 05 · VS */
+    #scrVs { background: #141414; color: #fff; justify-content: center; }
+    .flow-vs-stage { display: grid; grid-template-columns: 1fr auto 1fr; gap: clamp(12px, 4vw, 40px); align-items: center; width: min(900px, 100%); }
+    .flow-vs-side { display: flex; flex-direction: column; gap: 14px; }
+    .flow-vs-side.right { align-items: flex-end; }
+    .flow-vs-card { display: flex; align-items: center; gap: 12px; }
+    .flow-vs-side.right .flow-vs-card { flex-direction: row-reverse; }
+    .flow-vs-portrait { width: clamp(56px, 14vw, 96px); aspect-ratio: 1 / 1; border-radius: 14px; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+    .flow-vs-portrait span { font-size: clamp(14px, 4vw, 22px); font-weight: 900; color: rgba(255,255,255,.92); text-shadow: 0 1px 4px rgba(0,0,0,.45); }
+    .flow-vs-name { font-size: clamp(13px, 3.4vw, 18px); font-weight: 800; letter-spacing: 1px; text-transform: uppercase; }
+    .flow-vs-role { font-size: 10px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: rgba(255,255,255,.5); }
+    .flow-vs-mark {
+      font-family: var(--title-font); font-size: clamp(48px, 15vw, 120px); font-weight: 900;
+      color: var(--flow-accent); transform: skewX(-8deg); text-shadow: 0 6px 24px color-mix(in srgb, var(--flow-accent) 45%, transparent);
+    }
+    #scrVs .flow-taphint { color: rgba(255,255,255,.5); }
+
+    /* 06 · Loading */
+    #scrLoading { background: #141414; color: #fff; }
+    .flow-spinner { width: 44px; height: 44px; border-radius: 50%; border: 3px solid rgba(255,255,255,.18); border-top-color: var(--flow-accent); animation: flowSpin .8s linear infinite; }
+    @keyframes flowSpin { to { transform: rotate(360deg); } }
+    .flow-loading-label { font-size: 12px; font-weight: 800; letter-spacing: 3px; text-transform: uppercase; color: rgba(255,255,255,.7); }
 
     /* ---- HUD ---- */
     #hud { display: none; position: fixed; inset: 0; pointer-events: none; z-index: 20; }
@@ -1056,7 +1276,7 @@
   <script>
     (function () {
       var STORAGE_KEY = 'pb3d-menu-theme';
-      var saved = window.localStorage.getItem(STORAGE_KEY) || 'night';
+      var saved = window.localStorage.getItem(STORAGE_KEY) || 'chalk';
       document.body.dataset.theme = saved;
 
       function syncLabels(name) {
@@ -1246,202 +1466,175 @@
     </div>
   </div>
 
-  <div id="menu">
-    <div class="theme-pill">
-      <span class="theme-pill-label">Theme</span>
-      <div class="theme-dots">
-        <button type="button" class="theme-dot dot-cobalt" onclick="setTheme('cobalt')" title="Cobalt" aria-label="Cobalt theme"></button>
-        <button type="button" class="theme-dot dot-chalk"  onclick="setTheme('chalk')"  title="Chalk"  aria-label="Chalk theme"></button>
-        <button type="button" class="theme-dot dot-sunny"  onclick="setTheme('sunny')"  title="Sunny"  aria-label="Sunny theme"></button>
-        <button type="button" class="theme-dot dot-paper"  onclick="setTheme('paper')"  title="Paper"  aria-label="Paper theme"></button>
-        <button type="button" class="theme-dot dot-arcade" onclick="setTheme('arcade')" title="Arcade" aria-label="Arcade theme"></button>
-        <button type="button" class="theme-dot dot-night"  onclick="setTheme('night')"  title="Night"  aria-label="Night theme"></button>
-      </div>
-      <span class="theme-pill-name">NIGHT</span>
-    </div>
-    <div class="menu-hero-card">
+  <!-- Hidden source-of-truth harness: retains #startBtn + the summary spans
+       main.js reads/writes. The visible UI lives in #flowRoot below. -->
+  <div id="menu" aria-hidden="true">
+    <div id="menuSummary"></div>
+    <span id="menuCharactersSummary"></span>
+    <button id="menuCharactersBtn" type="button">Choose</button>
+    <button id="startBtn" type="button">Start Match</button>
+  </div>
 
-      <div class="menu-title-row">
-        <div class="menu-hero-copy">
-          <h1>Pickleball 3D</h1>
-          <div id="menuSummary">Doubles · Park · Day · Blue · Follow · DUPR 4.0</div>
+  <!-- ================= Arcade launch flow ================= -->
+  <div id="flowRoot">
+
+    <!-- 01 · Start -->
+    <section id="scrStart" class="flow-screen active">
+      <!-- TEMP debug: opens the character-preview viewer (all-character animation check) -->
+      <a id="flowDebugBtn" href="/character-preview/" target="_blank" rel="noopener"
+         title="Character preview (debug)" onclick="event.stopPropagation()">🐛</a>
+      <div id="startPreviewWrap">
+        <div id="startPreviewMount"></div>
+        <div class="flow-contact-shadow"></div>
+      </div>
+      <h1 class="flow-title">PB3D</h1>
+      <button id="startGameBtn" type="button">Start Game</button>
+      <div class="flow-taphint">Tap anywhere</div>
+    </section>
+
+    <!-- 02 · Format -->
+    <section id="scrFormat" class="flow-screen">
+      <div class="flow-kicker">Match Format</div>
+      <h2 class="flow-title" style="font-size:clamp(24px,7vw,40px)">Choose your game</h2>
+
+      <div class="flow-group">
+        <div class="flow-kicker">Mode</div>
+        <div class="flow-seg-row">
+          <label class="menu-option"><input type="radio" name="mode" value="doubles" checked><div class="menu-seg"><strong>Doubles</strong></div></label>
+          <label class="menu-option"><input type="radio" name="mode" value="singles"><div class="menu-seg"><strong>Singles</strong></div></label>
+          <label class="menu-option"><input type="radio" name="mode" value="practice"><div class="menu-seg"><strong>Practice</strong></div></label>
         </div>
-        <div class="menu-ball" aria-hidden="true"></div>
       </div>
 
-      <div class="menu-diff-section">
-        <div class="menu-label">Difficulty</div>
-        <div class="menu-options-diff">
-          <label class="menu-option">
-            <input type="radio" name="difficulty" value="4.0" checked>
-            <div class="menu-diff-card diff-40">
-              <div>
-                <div class="dupr-rating">4.0</div>
-                <div class="dupr-label">Intermediate</div>
+      <div class="flow-group">
+        <div class="flow-kicker">Difficulty</div>
+        <div class="flow-seg-row diff">
+          <label class="menu-option"><input type="radio" name="difficulty" value="4.0" checked><div class="menu-diff-card diff-40"><div><div class="dupr-rating">4.0</div><div class="dupr-label">Intermediate</div></div></div></label>
+          <label class="menu-option"><input type="radio" name="difficulty" value="4.5"><div class="menu-diff-card diff-45"><div><div class="dupr-rating">4.5</div><div class="dupr-label">Advanced</div></div></div></label>
+          <label class="menu-option"><input type="radio" name="difficulty" value="5.0"><div class="menu-diff-card diff-50"><div><div class="dupr-rating">5.0</div><div class="dupr-label">Pro</div></div></div></label>
+        </div>
+      </div>
+
+      <details class="flow-adv">
+        <summary>Advanced</summary>
+        <div class="flow-adv-body">
+          <div class="flow-adv-row">
+            <div class="flow-adv-label">Camera</div>
+            <div class="flow-adv-ctrl">
+              <label class="menu-option"><input type="radio" name="cameraMode" value="follow" checked><div class="menu-seg"><strong>Follow</strong></div></label>
+              <label class="menu-option"><input type="radio" name="cameraMode" value="broadcast"><div class="menu-seg"><strong>Broadcast</strong></div></label>
+              <label class="menu-option"><input type="radio" name="cameraMode" value="topdown"><div class="menu-seg"><strong>Top-Down</strong></div></label>
+            </div>
+          </div>
+          <div class="flow-adv-row">
+            <div class="flow-adv-label">Court</div>
+            <div class="flow-adv-ctrl">
+              <label class="menu-option"><input type="radio" name="palette" value="blue" checked><div class="menu-swatch swatch-blue"><strong>Blue</strong></div></label>
+              <label class="menu-option"><input type="radio" name="palette" value="green"><div class="menu-swatch swatch-green"><strong>Green</strong></div></label>
+            </div>
+          </div>
+          <div class="flow-adv-row">
+            <div class="flow-adv-label">Music</div>
+            <div class="flow-adv-ctrl" style="align-items:center;justify-content:space-between;flex-wrap:nowrap">
+              <div class="menu-music-copy">
+                <strong id="menuMusicGenre">KPOP</strong>
+                <span id="menuMusicTrack">Neon Spark · PB3D House</span>
+                <span id="menuMusicStartState">Starts muted</span>
               </div>
+              <button id="menuMusicBtn" class="menu-music-btn" type="button">Choose</button>
             </div>
-          </label>
-          <label class="menu-option">
-            <input type="radio" name="difficulty" value="4.5">
-            <div class="menu-diff-card diff-45">
-              <div>
-                <div class="dupr-rating">4.5</div>
-                <div class="dupr-label">Advanced</div>
-              </div>
+          </div>
+          <div class="flow-adv-row">
+            <div class="flow-adv-label">Audio</div>
+            <div class="flow-adv-ctrl">
+              <label class="menu-option"><input type="radio" name="musicStart" value="muted" checked><div class="menu-seg"><strong>Muted</strong></div></label>
+              <label class="menu-option"><input type="radio" name="musicStart" value="live"><div class="menu-seg"><strong>Live</strong></div></label>
+              <label class="menu-option"><input type="radio" name="sfxStart" value="on" checked><div class="menu-seg"><strong>SFX On</strong></div></label>
+              <label class="menu-option"><input type="radio" name="sfxStart" value="off"><div class="menu-seg"><strong>SFX Off</strong></div></label>
             </div>
-          </label>
-          <label class="menu-option">
-            <input type="radio" name="difficulty" value="5.0">
-            <div class="menu-diff-card diff-50">
-              <div>
-                <div class="dupr-rating">5.0</div>
-                <div class="dupr-label">Pro</div>
-              </div>
+          </div>
+          <div class="flow-adv-row">
+            <div class="flow-adv-label">Theme</div>
+            <div class="flow-adv-ctrl flow-theme-dots">
+              <button type="button" class="theme-dot dot-cobalt" onclick="setTheme('cobalt')" title="Cobalt" aria-label="Cobalt theme"></button>
+              <button type="button" class="theme-dot dot-chalk"  onclick="setTheme('chalk')"  title="Chalk"  aria-label="Chalk theme"></button>
+              <button type="button" class="theme-dot dot-sunny"  onclick="setTheme('sunny')"  title="Sunny"  aria-label="Sunny theme"></button>
+              <button type="button" class="theme-dot dot-paper"  onclick="setTheme('paper')"  title="Paper"  aria-label="Paper theme"></button>
+              <button type="button" class="theme-dot dot-arcade" onclick="setTheme('arcade')" title="Arcade" aria-label="Arcade theme"></button>
+              <button type="button" class="theme-dot dot-night"  onclick="setTheme('night')"  title="Night"  aria-label="Night theme"></button>
             </div>
-          </label>
+          </div>
         </div>
+      </details>
+
+      <div class="flow-nav">
+        <button class="flow-btn flow-btn-ghost" data-flow-back="start" type="button">◀ Back</button>
+        <button class="flow-btn flow-btn-primary" data-flow-next="character" type="button">Next ▶</button>
       </div>
+    </section>
 
-      <div class="menu-compact-grid">
-        <div class="menu-compact-row">
-          <div class="menu-row-label">Mode</div>
-          <div class="menu-row-ctrl">
-            <label class="menu-option">
-              <input type="radio" name="mode" value="doubles" checked>
-              <div class="menu-seg"><strong>Doubles</strong></div>
-            </label>
-            <label class="menu-option">
-              <input type="radio" name="mode" value="singles">
-              <div class="menu-seg"><strong>Singles</strong></div>
-            </label>
-            <label class="menu-option">
-              <input type="radio" name="mode" value="practice">
-              <div class="menu-seg"><strong>Practice</strong></div>
-            </label>
-          </div>
-        </div>
-
-        <div class="menu-compact-row">
-          <div class="menu-row-label">Camera</div>
-          <div class="menu-row-ctrl">
-            <label class="menu-option">
-              <input type="radio" name="cameraMode" value="follow" checked>
-              <div class="menu-seg"><strong>Follow</strong></div>
-            </label>
-            <label class="menu-option">
-              <input type="radio" name="cameraMode" value="broadcast">
-              <div class="menu-seg"><strong>Broadcast</strong></div>
-            </label>
-            <label class="menu-option">
-              <input type="radio" name="cameraMode" value="topdown">
-              <div class="menu-seg"><strong>Top-Down</strong></div>
-            </label>
-          </div>
-        </div>
-
-        <div class="menu-compact-row">
-          <div class="menu-row-label">Venue</div>
-          <div class="menu-row-ctrl">
-            <label class="menu-option">
-              <input type="radio" name="venue" value="park" checked>
-              <div class="menu-seg venue-seg-park"><strong>Park</strong></div>
-            </label>
-            <label class="menu-option">
-              <input type="radio" name="venue" value="tropical">
-              <div class="menu-seg venue-seg-tropical"><strong>Tropical</strong></div>
-            </label>
-            <label class="menu-option">
-              <input type="radio" name="venue" value="indoor">
-              <div class="menu-seg venue-seg-indoor"><strong>Indoor</strong></div>
-            </label>
-          </div>
-        </div>
-
-        <div class="menu-compact-row" id="todGroup">
-          <div class="menu-row-label">Time</div>
-          <div class="menu-row-ctrl">
-            <label class="menu-option">
-              <input type="radio" name="tod" value="day" checked>
-              <div class="menu-seg"><strong>Day</strong></div>
-            </label>
-            <label class="menu-option">
-              <input type="radio" name="tod" value="night">
-              <div class="menu-seg"><strong>Night</strong></div>
-            </label>
-            <div class="menu-subhint" id="todHint"></div>
-          </div>
-        </div>
-
-        <div class="menu-compact-row">
-          <div class="menu-row-label">Court</div>
-          <div class="menu-row-ctrl">
-            <label class="menu-option">
-              <input type="radio" name="palette" value="blue" checked>
-              <div class="menu-swatch swatch-blue"><strong>Blue</strong></div>
-            </label>
-            <label class="menu-option">
-              <input type="radio" name="palette" value="green">
-              <div class="menu-swatch swatch-green"><strong>Green</strong></div>
-            </label>
-          </div>
-        </div>
-
-        <div class="menu-compact-row">
-          <div class="menu-row-label">Players</div>
-          <div class="menu-row-music">
-            <div class="menu-music-copy">
-              <strong>Characters</strong>
-              <span id="menuCharactersSummary">P1: CH01 · Partner: CH02 · Opponent A: CH03 · Opponent B: CH04</span>
-            </div>
-            <button id="menuCharactersBtn" class="menu-music-btn" type="button">Choose</button>
-          </div>
-        </div>
-
-        <div class="menu-compact-row">
-          <div class="menu-row-label">Music</div>
-          <div class="menu-row-music">
-            <div class="menu-music-copy">
-              <strong id="menuMusicGenre">KPOP</strong>
-              <span id="menuMusicTrack">Neon Spark · PB3D House</span>
-              <span id="menuMusicStartState">Starts muted</span>
-            </div>
-            <button id="menuMusicBtn" class="menu-music-btn" type="button">Choose</button>
-          </div>
-        </div>
-
-        <div class="menu-compact-row">
-          <div class="menu-row-label">Audio</div>
-          <div class="menu-row-ctrl menu-audio-ctrl">
-            <label class="menu-option">
-              <input type="radio" name="musicStart" value="muted" checked>
-              <div class="menu-seg"><strong>Muted</strong></div>
-            </label>
-            <label class="menu-option">
-              <input type="radio" name="musicStart" value="live">
-              <div class="menu-seg"><strong>Live</strong></div>
-            </label>
-            <div class="menu-audio-divider"></div>
-            <label class="menu-option">
-              <input type="radio" name="sfxStart" value="on" checked>
-              <div class="menu-seg"><strong>SFX On</strong></div>
-            </label>
-            <label class="menu-option">
-              <input type="radio" name="sfxStart" value="off">
-              <div class="menu-seg"><strong>SFX Off</strong></div>
-            </label>
+    <!-- 03 · Character -->
+    <section id="scrCharacter" class="flow-screen">
+      <div class="flow-char-head">
+        <div class="flow-kicker">Your Squad</div>
+        <h2 class="flow-title" style="font-size:clamp(22px,6vw,34px)">Pick your players</h2>
+      </div>
+      <div class="flow-char-slots" id="flowCharSlots"></div>
+      <div class="flow-char-layout">
+        <div class="flow-char-grid" id="flowCharGrid"></div>
+        <div class="flow-char-preview-col">
+          <div id="flowCharPreviewMount"><div id="flowCharPreviewLoading">Loading&nbsp;model&hellip;</div></div>
+          <div class="flow-char-name flow-kicker" id="flowCharName" style="text-align:center;color:var(--flow-accent)">&nbsp;</div>
+          <div class="flow-char-actions">
+            <button class="flow-icon-btn" id="flowRollSlot" type="button" title="Roll selected slot">🎲</button>
+            <button class="flow-icon-btn" id="flowRollAll" type="button" style="flex:1">Roll All</button>
           </div>
         </div>
       </div>
+      <div class="flow-nav">
+        <button class="flow-btn flow-btn-ghost" id="flowCharBack" type="button">◀ Back</button>
+        <button class="flow-btn flow-btn-primary" id="flowCharNext" type="button">Continue ▶</button>
+      </div>
+    </section>
 
-      <div class="menu-actions">
-        <button id="startBtn" type="button">Start Match</button>
-        <div class="hint">
-          <b>Desktop:</b> WASD move · mouse aim · Space drive · V drop · B lob · C camera<br/>
-          <b>Touch:</b> left thumb move · right thumb swing &amp; aim
+    <!-- 04 · Venue -->
+    <section id="scrVenue" class="flow-screen">
+      <div class="flow-kicker">Stage Select</div>
+      <h2 class="flow-title" style="font-size:clamp(24px,7vw,40px)">Pick your court</h2>
+      <div class="flow-venue-grid">
+        <label class="menu-option"><input type="radio" name="venue" value="park" checked><div class="menu-seg venue-seg-park"><strong>Park</strong></div></label>
+        <label class="menu-option"><input type="radio" name="venue" value="tropical"><div class="menu-seg venue-seg-tropical"><strong>Tropical</strong></div></label>
+        <label class="menu-option"><input type="radio" name="venue" value="indoor"><div class="menu-seg venue-seg-indoor"><strong>Indoor</strong></div></label>
+      </div>
+      <div class="flow-group" id="todGroup" style="width:min(720px,100%)">
+        <div class="flow-kicker">Time of Day <span class="menu-subhint" id="todHint"></span></div>
+        <div class="flow-tod-row">
+          <label class="menu-option" style="flex:1"><input type="radio" name="tod" value="day" checked><div class="menu-seg"><strong>Day</strong></div></label>
+          <label class="menu-option" style="flex:1"><input type="radio" name="tod" value="night"><div class="menu-seg"><strong>Night</strong></div></label>
         </div>
       </div>
+      <div class="flow-nav">
+        <button class="flow-btn flow-btn-ghost" id="flowVenueBack" type="button">◀ Back</button>
+        <button class="flow-btn flow-btn-primary" data-flow-next="vs" type="button">Fight ▶</button>
+      </div>
+    </section>
 
-    </div>
+    <!-- 05 · VS -->
+    <section id="scrVs" class="flow-screen">
+      <div class="flow-vs-stage">
+        <div class="flow-vs-side left" id="flowVsLeft"></div>
+        <div class="flow-vs-mark">VS</div>
+        <div class="flow-vs-side right" id="flowVsRight"></div>
+      </div>
+      <div class="flow-taphint">Tap to continue</div>
+    </section>
+
+    <!-- 06 · Loading -->
+    <section id="scrLoading" class="flow-screen">
+      <div class="flow-spinner"></div>
+      <div class="flow-loading-label">Entering court…</div>
+    </section>
+
   </div>
 
   <script type="module" src="./src/main.js"></script>
