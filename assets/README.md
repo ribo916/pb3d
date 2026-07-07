@@ -11,7 +11,8 @@ For the retired Quaternius CC0 humanoid pipeline (download flow,
 [`../PLAYER-IMPORT.md`](../PLAYER-IMPORT.md). `player-male-v1` and
 `player-female-v1` were built this way historically, but their runtime GLBs and
 manifest slots have been removed. The active roster now uses the Mixamo
-`player-ch01-v1` through `player-ch12-v1` slots.
+`player-ch01-v1` through `player-ch12-v1`, `player-ch14-v1`, and
+`player-ch15-v1` slots.
 
 ## Structure
 
@@ -20,8 +21,8 @@ assets/
   models/
     venues/       Optional `.glb` / `.gltf` venue props or full venue shells.
     players/      Skinned or static player models.
-      mixamo/     Active optimized Mixamo character catalog (ch01-ch12), wired
-                  in `assets/manifest.js` as `player-ch01-v1`...`player-ch12-v1`.
+      mixamo/     Active optimized Mixamo character catalog (ch01-ch12, ch14,
+                  ch15), wired in `assets/manifest.js` as player model slots.
                   Also read by `character-preview/`, so this is the one common
                   location for these files.
   textures/

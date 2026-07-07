@@ -2,7 +2,7 @@
  * characters.js — Shared character catalog (pure data, no three/DOM imports).
  *
  * Single source of truth for the selectable roster: each of the 4 slots
- * (nearYou/nearMate/farA/farB) independently picks one of the 12 authored
+ * (nearYou/nearMate/farA/farB) independently picks one of the authored
  * Mixamo characters. Team identity (paddle color, "you" ring color) stays
  * keyed by SLOT, not by character, so two slots can pick the same character
  * without losing their distinct team colors, and switching a slot's
@@ -10,7 +10,7 @@
  * ==========================================================================*/
 'use strict';
 
-// The 12 shippable Mixamo characters. `swatch` is a purely decorative
+// The shippable Mixamo characters. `swatch` is a purely decorative
 // per-tile accent color for the picker grid (no gameplay meaning).
 export const CHARACTERS = [
   { id: 'ch01', playerModelKey: 'player-ch01-v1', label: 'CH01', swatch: 0xff6b6b },
@@ -24,7 +24,9 @@ export const CHARACTERS = [
   { id: 'ch09', playerModelKey: 'player-ch09-v1', label: 'CH09', swatch: 0x5c7cfa },
   { id: 'ch10', playerModelKey: 'player-ch10-v1', label: 'CH10', swatch: 0x9775fa },
   { id: 'ch11', playerModelKey: 'player-ch11-v1', label: 'CH11', swatch: 0xda77f2 },
-  { id: 'ch12', playerModelKey: 'player-ch12-v1', label: 'CH12', swatch: 0xf06595 }
+  { id: 'ch12', playerModelKey: 'player-ch12-v1', label: 'CH12', swatch: 0xf06595 },
+  { id: 'ch14', playerModelKey: 'player-ch14-v1', label: 'CH14', swatch: 0xe8590c },
+  { id: 'ch15', playerModelKey: 'player-ch15-v1', label: 'CH15', swatch: 0x20c997 }
 ];
 
 export function getCharacter(id) {

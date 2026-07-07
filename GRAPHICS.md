@@ -20,7 +20,7 @@ The game now has:
 - The gendered Quaternius-customization roster (`player-male-v1`/
   `player-female-v1`, gender/hair/hair-color/facial-hair/shirt-color/
   pants-color picker) has been **fully retired**. All 4 roster slots now pick
-  one of the **12 Mixamo characters** (`ch01`-`ch12`) via a fighting-game-style
+  one of the active Mixamo characters (`ch01`-`ch12`, `ch14`, `ch15`) via a fighting-game-style
   picker (see "Mixamo Character Pipeline" below) — no per-character cosmetic
   customization exists anymore; each Mixamo GLB renders with its own imported
   look untouched (`customizable: false`). The `player-male-v1`/
@@ -103,7 +103,7 @@ assets/
   models/
     players/
       mixamo/
-        ch01.glb .. ch12.glb  (full Mixamo catalog, all 12 gameplay-calibrated)
+        ch01.glb .. ch12.glb, ch14.glb, ch15.glb  (active Mixamo catalog)
     venues/
       park-props.glb
       tropical-props.glb
@@ -117,8 +117,9 @@ assets/
 Important contracts:
 
 - `assets/manifest.js` is the runtime slot map.
-- `player-ch01-v1` through `player-ch12-v1` are the active selectable player
-  slots, resolved from `src/characters.js`; non-`ch01` slots fall back to
+- `player-ch01-v1` through `player-ch12-v1`, plus `player-ch14-v1` and
+  `player-ch15-v1`, are the active selectable player slots, resolved from
+  `src/characters.js`; non-`ch01` slots fall back to
   `player-ch01-v1` if their GLB is absent or fails to load.
 - `src/assets.js` loads optional GLB assets and provides fallback-safe access.
 - Optional entries should stay optional until their procedural fallback has been
@@ -229,7 +230,7 @@ there is no separate dev-server process anymore. Status summary:
   other and enough hand spacing to read like holding an invisible ball. These
   fixes are included in `assets/animations/pickleball-locomotion.glb`; rebake
   with `node tools/bake-locomotion-clips.mjs` after changing them.
-- **All 12 characters are sourced from the single common location**
+- **All active characters are sourced from the single common location**
   `assets/models/players/mixamo/chNN.glb` (also the file
   `character-preview/` reads — no duplicated GLB bytes between the two
   surfaces).
@@ -243,13 +244,13 @@ there is no separate dev-server process anymore. Status summary:
   `singles` two, `doubles` up to four); the character-picker preview
   (`src/characterPreview.js`'s `show()`) fetches only the one character
   being previewed/highlighted in the picker grid. This matters across the
-  full 12-character catalog — without scoping, every match start or picker
+  full character catalog — without scoping, every match start or picker
   open would fetch the whole catalog regardless of what's actually shown.
 - **The character-chooser UI is done**: the main menu's "Choose" button opens
   a fighting-game-style modal (`#characterModal` in `index.html`, behavior in
   `src/main.js`) — a P1/P2/P3/P4 tab strip (filtered by mode, same as
   before) switches which roster slot is "active," and clicking a tile in a
-  shared 12-character grid assigns that character to the active slot.
+  shared character grid assigns that character to the active slot.
   Duplicate picks across slots are allowed. This fully replaces the old
   gender/hair/color customization modal.
 - **Not yet done:** real team-color/identity art beyond the flat swatch

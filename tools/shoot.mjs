@@ -123,8 +123,8 @@ async function captureCharacterModal() {
   await page.screenshot({ path: path.join(OUT, 'character-modal.png') });
 
   // Cycle every character tile on the default (P1) tab, screenshotting the
-  // live preview so all 12 GLBs get loaded and visually checked at once.
-  const ids = ['ch01', 'ch02', 'ch03', 'ch04', 'ch05', 'ch06', 'ch07', 'ch08', 'ch09', 'ch10', 'ch11', 'ch12'];
+  // live preview so the selectable GLBs get loaded and visually checked at once.
+  const ids = ['ch01', 'ch02', 'ch03', 'ch04', 'ch05', 'ch06', 'ch07', 'ch08', 'ch09', 'ch10', 'ch11', 'ch12', 'ch14', 'ch15'];
   for (const id of ids) {
     await page.click(`#characterGrid [data-character-id="${id}"]`);
     await waitForCharacterPreview();

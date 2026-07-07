@@ -186,6 +186,26 @@ export const ASSET_MANIFEST = {
       paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
       syncPrimitiveArms: false,
       customizable: false, optional: true
+    },
+    // Additional Mixamo character imports approved for gameplay after
+    // character-preview validation. ch13 was intentionally rejected.
+    {
+      key: 'player-ch14-v1', label: 'Mixamo character (ch14)',
+      url: '/assets/models/players/mixamo/ch14.glb', scope: 'player',
+      fallbackKey: 'player-ch01-v1', playerScale: 1.03, playerOffset: [0, 0, 0],
+      playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
+      paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
+      syncPrimitiveArms: false,
+      customizable: false, optional: true
+    },
+    {
+      key: 'player-ch15-v1', label: 'Mixamo character (ch15)',
+      url: '/assets/models/players/mixamo/ch15.glb', scope: 'player',
+      fallbackKey: 'player-ch01-v1', playerScale: 0.89, playerOffset: [0, 0, 0],
+      playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
+      paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
+      syncPrimitiveArms: false,
+      customizable: false, optional: true
     }
   ],
   textures: [
