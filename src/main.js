@@ -629,6 +629,15 @@ function renderFlowCharSlots() {
   }).join('');
 }
 
+// Two-letter avatar initials for the placeholder portrait tiles (until real
+// face art exists). e.g. AJ -> "AJ", Maya -> "MA".
+function charInitials(name) {
+  name = String(name || '').trim();
+  var parts = name.split(/\s+/);
+  if (parts.length > 1) return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
+
 function renderFlowCharGrid() {
   var slot = flowActiveSlot;
   $('flowCharGrid').innerHTML = CHARACTERS.map(function (c) {
@@ -638,7 +647,7 @@ function renderFlowCharGrid() {
     var isActive = rosterPicks[slot] === c.id;
     return '<button class="flow-char-tile' + (isActive ? ' active' : '') + '" data-character-id="' + c.id + '" tabindex="0">' +
       '<span class="flow-char-tile-badges">' + badges + '</span>' +
-      '<span class="flow-char-portrait" style="background:' + hex + '"><span>' + c.label.replace('CH', '') + '</span></span>' +
+      '<span class="flow-char-portrait" style="background:' + hex + '"><span>' + charInitials(c.label) + '</span></span>' +
       '<span class="flow-char-cap">' + c.label + '</span></button>';
   }).join('');
 }
@@ -661,7 +670,7 @@ function flowVsPortrait(slot, characterId) {
   var base = getCharacter(characterId) || getCharacter(ch.id);
   var hex = '#' + ((base && base.swatch) || 0x888888).toString(16).padStart(6, '0');
   return '<div class="flow-vs-card">' +
-    '<div class="flow-vs-portrait" style="background:' + hex + '"><span>' + ch.label.replace('CH', '') + '</span></div>' +
+    '<div class="flow-vs-portrait" style="background:' + hex + '"><span>' + charInitials(ch.label) + '</span></div>' +
     '<div><div class="flow-vs-name">' + ch.label + '</div><div class="flow-vs-role">' + positionLabel(slot) + '</div></div>' +
     '</div>';
 }
