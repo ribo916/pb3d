@@ -15,23 +15,77 @@ re-derive any of it from scratch.
 
 ## READ THIS FIRST — status as of the end of the last session
 
-**Current status: elbow AND wrist bend angle/plane are both root-caused,
-fixed, and verified** — numerically (exact match at every sampled frame for
-both joints) and visually (full regression pass across both characters × 6
-clips). **Do not assume this means everything is now perfect** — arms/
-elbows/wrists have been "fixed" SIX separate times now (items 9, 11, 13,
-15, 16, 17). Item 15 was declared fixed and numerically verified, and
-STILL had a real, severe, independent bug (item 16). Item 16 was ALSO
-declared fixed and verified for elbows specifically, and wrists turned out
-to have never even been running that fix at all (item 17 — a silent,
-un-logged fallback to old code, not a flaw in item 16's math). Treat item
-17 as "the best-verified state so far," re-check with the tools below
-before extending trust to a new character/clip/pose/bone, and read items
-9-17 in full before touching this code again. **If any bone-specific
-report comes in again ("same with X"), check `window.__RETARGET_DEBUG`'s
-`method` field for that bone FIRST (should read `"parent-relative"` for
-forearms/hands) before assuming the fix's math needs re-deriving — item 17
-was found in under a minute this way, after item 16 took a full session.**
+**Latest session (3 targeted fixes, unrelated to the elbow/wrist saga below):**
+1. **Fixed — losing the character when leaving Raw Skeleton Preview.**
+   `activateSkeletonClip` reframes the camera/grid onto the skeleton
+   preview's own bounds (`frameCameraToBounds`), but `exitSkeletonPreview()`
+   never reframed back onto the character afterward — clicking a Top Pick or
+   Clip button after viewing a skeleton preview correctly restored
+   `character.visible = true` and the mixer, but left the camera pointed at
+   the skeleton's old bounds, making the character look "lost" until its own
+   button was clicked again (which reframes as a side effect of
+   `activateCharacter`). Fix: `exitSkeletonPreview()` now calls
+   `frameCameraToObject(character)` itself. Verified visually (skeleton
+   preview -> Top Pick clip, character comes back correctly framed).
+2. **Done — removed Pivot Spin and Dive** from both `TOP_PICKS` (and by
+   extension the Raw Skeleton Preview row, which is built from the same
+   array) per explicit user decision — these two were never gotten to look
+   right and weren't worth continuing to chase. 9 categories remain (was 11).
+3. **Root-caused, NOT fixed (dropped instead) — the "Clip" row's
+   Tennis Source (full)/Golf/Baseball (x2)/Soccer (x2)/Football QB all
+   pitch the character face-down; only Forehand/Backhand/Overhead worked.**
+   Root cause: these are raw, unconverted Mixamo FBX applied via the simple
+   name-matching path (`retargetClipNames`, no delta/world-space math) —
+   that only works if the target's bones share the source clip's rest
+   ORIENTATION, which was true back when the characters were raw FBX too,
+   but is no longer true now that `ch01-12.glb` go through a Blender
+   FBX->glTF conversion that re-authors every bone's rest quaternion.
+   Confirmed by direct measurement: `mixamorigHips`'s rest quaternion is
+   `(-0.70, 0.18, -0.15, 0.67)` on the shipped `ch01.glb` vs. exact identity
+   on the original raw FBX (`~/Downloads/CH01.fbx`) — applying a clip's
+   rotation tracks (authored against the identity-rest convention) directly
+   onto a bone whose "upright" configuration requires that drastically
+   different quaternion pitches the whole body over. Forehand/Backhand/
+   Overhead are unaffected because they were built through the SAME Blender
+   pipeline as the characters (`tools/build-mixamo-clip-library.mjs`), so
+   their tracks are already expressed in the matching rest basis. Given the
+   user's choice, this was NOT fixed with new retarget math (would mean
+   redoing a version of the whole elbow/wrist saga below for a second
+   source rig) — the 5 broken buttons were removed from the Clip row
+   instead (`CLIP_SOURCES`, `activateFbxClip`, `stripNonRootPositionAndScale`,
+   `freezeRootHorizontalMotion` all deleted as dead code). The underlying
+   raw FBX files in `local-clips/` are untouched on disk if this is ever
+   revisited — see the options above (rebuild via Blender pipeline is the
+   recommended path if it comes back up, not a from-scratch retarget
+   rewrite).
+
+**Current status (elbow/wrist work, unchanged by the above): shoulder/elbow/wrist bend angle/plane are all root-caused,
+fixed, and verified** — numerically (exact/plausible match at every sampled
+frame for all three joints) and visually (full regression pass across
+multiple characters × Idle/Run/Serve/Victory). **Do not assume this means
+everything is now perfect** — arms/elbows/wrists have been "fixed" SEVEN
+separate times now (items 9, 11, 13, 15, 16, 17, 18). Item 15 was declared
+fixed and numerically verified, and STILL had a real, severe, independent
+bug (item 16). Item 16 was ALSO declared fixed and verified for elbows
+specifically, and wrists turned out to have never even been running that
+fix at all (item 17). Item 17's own same-session sibling commit (removing
+the upper arm's hang-down correction to fix reach-damping on `serve`) THEN
+broke `run`'s upper arm a different way (item 18 — T-pose-reveal on a
+low-motion clip). Item 18 fixed this by extending the SAME parent-relative
+direct-transplant method (items 15/16/17) to the upper arm, rather than
+re-tuning the removed baseline correction. Treat item 18 as "the
+best-verified state so far," re-check with the tools below before
+extending trust to a new character/clip/pose/bone, and read items 9-18 in
+full before touching this code again. **If any bone-specific report comes
+in again ("same with X"), check `window.__RETARGET_DEBUG`'s `method` field
+for that bone FIRST (should read `"parent-relative"` for shoulders/
+forearms/hands — `PARENT_RELATIVE_BONES`) before assuming the fix's math
+needs re-deriving — item 17 was found in under a minute this way, after
+item 16 took a full session.** Also, per item 18's lesson: a fix verified
+only on a HIGH-motion clip (serve/swing) needs separate re-verification on
+LOW-motion clips (idle, run) before being trusted — removing/tuning a
+baseline correction can look correct on the clip that motivated it while
+silently reintroducing item 5c's T-pose-reveal bug elsewhere.
 
 **Do not declare anything fixed again without either the user confirming it
 themselves, or genuinely rigorous verification (numeric measurement AND live
@@ -53,15 +107,16 @@ regressing): grounding (item 7), legs during `run` (item 8, ~2-6° constant
 offset from the raw skeleton, confirmed multiple times since), the
 world-space swing method's basic soundness for spine/shoulders (item 8),
 hands no longer reverting to a flat T-pose on near-static clips (item 10),
-upper-arm lateral reach (item 13, further improved to ~0.89-1.03 by item 16),
-and elbow AND wrist bend angle/plane (items 16+17) — via a "direct
-transplant, carried through a twist-free canonical reference frame"
-mechanism, not a delta from either rig's own rest pose (item 15 found the
-two rigs' rest poses are ~129° apart at the elbow, irreconcilable from
-bind-pose data alone) and not the rigs' own real (twist-arbitrary) bone
-orientations (item 16's fix). Wrist specifically only actually started
-using any of this machinery in item 17 -- before that it was silently
-still on the oldest (pre-item-15) method the whole time.
+upper-arm lateral reach on high-motion clips (item 13), and shoulder/elbow/
+wrist bend angle/plane on BOTH high- and low-motion clips (items 16+17+18)
+— via a "direct transplant, carried through a twist-free canonical
+reference frame" mechanism, not a delta from either rig's own rest pose
+(item 15 found the two rigs' rest poses are ~129° apart at the elbow,
+irreconcilable from bind-pose data alone) and not the rigs' own real
+(twist-arbitrary) bone orientations (item 16's fix). Wrist specifically
+only actually started using any of this machinery in item 17, and the
+upper arm (shoulder-relative) only in item 18 -- before that each was
+silently still on the older world-space swing-from-rest method.
 
 **Known, disclosed, NOT-yet-addressed gap**: forearm TWIST/roll (pronation/
 supination around the forearm's own long axis) is still not reproduced —
@@ -71,16 +126,20 @@ about hand/wrist rotation looking wrong independent of elbow bend angle/
 plane, that's this gap, not a regression of item 16.
 
 **What's still open / not resolved:**
-- **RESOLVED (items 15+16+17) — arms/elbows/wrists "bend backwards" on
-  dynamic clips (item 14).** Root cause and fix in item 15 (rest-pose
+- **RESOLVED (items 15+16+17+18) — arms/elbows/wrists "bend backwards" on
+  dynamic clips (item 14), and upper arms "flailed out"/T-posing on
+  low-motion clips (item 18).** Root cause and fix in item 15 (rest-pose
   mismatch), item 16 (twist-free carrier frame), item 17 (wrists were
   silently never using either fix, due to a gap in `captureTargetRestPose`
-  that's now closed). Re-verify on a new character/clip before fully
+  that's now closed), item 18 (upper arm extended onto the same
+  parent-relative method after removing its hang-down baseline correction
+  broke `run` specifically). Re-verify on a new character/clip before fully
   trusting, per this file's whole history, but this is the most rigorously
-  verified state so far (exact numeric match at every sampled frame for
-  both joints + full visual regression). If a NEW bone-specific report
-  comes in, check `window.__RETARGET_DEBUG`'s `method` field for that bone
-  first (see item 17's lesson) before assuming the math is wrong again.
+  verified state so far (exact/plausible numeric match at every sampled
+  frame for all three joints + full visual regression across low- and
+  high-motion clips). If a NEW bone-specific report comes in, check
+  `window.__RETARGET_DEBUG`'s `method` field for that bone first (see item
+  17's lesson) before assuming the math is wrong again.
 - **Still open**: forearm TWIST/roll is not reproduced by any version of
   this method (only aim direction is ever controlled). Not yet known
   whether this is visually significant for any existing clip — no report of
@@ -156,15 +215,14 @@ Files:
   exploratory clips (`golf.fbx`, `baseball-batter.fbx`,
   `baseball-pitcher.fbx`, `soccer-penalty.fbx`, `soccer-passing.fbx`,
   `football-qb.fbx`) and `tennis-source.fbx` (the pristine full take
-  forehand/backhand/overhead were cut from) are **still raw, unoptimized
-  FBX** loaded via `FBXLoader`, fetched lazily on first click of their clip
-  button — no smaller replacement has been built for these (nothing ships
-  them), so they were deliberately left in place rather than deleted.
-  `tennis-source.fbx` in particular is the only remaining copy of that mocap
-  take's full context; don't delete it without re-reading the "Asset
-  provenance" section below. Since this folder is untracked, a fresh clone
-  won't have these files — clicking their clip buttons shows a per-button
-  error instead of breaking the page.
+  forehand/backhand/overhead were cut from) are **no longer wired into the
+  UI** (see "READ THIS FIRST" item 3, latest session) — all pitched the
+  character face-down once the characters became Blender-converted GLBs,
+  and rebuilding a second retarget pipeline for them wasn't judged worth it.
+  The files themselves are untouched on disk (still raw, unoptimized FBX)
+  in case this is revisited; `tennis-source.fbx` in particular is the only
+  remaining copy of that mocap take's full context — don't delete it
+  without re-reading the "Asset provenance" section below.
 - `character-preview/local-clips/top-picks/<category>/*.FBX` (untracked) —
   51 candidate mocap clips the user pulled from `_top_picks` in Downloads,
   organized into 11 category folders (`idle`, `ready`, `run`, `backpedal`,
@@ -180,11 +238,14 @@ Files:
   `mixamorig*` rig these characters use, and skeleton-only (no mesh). The
   existing name-based `retargetClipNames` path does not apply to these at
   all. `main.js`'s `TOP_PICKS` currently surfaces **one representative clip
-  per category** (11 buttons, not all 51) per an explicit user decision to
-  scope down for the first review pass — the other ~40 files are still
-  sitting in their category folders if a different pick is wanted later.
-  See `retargetMannyClip()` in `main.js` for the actual cross-rig retarget
-  logic and the bugs found building it (next section).
+  per category** per an explicit user decision to scope down for the first
+  review pass — originally 11 buttons (one per category folder), now **9**:
+  `pivot_spin` and `dive` were dropped (latest session, "READ THIS FIRST"
+  item 2) since neither ever retargeted acceptably. The other ~40 files
+  (plus the two now-unused `pivot_spin`/`dive` folders) are still sitting in
+  their category folders if a different pick is wanted later. See
+  `retargetMannyClip()` in `main.js` for the actual cross-rig retarget logic
+  and the bugs found building it (next section).
 
 ## What the viewer does
 
@@ -194,19 +255,19 @@ Files:
   hits that loader's cache, no re-fetch.
 - **Clip row**: whatever's baked into the selected character's own GLB
   (currently nothing — the shipped character builds carry no animation, see
-  the Open TODOs section), plus a shared set of clips applied to *whichever*
-  character is active: `Forehand`/`Backhand`/`Overhead` (from the shipped,
-  already-fixed `pickleball-swings.glb` — same file the real game loads, no
-  runtime retargeting/strip/freeze needed for these three), `Tennis Source
-  (full)` (the pristine ~28.7s uncut take those three were manually cut from
-  in Blender, still raw FBX), and 6 other-sport clips (`Golf Swing`,
-  `Baseball Batter`, `Baseball Pitcher`, `Soccer Penalty Kick`, `Soccer
-  Passing`, `Football QB`, still raw FBX with the original runtime
-  retarget/strip/freeze fixes applied as before). The raw-FBX clips fetch
-  lazily on first click and cache their raw download; the
-  retarget/strip/freeze pass re-runs (cheaply, no network) against whichever
-  character is currently active.
-- **Raw Skeleton Preview row**: the same 11 top-picks clips, but played on
+  the Open TODOs section), plus `Forehand`/`Backhand`/`Overhead` (from the
+  shipped, already-fixed `pickleball-swings.glb` — same file the real game
+  loads, no runtime retargeting needed for these three). That's it as of the
+  latest session — `Tennis Source (full)` and the 6 other-sport raw-FBX
+  clips (`Golf Swing`/`Baseball Batter`/`Baseball Pitcher`/`Soccer Penalty
+  Kick`/`Soccer Passing`/`Football QB`) were removed from this row (see
+  "READ THIS FIRST" item 3): they used the old name-matching
+  `retargetClipNames` path, which pitched the character face-down once the
+  characters became Blender-converted GLBs with a different bone rest
+  basis. `activateFbxClip`/`CLIP_SOURCES`/`stripNonRootPositionAndScale`/
+  `freezeRootHorizontalMotion` were deleted as dead code along with them.
+- **Raw Skeleton Preview row**: the same 9 top-picks clips (11 minus
+  `pivot_spin`/`dive`, dropped the latest session), but played on
   their OWN native Manny rig with a `THREE.SkeletonHelper` line visualization
   instead of retargeted onto the active character — see `activateSkeletonClip`
   in `main.js`. No bone-name mapping, no retargeting math of any kind
@@ -1232,6 +1293,70 @@ joint under suspicion.
    physics. The bug here wasn't in the twist-fix math from item 16 at all --
    it was a silent, un-thrown, un-logged fallback to completely different,
    older code, one precondition (`childLocalOffsetTarget`) away from firing.
+
+18. **Immediately after item 17 shipped, the user reported `run`'s arms
+   "flailed out... raised as if he is trying to fly," elbows should be lower
+   and tucked closer to the sides.** Same session's earlier commit had just
+   REMOVED `LeftArm`/`RightArm`'s `NEUTRAL_OFFSET_BONES` hang-down correction
+   (reasoning it "overshot the source rig's own ~35-degree-off-vertical rest
+   pose, damping genuine reach" on swing-type clips) — this report is that
+   removal's other shoe dropping, on a low-arm-motion clip instead.
+
+   Verified numerically before touching any math (per item 17's lesson):
+   `window.__RETARGET_DEBUG` on `ch01`/`run` showed `LeftArm` using method
+   `"swing"` (not `"parent-relative"`), `sourceAimRest` ≈ `(0.58, -0.82,
+   0.02)` (i.e. ~35° off straight-down, confirming the commit message's
+   number), and — the actual bug — `newWorldQ` staying within a few degrees
+   of `targetRestW` (the character's own literal T-pose rest) at every
+   sampled frame of the run cycle. Root cause: with the hang-down correction
+   removed, `effectiveTargetRestWorld` for the upper arm reverts to the
+   literal T-pose baseline, and `run`'s upper arm barely swings relative to
+   the SOURCE's own (already near-vertical) rest — so `swingQ` is small, and
+   composing a small rotation onto a ~90-degree-wrong (horizontal, not
+   hanging) baseline leaves the arm sitting almost exactly horizontal for
+   the whole clip. Exactly item 5c/17's disease one joint further up the
+   chain: any delta-from-a-mismatched-reference method reveals the TARGET's
+   own rest whenever the SOURCE barely moves relative to ITS rest — it just
+   hadn't been checked on a low-arm-motion clip after the neutral-offset
+   removal.
+
+   Fix: rather than reinstating a hang-down correction (which is what
+   caused the reach-damping regression the same-session commit was chasing),
+   extended `PARENT_RELATIVE_BONES` to include `LeftArm`/`RightArm`, so the
+   upper arm now goes through the SAME direct-transplant-through-a-twist-
+   free-carrier-frame method already proven for elbow/wrist (items 15/16),
+   instead of the world-space swing-from-rest method. This is a genuine
+   transplant of the source's actual current shoulder-relative arm
+   orientation every frame, not a delta from either rig's rest, so it's
+   immune to both failure modes at once (T-pose-reveal on low motion AND
+   rest-mismatch damping on high motion) by construction. No new data
+   plumbing was needed — `sourceParentFramePos`/`childLocalOffsetTarget`/
+   `targetParentChildOffset` were already computed for every mapped bone;
+   only the `useParentRelative` gate (previously piggybacked on
+   `neutralOffset`, i.e. `NEUTRAL_OFFSET_BONES` membership) needed
+   decoupling from that array into an independent `PARENT_RELATIVE_BONES`
+   list.
+
+   **Reverified**: `window.__RETARGET_DEBUG` now shows `"parent-relative"`
+   for `LeftArm` on `run`, with the upper arm's aim direction landing
+   38-50° off straight-down across sampled frames (up from pinned-at-90°/
+   horizontal) — a plausible natural jog swing range, not a guess (matches
+   the source's own ~35° rest plus real swing amplitude). Full visual
+   regression via the skeleton-overlay + raw-skeleton-beside tools, `ch01`
+   and `ch05`, across Idle/Run/Serve/Victory: arms hang naturally at rest,
+   no T-pose reveal on low-motion clips, AND `serve`'s big lateral reach
+   (one hand near the head, other arm extended out) is still fully
+   preserved — the item-13 reach-damping bug did NOT come back.
+
+   **Lesson**: a fix scoped to "remove a correction that's wrong for clip
+   type A" needs re-verification specifically on LOW-motion clips (idle,
+   run) as well as the HIGH-motion clip it was diagnosed on (serve/swing) —
+   removing a baseline correction can look like a clean win on the clip
+   that motivated it while quietly reintroducing item 5c's T-pose-reveal
+   bug on a different clip in the same bone. When two clip types pull a
+   shared baseline in opposite directions, the fix that satisfies both
+   is usually to stop depending on that baseline at all (direct transplant),
+   not to tune where the baseline sits.
 
 Also tried and **reverted** (don't redo without a reason): programmatically
 re-cutting forehand/backhand/overhead straight from the pristine source via

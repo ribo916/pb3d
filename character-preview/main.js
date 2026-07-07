@@ -96,20 +96,30 @@ const CHARACTERS = ASSET_MANIFEST.models
 const GLB_CLIP_LIBRARY_URL = (ASSET_MANIFEST.animations.find((a) => a.key === 'mixamo-swings') || {}).url;
 const GLB_CLIP_LABELS = { forehand: 'Forehand', backhand: 'Backhand', overhead: 'Overhead' };
 
-const CLIP_SOURCES = [
-  { key: 'tennis-full', url: './local-clips/tennis-source.fbx', label: 'Tennis Source (full)' },
-  { key: 'golf', url: './local-clips/golf.fbx', label: 'Golf Swing' },
-  { key: 'baseball-batter', url: './local-clips/baseball-batter.fbx', label: 'Baseball Batter' },
-  { key: 'baseball-pitcher', url: './local-clips/baseball-pitcher.fbx', label: 'Baseball Pitcher' },
-  { key: 'soccer-penalty', url: './local-clips/soccer-penalty.fbx', label: 'Soccer Penalty Kick' },
-  { key: 'soccer-passing', url: './local-clips/soccer-passing.fbx', label: 'Soccer Passing' },
-  { key: 'football-qb', url: './local-clips/football-qb.fbx', label: 'Football QB' },
-];
+// Tennis Source (full)/Golf/Baseball/Soccer/Football-QB were dropped from
+// this row: they're raw, unconverted Mixamo FBX applied via the simple
+// name-matching retargetClipNames() path below, which assumes the target
+// character's bones share the same rest ORIENTATION as the clip's own rig.
+// That's true for Forehand/Backhand/Overhead (built through the same
+// Blender FBX->glTF pipeline as these characters -- see
+// tools/build-mixamo-clip-library.mjs) but not for these raw files: the
+// Blender conversion re-authors every bone's rest quaternion (confirmed --
+// e.g. Hips rest is (-0.70, 0.18, -0.15, 0.67) on the shipped ch01.glb vs.
+// identity on the original raw FBX), so applying these clips' rotation
+// tracks verbatim pitches the whole character face-down. Fixing this
+// properly needs either a second world-space FK retarget pipeline (the
+// same class of problem retargetMannyClip below took 18 rounds of bugs to
+// get right for a DIFFERENT source rig -- see CONTEXT.md) or rebuilding
+// these clips through the Blender pipeline like the swing clips were. Per
+// explicit user decision, neither was worth it for these exploratory
+// other-sport clips -- dropped instead of shipped broken.
 
-// One representative clip per `_top_picks` category (11 categories, 51 raw
-// files total -- the user asked to preview one-per-folder for now rather than
-// all 51; see character-preview/local-clips/top-picks/<category>/ for the
-// rest if a different pick is wanted later). These are Unreal Engine 5 "Manny"
+// One representative clip per `_top_picks` category (originally 11
+// categories/51 raw files total; `pivot_spin` and `dive` were dropped after
+// neither ever retargeted acceptably, leaving 9 -- the user asked to preview
+// one-per-folder for now rather than all 51; see
+// character-preview/local-clips/top-picks/<category>/ for the rest if a
+// different pick is wanted later). These are Unreal Engine 5 "Manny"
 // mannequin mocap exports (Epic's free Paragon animation packs retargeted to
 // the standard UE5 skeleton) -- a totally different bone-naming/hierarchy
 // convention (`pelvis`, `clavicle_l`, `upperarm_l`, `calf_l`, ...) than the
@@ -122,10 +132,8 @@ const TOP_PICKS = [
   { key: 'tp-run', category: 'run', label: 'Run (Fwd Jog)', url: './local-clips/top-picks/run/Jog_Fwd__AuroraManny.FBX' },
   { key: 'tp-backpedal', category: 'backpedal', label: 'Backpedal', url: './local-clips/top-picks/backpedal/Sprint_Backpedal__KallariManny.FBX' },
   { key: 'tp-side-shuffle', category: 'side_shuffle', label: 'Side Shuffle (Strafe L)', url: './local-clips/top-picks/side_shuffle/Strafe_Left__KhaimeraManny.FBX' },
-  { key: 'tp-pivot-spin', category: 'pivot_spin', label: 'Pivot Spin (Fwd 180)', url: './local-clips/top-picks/pivot_spin/Jog_Fwd_Pivot180__DekkerManny.FBX' },
   { key: 'tp-serve', category: 'serve', label: 'Serve (Swing, Medium)', url: './local-clips/top-picks/serve/Primary_Swing1_Medium__NarbashManny.FBX' },
   { key: 'tp-jump-smash', category: 'jump_smash', label: 'Jump Smash (Apex)', url: './local-clips/top-picks/jump_smash/Jump_Apex__CrunchManny.FBX' },
-  { key: 'tp-dive', category: 'dive', label: 'Dive (Fwd Roll)', url: './local-clips/top-picks/dive/Dive_Fwd_Roll__TwinBlastManny.FBX' },
   { key: 'tp-hit-react', category: 'hit_react', label: 'Hit React (Front)', url: './local-clips/top-picks/hit_react/HitReact_Front__AuroraManny.FBX' },
   { key: 'tp-victory', category: 'victory_celebration', label: 'Victory Emote', url: './local-clips/top-picks/victory_celebration/Victory_Emote__KallariManny.FBX' },
 ];
@@ -302,6 +310,32 @@ const TARGET_PARENT = {
 // SWING_TARGET_CHILD's hand entries), need it for the same forearm reason:
 // a raw T-pose hand also points along the arm's own horizontal line.
 const NEUTRAL_OFFSET_BONES = ['LeftForeArm', 'RightForeArm', 'LeftHand', 'RightHand'];
+
+// Bones retargeted via the PARENT-RELATIVE direct transplant (see
+// `useParentRelative` in retargetMannyClip) instead of the world-space swing
+// method. Originally just NEUTRAL_OFFSET_BONES's forearm/hand (item 17), but
+// LeftArm/RightArm need the exact same treatment for a DIFFERENT reason:
+// upperarm_l/upperarm_r's own rest pose is a relaxed, already-~35-degree-off-
+// vertical stance, not a T-pose (confirmed: sourceAimRest sampled at
+// (0.58, -0.82, 0.02), i.e. ~35 degrees off straight-down) -- the previous
+// commit removed LeftArm/RightArm's NEUTRAL_OFFSET_BONES hang-down correction
+// because that FIXED baseline (swung to literal straight-down) didn't match
+// this ~35-degree source rest either, and composing a small swing-from-rest
+// onto a mismatched baseline damped genuine reach. But with NO correction at
+// all, the baseline reverts to the target's own literal T-pose rest (arms
+// horizontal), and since running only swings the arm a few degrees away from
+// the SOURCE's own (already near-vertical) rest, that tiny swing composed
+// onto a horizontal T-pose baseline leaves the arm sitting almost exactly
+// horizontal for the whole clip -- confirmed via window.__RETARGET_DEBUG:
+// LeftArm's newWorldQ during `run` stayed within a few degrees of targetRestW
+// every sampled frame (user-reported "arms flailed out like flying"). Same
+// disease as item 5c/17, just one joint further up the chain: any
+// delta-from-a-mismatched-reference method reveals the TARGET's own rest
+// whenever the SOURCE barely moves relative to ITS rest. Fix: use the same
+// direct-transplant-through-a-twist-free-frame method already proven for
+// elbow/wrist, which reproduces the source's actual current arm position
+// every frame instead of a delta from either rig's rest.
+const PARENT_RELATIVE_BONES = ['LeftArm', 'RightArm', 'LeftForeArm', 'RightForeArm', 'LeftHand', 'RightHand'];
 
 let mixer = null;
 let currentAction = null;
@@ -514,6 +548,13 @@ function exitSkeletonPreview() {
   if (skeletonPreviewRoot) { scene.remove(skeletonPreviewRoot); skeletonPreviewRoot = null; }
   if (character) character.visible = true;
   if (characterMixer) mixer = characterMixer;
+  // The skeleton preview re-framed the camera/grid onto ITS OWN (differently
+  // scaled/positioned) bounds via frameCameraToBounds -- without resetting
+  // that here, the character comes back visible but the camera is still
+  // pointed at wherever the skeleton preview was, making the character look
+  // "lost" until its own character button is clicked again (which happens to
+  // re-frame the camera as a side effect in activateCharacter).
+  if (character) frameCameraToObject(character);
 }
 
 // Raw FBX clip sources are fetched at most once (network cost); the
@@ -623,45 +664,6 @@ function retargetClipNames(clip, bonePrefix) {
   clip.tracks.forEach((track) => {
     track.name = track.name.replace(/^mixamorig\d*/, bonePrefix);
   });
-  return clip;
-}
-
-// These clips are mocap captured on one specific performer, then applied
-// across six differently-proportioned characters. Rotation transfers fine
-// (that's the whole motion), but every non-root bone also carries a baked
-// .position track holding that performer's own ABSOLUTE bone-to-bone offset
-// (e.g. their real ~11cm neck-to-head distance) and a near-1 .scale track.
-// Applying those verbatim overrides each target character's own bind-pose
-// bone length the instant any clip plays -- on a short-necked stylized
-// character that stretches the neck to the performer's real proportions,
-// invisible only in the untouched T-pose. A correct humanoid retarget only
-// transfers rotation for non-root bones; position/scale should come from the
-// target's own rig. Root (Hips) keeps its position track since that's
-// legitimate root motion, not bone length.
-function stripNonRootPositionAndScale(clip, bonePrefix) {
-  const rootPosition = `${bonePrefix}Hips.position`;
-  clip.tracks = clip.tracks.filter((track) => {
-    const isPositionOrScale = track.name.endsWith('.position') || track.name.endsWith('.scale');
-    return !isPositionOrScale || track.name === rootPosition;
-  });
-  return clip;
-}
-
-// These are one-shot swing clips looped with LoopRepeat for continuous
-// preview, but Mixamo bakes real forward root motion into the Hips position
-// track (the character steps into the swing) and the clip does not return to
-// its start position -- so each loop iteration would carry the character
-// further off-screen. Freeze the Hips track's horizontal (X/Z) motion so the
-// swing plays in place; vertical (Y) motion (weight drop/rise) is left intact
-// since that's part of the pose, not travel.
-function freezeRootHorizontalMotion(clip, bonePrefix) {
-  const track = clip.tracks.find((t) => t.name === `${bonePrefix}Hips.position`);
-  if (!track) return clip;
-  const v = track.values;
-  for (let i = 0; i < v.length; i += 3) {
-    v[i] = 0;
-    v[i + 2] = 0;
-  }
   return clip;
 }
 
@@ -1185,16 +1187,16 @@ function retargetMannyClip(clipKey, rawFbx, rawClip, bonePrefix, targetRestPose)
 
     const sourceRestInv = sourceRestW.clone().invert();
 
-    // PARENT-RELATIVE bend fix (item 15) -- only for bones that carry a
-    // NEUTRAL_OFFSET_BONES correction (forearm, hand). See the big comment
-    // in the loop body below for the full reasoning; this block just
-    // gathers the extra per-bone data (parent's source-side name, its rest/
-    // per-frame world quats, target's own child-offset vector) needed to
-    // compute the elbow/wrist bend AS SEEN FROM the parent bone's own
-    // moving frame, instead of as an independent world-space quantity.
-    // See the useParentRelative branch below for what this feeds -- direct
-    // transplant of the source's current parent-relative elbow/wrist aim,
-    // not a delta from either rig's own (mismatched) rest pose.
+    // PARENT-RELATIVE bend fix (item 15, extended to the upper arm above) --
+    // for PARENT_RELATIVE_BONES only. See the big comment in the loop body
+    // below for the full reasoning; this block just gathers the extra
+    // per-bone data (parent's source-side name, its rest/per-frame world
+    // quats, target's own child-offset vector) needed to compute the
+    // shoulder/elbow/wrist bend AS SEEN FROM the parent bone's own moving
+    // frame, instead of as an independent world-space quantity. See the
+    // useParentRelative branch below for what this feeds -- direct
+    // transplant of the source's current parent-relative aim, not a delta
+    // from either rig's own (mismatched) rest pose.
     const parentSourceName = SOURCE_NAME_FOR_TARGET_SUFFIX[parentSuffix];
     const sourceParentFramePos = parentSourceName ? sourcePerFramePos.get(parentSourceName) : null;
     const childLocalOffsetTarget = targetChildSuffix ? restPositions.get(targetChildSuffix) : null;
@@ -1205,7 +1207,7 @@ function retargetMannyClip(clipKey, rawFbx, rawClip, bonePrefix, targetRestPose)
     // separate lookup of the parent's actual live bone object.
     const targetParentChildOffset = restPositions.get(targetSuffix);
     const useParentRelative =
-      useSwing && neutralOffset && sourceParentFramePos && childLocalOffsetTarget && targetParentChildOffset;
+      useSwing && PARENT_RELATIVE_BONES.includes(targetSuffix) && sourceParentFramePos && childLocalOffsetTarget && targetParentChildOffset;
     const targetAimRestWorld = useParentRelative
       ? childLocalOffsetTarget.clone().applyQuaternion(targetRestW).normalize()
       : null;
@@ -1387,38 +1389,11 @@ function loadFbxSource(clipKey, url) {
   });
 }
 
-// Fetches (or reuses the cached fetch of) one raw-FBX clip source, then
-// retargets/strips/freezes it against the currently active character's rig
-// and plays it. Each button owns its own try/catch: these files live in the
-// untracked local-clips/ folder, so a fresh clone without them must degrade
-// to a per-button error instead of breaking the whole page.
-async function activateFbxClip(clipKey, url, label, btn) {
-  if (clips.has(clipKey)) {
-    playClip(clipKey);
-    return;
-  }
-  btn.classList.remove('error');
-  btn.classList.add('loading');
-  try {
-    const fbx = await loadFbxSource(clipKey, url);
-    if (!fbx.animations || fbx.animations.length === 0) throw new Error('no animation track in source file');
-    const bonePrefix = currentBonePrefix;
-    const clip = stripNonRootPositionAndScale(retargetClipNames(fbx.animations[0], bonePrefix), bonePrefix);
-    clips.set(clipKey, freezeRootHorizontalMotion(clip, bonePrefix));
-    playClip(clipKey);
-  } catch (err) {
-    console.error(err);
-    btn.classList.add('error');
-    setStatus(`Failed to load clip "${label}": ${err.message || err}`, true);
-  } finally {
-    btn.classList.remove('loading');
-  }
-}
-
-// Same lazy-fetch/per-button-error pattern as activateFbxClip, but for the
-// Manny/UE5-rig top-picks clips: retargetMannyClip() (not
-// retargetClipNames/strip/freeze) does the actual bone mapping, since these
-// clips share no bone names with the Mixamo rig at all.
+// Lazy-fetch/per-button-error pattern (these files live in the untracked
+// local-clips/ folder, so a fresh clone without them must degrade to a
+// per-button error instead of breaking the whole page) for the Manny/UE5-rig
+// top-picks clips: retargetMannyClip() does the actual bone mapping, since
+// these clips share no bone names with the Mixamo rig at all.
 async function activateMannyClip(clipKey, url, label, btn) {
   if (clips.has(clipKey)) {
     playClip(clipKey);
@@ -1590,18 +1565,14 @@ async function activateCharacter(key) {
     });
 
     // forehand/backhand/overhead from the shared, already-fixed GLB clip
-    // library -- no retargeting/strip/freeze needed here (unlike the FBX path
-    // below): bone names are already canonical on both the GLB characters and
-    // this GLB clip library, and root-motion/long-neck fixes are already
-    // baked in at build time (tools/build-mixamo-clip-library.mjs).
+    // library -- no retargeting/strip/freeze needed here: bone names are
+    // already canonical on both the GLB characters and this GLB clip
+    // library, and root-motion/long-neck fixes are already baked in at
+    // build time (tools/build-mixamo-clip-library.mjs).
     (glbSwingClips || []).forEach((clip) => {
       clips.set(clip.name, clip);
       buildClipButton(clip.name, GLB_CLIP_LABELS[clip.name] || clip.name, () => playClip(clip.name));
     });
-
-    for (const { key: clipKey, label, url } of CLIP_SOURCES) {
-      buildClipButton(clipKey, label, (btn2) => activateFbxClip(clipKey, url, label, btn2));
-    }
 
     for (const b of characterButtonsEl.children) {
       b.classList.toggle('active', b.dataset.character === key);
