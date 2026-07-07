@@ -205,7 +205,9 @@ The opening two-bounce gate is tracked explicitly on the rally state, not just
 by `phase`: normal volley play stays locked until the return has also bounced.
 If a player swings at the serve or return before that bounce happens, the rally
 is awarded immediately as a `volley-before-double-bounce` fault rather than the
-attempt being silently ignored.
+attempt being silently ignored. CPU-controlled players consult the same lock and
+defer contact until the bounce, so they do not intentionally commit opening
+two-bounce faults.
 
 ### Cooldowns
 
@@ -331,6 +333,7 @@ When `maxIntent` returns `'smash'`, **both human and AI execute a dedicated stee
 - Same apex (0.92 m); spin = `5.0 + smart × 2.0`
 - Skill-gated: `Math.random() < smart` (Pro attacks ~92% of pop-ups; Easy ~40%)
 - CPU waits for a rising ball to reach peak before striking (`game._checkContacts` defers until `vel.y ≤ 0`)
+- CPU also waits through the opening two-bounce lock; no serve/return volleys.
 
 **Pickleball reality**: a ball almost never bounces above smash height — pickleballs bounce low (see Bounce Height Reference). Smashes happen off **in-air pop-ups** created by the stability system (float/popup tiers) or a lob that hangs too long.
 

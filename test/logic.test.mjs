@@ -146,6 +146,7 @@ test('serving team cannot volley the return before it bounces', () => {
   Rules.onPaddleHit(m, 'near', { volley: false });   // serve
   Rules.onFloor(m, { inBounds: true, x: -1, z: -4, side: -1 }); // serve bounces
   Rules.onPaddleHit(m, 'far', { volley: false, inKitchen: false }); // return
+  assert.equal(Rules.isDoubleBounceVolleyLocked(m), true, 'CPU should wait for return bounce');
   const r = Rules.onPaddleHit(m, 'near', { volley: true, inKitchen: false });
   assert.equal(r.reason, 'volley-before-double-bounce');
 });
@@ -157,6 +158,7 @@ test('serving team may volley after the return bounce if outside kitchen', () =>
   Rules.onFloor(m, { inBounds: true, x: -1, z: -4, side: -1 }); // serve bounces
   Rules.onPaddleHit(m, 'far', { volley: false, inKitchen: false }); // return
   Rules.onFloor(m, { inBounds: true, x: 1, z: 4, side: 1 }); // return bounces
+  assert.equal(Rules.isDoubleBounceVolleyLocked(m), false, 'CPU may volley after return bounce');
   const r = Rules.onPaddleHit(m, 'near', { volley: true, inKitchen: false });
   assert.equal(r.point, null);
   assert.equal(r.illegal, false);

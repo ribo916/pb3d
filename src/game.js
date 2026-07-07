@@ -958,6 +958,12 @@ Game.prototype._checkContacts = function (dt) {
     this._hit(p);
     this.swingUsed = true;
   } else {
+    // CPUs should play sound pickleball: during the opening two-bounce lock,
+    // set up for the landing instead of volleying the serve/return into a fault.
+    if (Rules.isDoubleBounceVolleyLocked(this.match)) {
+      p.aiSwingTimer = 0;
+      return;
+    }
     // If the ball is still rising and will reach smash height, wait for it.
     // This lets the CPU attack overhead instead of scooping it at ankle level.
     if (this.ball.vel.y > 0 && this.ball.pos.y < POWER_CAP.SMASH_H) {

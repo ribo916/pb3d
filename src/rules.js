@@ -149,6 +149,13 @@ export function scoreCallout(match) {
   return isSingles(match) ? base : (base + '–' + match.serverNum);
 }
 
+// True when the next paddle contact would be an illegal volley under the
+// opening two-bounce rule. The serve itself is exempt (shots === 0).
+export function isDoubleBounceVolleyLocked(match) {
+  var r = match && match.rally;
+  return !!(r && r.live && r.shots > 0 && !r.doubleBounceOpen && r.bouncesSinceHit < 1);
+}
+
 // A paddle strikes the ball. hitter = 'near'|'far'.
 // ctx: { volley:bool (hit before bounce), inKitchen:bool, overNet:bool(optional) }
 export function onPaddleHit(match, hitter, ctx) {
@@ -158,7 +165,7 @@ export function onPaddleHit(match, hitter, ctx) {
 
   // Double-bounce rule: volley play stays locked until both serve and return
   // have bounced legally.
-  if (!r.doubleBounceOpen && ctx.volley) {
+  if (ctx.volley && isDoubleBounceVolleyLocked(match)) {
     return awardRally(match, other(hitter), 'volley-before-double-bounce');
   }
 
