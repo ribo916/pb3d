@@ -462,6 +462,18 @@ test('maxIntent returns touch for ball at floor, smash above SMASH_H', () => {
     'high ball → smash');
 });
 
+test('swingSide picks fh/bh from ball position relative to hitter, mirrored by team', () => {
+  // near team (fwd=1): ball to hitter's world +x is forehand (paddle side),
+  // world -x is backhand.
+  assert.equal(Shots.swingSide(0, 1, 1), 'fh', 'near: ball to the right → forehand');
+  assert.equal(Shots.swingSide(0, -1, 1), 'bh', 'near: ball to the left → backhand');
+  // far team (fwd=-1): mirrored — world -x is forehand, world +x is backhand.
+  assert.equal(Shots.swingSide(0, -1, -1), 'fh', 'far: ball to the left → forehand');
+  assert.equal(Shots.swingSide(0, 1, -1), 'bh', 'far: ball to the right → backhand');
+  // dead-center ball defaults to forehand (no flicker deadzone).
+  assert.equal(Shots.swingSide(2.0, 2.02, 1), 'fh', 'near dead-center → defaults forehand');
+});
+
 /* ----------------------- AI poach helpers ------------------------------ */
 test('checkPoach returns false for easy difficulty', () => {
   const ai = AI.makeAI('easy');

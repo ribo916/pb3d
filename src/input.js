@@ -16,7 +16,6 @@ export function makeInput(el, joyEl, joyKnob) {
     move: { x: 0, z: 0 },   // -1..1 each
     aim: 0,                  // -1 (left) .. 1 (right)
     swingQueued: false,      // one-shot
-    swingType: 'fh',         // 'fh' | 'bh'
     swingPower: 'power',     // 'power' | 'touch'  (intent: drive/speedup vs drop/dink)
     swingShot: null,         // null | 'lob'       (explicit shot override)
     serveQueued: false,
@@ -43,20 +42,22 @@ export function makeInput(el, joyEl, joyKnob) {
   }
 
   // --- keyboard --- Space = power swing, V = touch swing, B = lob.
+  // Forehand/backhand is no longer decided here — it's computed at contact
+  // time from the ball's position relative to the hitter (see
+  // Shots.swingSide in game.js), so it works identically regardless of
+  // control scheme instead of depending on where the mouse happens to sit.
   window.addEventListener('keydown', function (e) {
     keys[e.code] = true;
-    var fhbh = (state.aim < -0.25) ? 'bh' : 'fh';
-    if (e.code === 'Space') { queueSwing(fhbh, 'power'); e.preventDefault(); }
-    else if (e.code === 'KeyV') { queueSwing(fhbh, 'touch'); e.preventDefault(); }
-    else if (e.code === 'KeyB') { queueSwing(fhbh, 'touch', 'lob'); e.preventDefault(); }
+    if (e.code === 'Space') { queueSwing('power'); e.preventDefault(); }
+    else if (e.code === 'KeyV') { queueSwing('touch'); e.preventDefault(); }
+    else if (e.code === 'KeyB') { queueSwing('touch', 'lob'); e.preventDefault(); }
     if (e.code === 'Enter') state.serveQueued = true;
     if (e.code === 'KeyC') { state.camCycleQueued = true; e.preventDefault(); }
   });
   window.addEventListener('keyup', function (e) { keys[e.code] = false; });
 
-  function queueSwing(type, power, shot) {
+  function queueSwing(power, shot) {
     state.swingQueued = true;
-    state.swingType = type || 'fh';
     state.swingPower = power || 'power';
     state.swingShot = shot || null;
     state.serveQueued = true; // a swing also serves when in serve state
@@ -128,7 +129,6 @@ export function makeInput(el, joyEl, joyKnob) {
       else { if (joyEl) joyEl.style.display = 'none'; queueKnob(0, 0); }
     } else if (rightTouch.active && t.identifier === rightTouch.id) {
       rightTouch.active = false;
-      var swung = state.aim < -0.25 ? 'bh' : 'fh';
       // Direction picks the shot: a committed vertical flick UP = drive, DOWN =
       // lob; a short/soft swipe = drop; a committed horizontal swipe = drive.
       // (Horizontal drag also sets aim continuously in onMove.)
@@ -137,11 +137,11 @@ export function makeInput(el, joyEl, joyKnob) {
       var ms = Math.max(1, now - rightTouch.t0);
       var dist = dist2D(dx, dy), speed = dist / ms; // px per ms
       var committed = dist > 55 || speed > 0.6;     // a deliberate swipe vs a soft tap
-      if (!committed) { queueSwing(swung, 'touch'); return; }        // small/soft = DROP
+      if (!committed) { queueSwing('touch'); return; }        // small/soft = DROP
       var vertical = Math.abs(dy) > Math.abs(dx);
-      if (vertical && dy < 0) { queueSwing(swung, 'power'); return; }        // UP  = DRIVE
-      if (vertical && dy > 0) { queueSwing(swung, 'touch', 'lob'); return; } // DOWN = LOB
-      queueSwing(swung, 'power');                                            // committed horizontal = DRIVE
+      if (vertical && dy < 0) { queueSwing('power'); return; }        // UP  = DRIVE
+      if (vertical && dy > 0) { queueSwing('touch', 'lob'); return; } // DOWN = LOB
+      queueSwing('power');                                            // committed horizontal = DRIVE
     }
   }
 
@@ -165,10 +165,9 @@ export function makeInput(el, joyEl, joyKnob) {
   el.addEventListener('mousedown', function (e) {
     var r = el.getBoundingClientRect();
     state.aim = Math.max(-1, Math.min(1, ((e.clientX - r.left) / r.width - 0.5) * 2));
-    var fhbh = state.aim < -0.25 ? 'bh' : 'fh';
-    if (e.button === 1 || e.shiftKey) { queueSwing(fhbh, 'touch', 'lob'); }
-    else if (e.button === 2) { queueSwing(fhbh, 'touch'); }
-    else { queueSwing(fhbh, 'power'); }
+    if (e.button === 1 || e.shiftKey) { queueSwing('touch', 'lob'); }
+    else if (e.button === 2) { queueSwing('touch'); }
+    else { queueSwing('power'); }
     e.preventDefault();
   });
   el.addEventListener('contextmenu', function (e) { e.preventDefault(); });
@@ -198,8 +197,8 @@ export function makeInput(el, joyEl, joyKnob) {
   }
 
   function consumeSwing() {
-    if (state.swingQueued) { state.swingQueued = false; return state.swingType; }
-    return null;
+    if (state.swingQueued) { state.swingQueued = false; return true; }
+    return false;
   }
   function consumeServe() {
     if (state.serveQueued) { state.serveQueued = false; return true; }

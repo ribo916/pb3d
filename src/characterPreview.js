@@ -142,7 +142,7 @@ export function makeCharacterPreview(container, options) {
       state.characterKey = character.key;
       var pack = null;
       try {
-        pack = await preloadPlayerModels();
+        pack = await preloadPlayerModels([character.playerModelKey]);
       } catch (e) {
         console.warn('Character preview: player model preload failed; using primitive fallback.', e);
       }

@@ -127,6 +127,22 @@ export function maxIntent(ballY) {
   return 'power';
 }
 
+/* Which side of the hitter's body the ball is on -> 'fh' | 'bh' (forehand /
+ * backhand). Every player model is rigged with the paddle in the right hand
+ * (see paddle_socket lookup in players.js), and each team faces the other
+ * across the net (near faces -z, far faces +z — see game.js's per-frame
+ * facing calc). Working through that facing, a near-team player's paddle
+ * side is toward world +x and a far-team player's paddle side is toward
+ * world -x; `fwd` (already +1 for near, -1 for far at every call site)
+ * cancels that mirroring so a single sign check works for both teams: the
+ * ball is on the backhand side whenever (ballX - hitterX) * fwd < 0.
+ * A small deadzone avoids fh/bh flicker when the ball is nearly dead-center
+ * on the hitter, defaulting to forehand on a tie. */
+export function swingSide(hitterX, ballX, fwd) {
+  var lateral = (ballX - hitterX) * fwd;
+  return lateral < -0.08 ? 'bh' : 'fh';
+}
+
 /* ============================================================
  * Dink battle target
  * ============================================================*/
