@@ -4,4 +4,8 @@ node_modules/
 dist/
 .claude/settings.local.json
 .claude/settings.json
+# The local-clips/ archive (~104MB of alternate mocap takes + raw sport FBX)
+# stays local. The 10 clips the character editor actually fetches are tracked
+# explicitly via `git add -f` (see character-preview/main.js TOP_PICKS), so the
+# editor works on Vercel and on synced machines without shipping the archive.
 character-preview/local-clips/
