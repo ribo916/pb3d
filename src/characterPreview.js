@@ -226,10 +226,11 @@ export function makeCharacterPreview(container, options) {
       if (!state.running) renderer.render(scene, camera);
     },
 
-    /* Renders the current character face-on and returns a PNG data URL —
-     * used to generate picker thumbnails from the same models/lighting. */
+    /* Renders the current character turned slightly off-axis (like a posed
+     * headshot, not a mugshot) and returns a PNG data URL — used to bake
+     * picker thumbnails from the same models/lighting. */
     snapshot: function () {
-      turntable.rotation.y = 0;
+      turntable.rotation.y = THREE.MathUtils.degToRad(20);
       renderer.render(scene, camera);
       return canvas.toDataURL('image/png');
     },

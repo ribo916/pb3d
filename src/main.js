@@ -351,6 +351,23 @@ syncMenuSummary();
 syncMenuMusicStartFromState();
 updateAudioUI();
 
+// Renders a single character to a bust-framed portrait PNG using an isolated,
+// never-started preview instance (no turntable spin, no swing cycle) so tooling
+// can bake picker thumbnails without touching any live UI state.
+function bakePortrait(characterId) {
+  var mount = document.createElement('div');
+  mount.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:512px;height:512px;';
+  document.body.appendChild(mount);
+  var preview = makeCharacterPreview(mount, { framing: 'bust', rotationMode: 'none' });
+  var character = resolveSlotCharacter('nearYou', characterId);
+  return preview.show(character).then(function () {
+    var dataUrl = preview.snapshot();
+    preview.dispose();
+    mount.remove();
+    return dataUrl;
+  });
+}
+
 window.__pb3dMenu = {
   readConfig: readMenuConfig,
   syncTimeOfDayUI: syncTimeOfDayUI,
@@ -358,7 +375,8 @@ window.__pb3dMenu = {
   // Test/tooling entry points (the visible flow drives these too):
   launch: function () { return launchFromFlow(); },
   goToFlow: function (id) { goToFlow(id); },
-  openCharacterScreen: function () { goToFlow('character'); }
+  openCharacterScreen: function () { goToFlow('character'); },
+  bakePortrait: bakePortrait
 };
 
 $('pauseBtn').addEventListener('click', function (e) { e.preventDefault(); if (running && !paused) pauseGame(); });
@@ -472,9 +490,9 @@ function renderCharacterGrid() {
     var isActive = rosterPicks[characterActiveTab] === character.id;
     return '<button class="character-tile' + (isActive ? ' active' : '') +
       '" data-character-id="' + character.id + '" tabindex="0">' +
-      '<span class="character-tile-swatch" style="background:#' + character.swatch.toString(16).padStart(6, '0') + '"></span>' +
-      '<span class="character-tile-label">' + character.label + '</span>' +
-      '<span class="character-tile-badges">' + badges + '</span></button>';
+      '<span class="character-tile-badges">' + badges + '</span>' +
+      '<span class="character-tile-portrait"><img src="' + portraitUrl(character.id) + '" alt="' + character.label + '" loading="lazy"></span>' +
+      '<span class="character-tile-label">' + character.label + '</span></button>';
   }).join('');
 }
 
@@ -629,25 +647,20 @@ function renderFlowCharSlots() {
   }).join('');
 }
 
-// Two-letter avatar initials for the placeholder portrait tiles (until real
-// face art exists). e.g. AJ -> "AJ", Maya -> "MA".
-function charInitials(name) {
-  name = String(name || '').trim();
-  var parts = name.split(/\s+/);
-  if (parts.length > 1) return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
-  return name.slice(0, 2).toUpperCase();
+// Baked headshot for a character id (see tools/generate-portraits.mjs).
+function portraitUrl(id) {
+  return '/assets/images/portraits/' + id + '.png';
 }
 
 function renderFlowCharGrid() {
   var slot = flowActiveSlot;
   $('flowCharGrid').innerHTML = CHARACTERS.map(function (c) {
-    var hex = '#' + c.swatch.toString(16).padStart(6, '0');
     var badges = flowSlotOrder.filter(function (pos) { return rosterPicks[pos] === c.id; })
       .map(function (pos) { return '<span class="flow-char-badge">' + POSITION_TAB_NUMBER[pos] + '</span>'; }).join('');
     var isActive = rosterPicks[slot] === c.id;
     return '<button class="flow-char-tile' + (isActive ? ' active' : '') + '" data-character-id="' + c.id + '" tabindex="0">' +
       '<span class="flow-char-tile-badges">' + badges + '</span>' +
-      '<span class="flow-char-portrait" style="background:' + hex + '"><span>' + charInitials(c.label) + '</span></span>' +
+      '<span class="flow-char-portrait"><img src="' + portraitUrl(c.id) + '" alt="' + c.label + '" loading="lazy"></span>' +
       '<span class="flow-char-cap">' + c.label + '</span></button>';
   }).join('');
 }
@@ -667,10 +680,8 @@ function randomCharacterId() {
 // ---- VS splash ----
 function flowVsPortrait(slot, characterId) {
   var ch = resolveSlotCharacter(slot, characterId);
-  var base = getCharacter(characterId) || getCharacter(ch.id);
-  var hex = '#' + ((base && base.swatch) || 0x888888).toString(16).padStart(6, '0');
   return '<div class="flow-vs-card">' +
-    '<div class="flow-vs-portrait" style="background:' + hex + '"><span>' + charInitials(ch.label) + '</span></div>' +
+    '<div class="flow-vs-portrait"><img src="' + portraitUrl(ch.id) + '" alt="' + ch.label + '"></div>' +
     '<div><div class="flow-vs-name">' + ch.label + '</div><div class="flow-vs-role">' + positionLabel(slot) + '</div></div>' +
     '</div>';
 }

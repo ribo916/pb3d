@@ -675,12 +675,12 @@
     .flow-char-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; align-content: start; }
     .flow-char-tile {
       position: relative; border: 1px solid var(--seg-border); border-radius: 12px;
-      background: var(--seg-bg); cursor: pointer; font-family: inherit; color: var(--seg-text);
+      background: #fff; cursor: pointer; font-family: inherit;
       padding: 0; overflow: hidden; display: flex; flex-direction: column; align-items: stretch;
     }
-    .flow-char-portrait { aspect-ratio: 1 / 1; width: 100%; display: flex; align-items: center; justify-content: center; }
-    .flow-char-portrait span { font-size: 14px; font-weight: 900; letter-spacing: .5px; color: rgba(255,255,255,.9); text-shadow: 0 1px 4px rgba(0,0,0,.35); }
-    .flow-char-cap { font-size: 9.5px; font-weight: 800; letter-spacing: .6px; padding: 5px 2px; text-align: center; }
+    .flow-char-portrait { aspect-ratio: 1 / 1; width: 100%; overflow: hidden; background: #fff; }
+    .flow-char-portrait img { width: 100%; height: 100%; object-fit: cover; object-position: center 20%; display: block; }
+    .flow-char-cap { background: #000; color: #fff; font-size: 9.5px; font-weight: 800; letter-spacing: .6px; padding: 5px 2px; text-align: center; }
     .flow-char-tile.active { border-color: var(--flow-accent); box-shadow: inset 0 0 0 2px var(--flow-accent); }
     .flow-char-tile-badges { position: absolute; top: 4px; left: 4px; display: flex; gap: 3px; flex-wrap: wrap; }
     .flow-char-badge { font-size: 8px; font-weight: 800; padding: 1px 4px; border-radius: 5px; background: var(--flow-accent); color: var(--flow-accent-ink); }
@@ -717,10 +717,10 @@
     .flow-vs-side.right { align-items: flex-end; }
     .flow-vs-card { display: flex; align-items: center; gap: 12px; }
     .flow-vs-side.right .flow-vs-card { flex-direction: row-reverse; }
-    .flow-vs-portrait { width: clamp(56px, 14vw, 96px); aspect-ratio: 1 / 1; border-radius: 14px; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 24px rgba(0,0,0,.4); }
-    .flow-vs-portrait span { font-size: clamp(14px, 4vw, 22px); font-weight: 900; color: rgba(255,255,255,.92); text-shadow: 0 1px 4px rgba(0,0,0,.45); }
-    .flow-vs-name { font-size: clamp(13px, 3.4vw, 18px); font-weight: 800; letter-spacing: 1px; text-transform: uppercase; }
-    .flow-vs-role { font-size: 10px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: rgba(255,255,255,.5); }
+    .flow-vs-portrait { width: clamp(56px, 14vw, 96px); aspect-ratio: 1 / 1; border-radius: 14px; overflow: hidden; background: #fff; box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+    .flow-vs-portrait img { width: 100%; height: 100%; object-fit: cover; object-position: center 20%; display: block; }
+    .flow-vs-name { display: inline-block; background: #000; color: #fff; font-size: clamp(13px, 3.4vw, 18px); font-weight: 800; letter-spacing: 1px; text-transform: uppercase; padding: 3px 8px; border-radius: 4px; }
+    .flow-vs-role { margin-top: 4px; font-size: 10px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: rgba(255,255,255,.5); }
     .flow-vs-mark {
       font-family: var(--title-font); font-size: clamp(48px, 15vw, 120px); font-weight: 900;
       color: var(--flow-accent); transform: skewX(-8deg); text-shadow: 0 6px 24px color-mix(in srgb, var(--flow-accent) 45%, transparent);
@@ -1090,28 +1090,23 @@
       position: relative;
       border: 1px solid var(--seg-border);
       border-radius: var(--seg-radius);
-      background: var(--seg-bg);
+      background: #fff;
       cursor: pointer;
       font-family: inherit;
-      color: var(--seg-text);
-      padding: 10px 6px 8px;
+      padding: 0;
+      overflow: hidden;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      gap: 5px;
+      align-items: stretch;
     }
     .character-tile.active {
       border-color: var(--focus);
       box-shadow: inset 0 0 0 1px var(--focus);
     }
-    .character-tile-swatch {
-      width: 18px;
-      height: 18px;
-      border-radius: 50%;
-      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.3);
-    }
-    .character-tile-label { font-size: 10.5px; font-weight: 800; letter-spacing: 0.6px; }
-    .character-tile-badges { display: flex; gap: 3px; flex-wrap: wrap; justify-content: center; min-height: 13px; }
+    .character-tile-portrait { aspect-ratio: 1 / 1; width: 100%; overflow: hidden; background: #fff; }
+    .character-tile-portrait img { width: 100%; height: 100%; object-fit: cover; object-position: center 20%; display: block; }
+    .character-tile-label { background: #000; color: #fff; font-size: 10.5px; font-weight: 800; letter-spacing: 0.6px; padding: 5px 2px; text-align: center; }
+    .character-tile-badges { position: absolute; top: 4px; left: 4px; display: flex; gap: 3px; flex-wrap: wrap; justify-content: center; min-height: 13px; }
     .character-tile-badge {
       font-size: 8px;
       font-weight: 800;

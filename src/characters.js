@@ -17,17 +17,17 @@ export const CHARACTERS = [
   { id: 'ch01', playerModelKey: 'player-ch01-v1', label: 'AJ', swatch: 0xff6b6b },
   { id: 'ch02', playerModelKey: 'player-ch02-v1', label: 'Maya', swatch: 0xffa94d },
   { id: 'ch03', playerModelKey: 'player-ch03-v1', label: 'Leo', swatch: 0xffd43b },
-  { id: 'ch04', playerModelKey: 'player-ch04-v1', label: 'Zoe', swatch: 0x94d82d },
-  { id: 'ch05', playerModelKey: 'player-ch05-v1', label: 'Kai', swatch: 0x37b24d },
+  { id: 'ch04', playerModelKey: 'player-ch04-v1', label: 'Milo', swatch: 0x94d82d },
+  { id: 'ch05', playerModelKey: 'player-ch05-v1', label: 'Diego', swatch: 0x37b24d },
   { id: 'ch06', playerModelKey: 'player-ch06-v1', label: 'Nina', swatch: 0x12b886 },
   { id: 'ch07', playerModelKey: 'player-ch07-v1', label: 'Theo', swatch: 0x22b8cf },
-  { id: 'ch08', playerModelKey: 'player-ch08-v1', label: 'Ruby', swatch: 0x4dabf7 },
+  { id: 'ch08', playerModelKey: 'player-ch08-v1', label: 'Owen', swatch: 0x4dabf7 },
   { id: 'ch09', playerModelKey: 'player-ch09-v1', label: 'Max', swatch: 0x5c7cfa },
   { id: 'ch10', playerModelKey: 'player-ch10-v1', label: 'Ivy', swatch: 0x9775fa },
-  { id: 'ch11', playerModelKey: 'player-ch11-v1', label: 'Finn', swatch: 0xda77f2 },
-  { id: 'ch12', playerModelKey: 'player-ch12-v1', label: 'Luna', swatch: 0xf06595 },
-  { id: 'ch14', playerModelKey: 'player-ch14-v1', label: 'Cole', swatch: 0xe8590c },
-  { id: 'ch15', playerModelKey: 'player-ch15-v1', label: 'Remy', swatch: 0x20c997 }
+  { id: 'ch11', playerModelKey: 'player-ch11-v1', label: 'Wren', swatch: 0xda77f2 },
+  { id: 'ch12', playerModelKey: 'player-ch12-v1', label: 'Beau', swatch: 0xf06595 },
+  { id: 'ch14', playerModelKey: 'player-ch14-v1', label: 'Piper', swatch: 0xe8590c },
+  { id: 'ch15', playerModelKey: 'player-ch15-v1', label: 'Skye', swatch: 0x20c997 }
 ];
 
 export function getCharacter(id) {
