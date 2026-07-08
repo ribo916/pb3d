@@ -705,10 +705,13 @@
     }
 
     /* 04 · Venue */
-    .flow-venue-grid { width: min(720px, 100%); display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+    .flow-venue-grid { width: min(480px, 100%); display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
     #flowRoot .flow-venue-grid .menu-seg { min-height: 110px; border-radius: 16px; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-end; padding: 14px; }
     #flowRoot .flow-venue-grid .menu-seg strong { font-size: 17px; }
-    .flow-tod-row { display: flex; align-items: center; gap: 10px; }
+    .flow-tod-row { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 10px; }
+    #flowRoot .flow-tod-row .menu-seg { min-height: 56px; padding: 12px 10px; display: flex; align-items: center; justify-content: center; border-radius: 14px; }
+    #flowRoot .flow-tod-row .menu-seg strong { font-size: 15px; font-weight: 800; letter-spacing: .6px; }
+    #flowRoot .flow-tod-row .menu-seg::after { top: 8px; right: 8px; }
 
     /* 05 · VS */
     #scrVs { background: #141414; color: #fff; justify-content: center; }
@@ -1601,11 +1604,11 @@
         <label class="menu-option"><input type="radio" name="venue" value="tropical"><div class="menu-seg venue-seg-tropical"><strong>Tropical</strong></div></label>
         <label class="menu-option"><input type="radio" name="venue" value="indoor"><div class="menu-seg venue-seg-indoor"><strong>Indoor</strong></div></label>
       </div>
-      <div class="flow-group" id="todGroup" style="width:min(720px,100%)">
+      <div class="flow-group" id="todGroup" style="width:min(480px,100%)">
         <div class="flow-kicker">Time of Day <span class="menu-subhint" id="todHint"></span></div>
         <div class="flow-tod-row">
-          <label class="menu-option" style="flex:1"><input type="radio" name="tod" value="day" checked><div class="menu-seg"><strong>Day</strong></div></label>
-          <label class="menu-option" style="flex:1"><input type="radio" name="tod" value="night"><div class="menu-seg"><strong>Night</strong></div></label>
+          <label class="menu-option"><input type="radio" name="tod" value="day" checked><div class="menu-seg"><strong>Day</strong></div></label>
+          <label class="menu-option"><input type="radio" name="tod" value="night"><div class="menu-seg"><strong>Night</strong></div></label>
         </div>
       </div>
       <div class="flow-nav">
