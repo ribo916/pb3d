@@ -707,8 +707,9 @@ function launchFromFlow() {
 }
 
 // ---- Wiring ----
-// Start: advance on tap anywhere (the START button bubbles up here too).
-$('scrStart').addEventListener('click', function () { goToFlow('format'); });
+// Start: advance only when the player chooses the Start button (no tap-anywhere,
+// so the on-screen theme dots can be clicked without launching the flow).
+$('startGameBtn').addEventListener('click', function () { goToFlow('format'); });
 
 // Generic next/back buttons that just navigate to a named screen.
 $('flowRoot').addEventListener('click', function (e) {
