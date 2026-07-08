@@ -15,10 +15,8 @@
 // per-tile accent color for the picker grid (no gameplay meaning).
 export const CHARACTERS = [
   { id: 'ch01', playerModelKey: 'player-ch01-v1', label: 'AJ', swatch: 0xff6b6b },
-  { id: 'ch02', playerModelKey: 'player-ch02-v1', label: 'Maya', swatch: 0xffa94d },
   { id: 'ch03', playerModelKey: 'player-ch03-v1', label: 'Leo', swatch: 0xffd43b },
   { id: 'ch04', playerModelKey: 'player-ch04-v1', label: 'Milo', swatch: 0x94d82d },
-  { id: 'ch05', playerModelKey: 'player-ch05-v1', label: 'Diego', swatch: 0x37b24d },
   { id: 'ch06', playerModelKey: 'player-ch06-v1', label: 'Nina', swatch: 0x12b886 },
   { id: 'ch07', playerModelKey: 'player-ch07-v1', label: 'Theo', swatch: 0x22b8cf },
   { id: 'ch08', playerModelKey: 'player-ch08-v1', label: 'Owen', swatch: 0x4dabf7 },
@@ -40,7 +38,7 @@ export function getCharacter(id) {
 // Distinct-by-default per position, so a match can start without ever
 // opening the picker.
 export const DEFAULT_ROSTER = {
-  nearYou: 'ch01', nearMate: 'ch02', farA: 'ch03', farB: 'ch04'
+  nearYou: 'ch01', nearMate: 'ch06', farA: 'ch03', farB: 'ch04'
 };
 
 // Team/role identity stays keyed by SLOT (reproduces the old SLOT_DEFAULTS

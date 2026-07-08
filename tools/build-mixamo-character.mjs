@@ -29,6 +29,7 @@ import { prune, dedup, weld, meshopt, textureCompress } from '@gltf-transform/fu
 import { MeshoptEncoder } from 'meshoptimizer';
 import sharp from 'sharp';
 import { detectBonePrefix, normalizeBoneNames } from './lib/mixamo-bones.mjs';
+import { normalizeCharacterMaterials } from './lib/normalize-materials.mjs';
 
 const [inPath, outPath, socketBoneArg] = process.argv.slice(2);
 if (!inPath || !outPath) {
@@ -87,6 +88,13 @@ function buildHeadbandMesh() {
   return node;
 }
 buildHeadbandMesh();
+
+// --- normalize PBR materials so skin/cloth/hair don't read oily/"wet"
+//     (detach KHR_materials_specular boost, zero metalness, floor roughness);
+//     the prune() below then drops the orphaned specular textures. Shared with
+//     tools/fix-mixamo-materials.mjs so a rebuild can't regress. ---
+const matSummary = normalizeCharacterMaterials(doc);
+console.log('normalized materials:', JSON.stringify(matSummary));
 
 // --- meshopt geometry compression (weld first: meshopt needs indexed,
 //     welded geometry to reorder/quantize effectively) ---

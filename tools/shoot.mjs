@@ -134,7 +134,7 @@ async function captureCharacterScreen() {
 
   // Cycle every character tile on the first slot (P1 / You), screenshotting the
   // live preview so the selectable GLBs get loaded and visually checked at once.
-  const ids = ['ch01', 'ch02', 'ch03', 'ch04', 'ch05', 'ch06', 'ch07', 'ch08', 'ch09', 'ch10', 'ch11', 'ch12', 'ch14', 'ch15'];
+  const ids = ['ch01', 'ch03', 'ch04', 'ch06', 'ch07', 'ch08', 'ch09', 'ch10', 'ch11', 'ch12', 'ch14', 'ch15'];
   for (const id of ids) {
     await page.click(`#flowCharGrid [data-character-id="${id}"]`);
     await waitForCharacterPreview();
@@ -144,9 +144,9 @@ async function captureCharacterScreen() {
   // Select each slot chip and assign a character (including a deliberate
   // duplicate) to confirm per-slot assignment + duplicates-allowed both work.
   const walk = [
-    { slot: 'nearMate', id: 'ch05' },
+    { slot: 'nearMate', id: 'ch06' },
     { slot: 'farA', id: 'ch12' },
-    { slot: 'farB', id: 'ch05' } // duplicate of Partner's pick, intentional
+    { slot: 'farB', id: 'ch06' } // duplicate of Partner's pick, intentional
   ];
   for (const { slot, id } of walk) {
     await page.click(`#flowCharSlots [data-slot="${slot}"]`);

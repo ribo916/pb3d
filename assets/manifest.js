@@ -98,15 +98,6 @@ export const ASSET_MANIFEST = {
       customizable: false, optional: true
     },
     {
-      key: 'player-ch02-v1', label: 'Mixamo character (ch02)',
-      url: '/assets/models/players/mixamo/ch02.glb', scope: 'player',
-      fallbackKey: 'player-ch01-v1', playerScale: 1.02, playerOffset: [0, 0, 0],
-      playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
-      paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
-      syncPrimitiveArms: false,
-      customizable: false, optional: true
-    },
-    {
       key: 'player-ch03-v1', label: 'Mixamo character (ch03)',
       url: '/assets/models/players/mixamo/ch03.glb', scope: 'player',
       fallbackKey: 'player-ch01-v1', playerScale: 1.08, playerOffset: [0, 0, 0],
@@ -119,15 +110,6 @@ export const ASSET_MANIFEST = {
       key: 'player-ch04-v1', label: 'Mixamo character (ch04)',
       url: '/assets/models/players/mixamo/ch04.glb', scope: 'player',
       fallbackKey: 'player-ch01-v1', playerScale: 1.12, playerOffset: [0, 0, 0],
-      playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
-      paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
-      syncPrimitiveArms: false,
-      customizable: false, optional: true
-    },
-    {
-      key: 'player-ch05-v1', label: 'Mixamo character (ch05)',
-      url: '/assets/models/players/mixamo/ch05.glb', scope: 'player',
-      fallbackKey: 'player-ch01-v1', playerScale: 1.02, playerOffset: [0, 0, 0],
       playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
       paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
       syncPrimitiveArms: false,
