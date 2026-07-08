@@ -42,6 +42,10 @@ const CANONICAL_CHARACTER = 'player-ch01-v1';
 // idle / ready / run / serve / backpedal / shuffle_left / shuffle_right.
 const BAKE_SET = [
   { pickKey: 'tp-idle', name: 'idle' },
+  // Alive/weight-shift idle used by the character preview as the resting beat
+  // between swings. clipKey() maps 'idle_noise' -> 'idle_noise' (a distinct
+  // action, kept out of the generic 'idle' slot). See src/players.js.
+  { pickKey: 'tp-idle-noise', name: 'idle_noise' },
   { pickKey: 'tp-ready', name: 'ready' },
   { pickKey: 'tp-run', name: 'run' },
   { pickKey: 'tp-serve', name: 'serve' },

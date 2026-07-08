@@ -17,8 +17,10 @@ var FOV = 28;
 // 1 — the same speed the character-preview viewer plays them), with a short
 // idle beat between each.
 var SHOT_SEQUENCE = ['fh', 'bh', 'smash'];
-var SHOT_GAP = 0.85;      // idle seconds between shots
-var SHOT_START_DELAY = 0.6; // idle beat before the first shot on a new character
+var SHOT_GAP = 1.9;       // idle seconds between shots (long enough that the
+                          // swing→idle→next-swing crossfades fully settle, so the
+                          // cycle reads as smooth rather than jerky)
+var SHOT_START_DELAY = 1.0; // idle beat before the first shot on a new character
 // Framing presets as fractions of the model's bounding-box height.
 var FRAMINGS = {
   bust: { lookY: 0.8, visibleH: 0.55 },
@@ -141,7 +143,9 @@ export function makeCharacterPreview(container, options) {
     var dt = state.last ? Math.min((now - state.last) / 1000, 0.05) : 0.016;
     state.last = now;
     if (state.player) {
-      // Cycle forehand → backhand → overhead with an idle beat between each.
+      // Cycle forehand → backhand → overhead with an alive "idle noise" beat
+      // between each (via visualMove below) — a moving rest pose the swings can
+      // blend in/out of, instead of snapping to the dead hands-down idle.
       if (state.shotsReady) {
         var swinging = state.player.isSwinging && state.player.isSwinging();
         if (!swinging) {
@@ -153,7 +157,9 @@ export function makeCharacterPreview(container, options) {
           }
         }
       }
-      state.player.update(dt, { speed: 0, facing: 0, ready: false });
+      // visualMove drives playLoop() directly; 'idle_noise' falls back to plain
+      // idle (LOOP_FALLBACKS) if the clip didn't load, so this is always safe.
+      state.player.update(dt, { speed: 0, facing: 0, ready: false, visualMove: 'idle_noise' });
       state.player.object.rotation.y = 0; // facing lerps; pin it so only the turntable spins
       state.player.object.position.set(0, 0, 0); // pin root so swing clips don't drift
       if (state.rotationMode === 'turntable' && !state.dragging) state.yaw += dt * 0.55;

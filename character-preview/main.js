@@ -129,6 +129,13 @@ const GLB_CLIP_LABELS = { forehand: 'Forehand', backhand: 'Backhand', overhead: 
 // character.
 const TOP_PICKS = [
   { key: 'tp-idle', category: 'idle', label: 'Idle', url: './local-clips/top-picks/idle/Idle__AuroraManny.FBX' },
+  // Subtle "alive" idle with weight-shift/breathing motion (vs. the static
+  // hands-down Aurora idle above). Baked into pickleball-locomotion.glb as the
+  // 'idle_noise' clip and used by the character preview as the resting beat
+  // BETWEEN forehand/backhand/overhead so the swing cycle doesn't snap to a
+  // dead pose. Same UE5 "Manny" KwangManny rig as the side-shuffle picks, so it
+  // retargets through the identical path.
+  { key: 'tp-idle-noise', category: 'idle_variants', label: 'Idle Noise', url: './local-clips/top-picks/idle_variants/Idle_Noise__KwangManny.FBX' },
   // Steel_Idle_PreJump_ReadyPose IS the right pick for an athletic, low,
   // bent-knee ready crouch (tried swapping to Throw_Ready_Loop, which is a
   // much more upright stance-and-a-half-standing pose -- wrong for a

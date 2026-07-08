@@ -232,6 +232,7 @@ function configureAuthoredModel(model, item) {
 // degrade gracefully rather than freezing. Directional strafe falls back to a
 // generic shuffle, then to run.
 var LOOP_FALLBACKS = {
+  idle_noise: ['idle'],
   shuffle_left: ['shuffle', 'run'],
   shuffle_right: ['shuffle', 'run'],
   shuffle: ['run'],
@@ -262,6 +263,10 @@ function clipKey(name) {
   if (/split/.test(name)) return 'split';
   if (/plant|brace/.test(name)) return 'plant';
   if (/ready/.test(name)) return 'ready';
+  // Before the generic idle rule: 'idle_noise' contains "idle" but must stay a
+  // distinct action (the preview loops it as the between-swings resting beat),
+  // not collapse into the default 'idle' slot.
+  if (/noise/.test(name)) return 'idle_noise';
   if (/idle|stand/.test(name)) return 'idle';
   if (/run|jog|walk|move/.test(name)) return 'run';
   if (/forehand|fh|drive|swing/.test(name)) return 'fh';
