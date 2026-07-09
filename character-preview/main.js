@@ -1570,6 +1570,82 @@ function straightenReadyTorso(clip, bonePrefix, targetRestPose, angle = READY_TO
   pitchBoneAboutWorldX(clip, bonePrefix, targetRestPose, 'Head', headTilt);
 }
 
+// The Ready source clip sits in a deep athletic crouch. That reads as too much
+// knee bend, so partially straighten both legs toward their straight rest pose
+// (hip + knee), then raise the Hips so the feet stay planted instead of
+// sinking through the floor. `t` = 0 keeps the source crouch, 1 = fully
+// straight rest legs. Runs AFTER mirrorRightLegOntoLeft (so it straightens the
+// already-symmetric legs) and does not disturb the torso/arm fixes, which only
+// touch orientations above the hips.
+const READY_KNEE_STRAIGHTEN = 0.35; // fraction of the crouch removed from the legs
+const KNEE_STRAIGHTEN_BONES = ['UpLeg', 'Leg']; // hip + knee; Foot stays as-is to keep sole flat
+const LEG_FK_CHAIN = ['UpLeg', 'Leg', 'Foot', 'ToeBase']; // Hips -> ... -> toe (ground contact)
+function reduceReadyKneeBend(clip, bonePrefix, targetRestPose, t = READY_KNEE_STRAIGHTEN) {
+  if (typeof window !== 'undefined' && window.__READY_KNEE_STRAIGHTEN != null) t = window.__READY_KNEE_STRAIGHTEN;
+  if (!t) return;
+  const { restQuats, restPositions, hipsParentWorldQuat } = targetRestPose;
+  const findTrack = (s) => clip.tracks.find((tk) => tk.name === `${bonePrefix}${s}.quaternion`);
+  const hipsQTrack = findTrack('Hips');
+  const hipsPTrack = clip.tracks.find((tk) => tk.name === `${bonePrefix}Hips.position`);
+  if (!hipsQTrack || !hipsPTrack) return;
+  const n = hipsQTrack.times.length;
+
+  // Lowest toe Y for one leg, FK'd from the hips placed at the origin (only the
+  // Y *delta* between the source and straightened pose matters, so the absolute
+  // hips position cancels). `straighten` toggles the rest-pose blend.
+  const scratchQ = new THREE.Quaternion();
+  const restQ = new THREE.Quaternion();
+  const pos = new THREE.Vector3();
+  function toeY(side, hipsWorld, straighten, i) {
+    pos.set(0, 0, 0);
+    const quat = hipsWorld.clone();
+    for (const part of LEG_FK_CHAIN) {
+      const suffix = side + part;
+      const off = restPositions.get(suffix);
+      if (off) pos.add(off.clone().applyQuaternion(quat));
+      const tr = findTrack(suffix);
+      if (!tr) break;
+      scratchQ.fromArray(tr.values, i * 4);
+      if (straighten && KNEE_STRAIGHTEN_BONES.includes(part) && restQuats.get(suffix)) {
+        restQ.copy(restQuats.get(suffix));
+        scratchQ.slerp(restQ, t);
+      }
+      quat.multiply(scratchQ);
+    }
+    return pos.y;
+  }
+
+  const hipsLocal = new THREE.Quaternion();
+  const yLift = new THREE.Vector3();
+  for (let i = 0; i < n; i++) {
+    hipsLocal.fromArray(hipsQTrack.values, i * 4);
+    const hipsWorld = hipsParentWorldQuat.clone().multiply(hipsLocal);
+
+    // Feet are symmetric after the mirror fix; keep the lower toe planted.
+    const oldY = Math.min(toeY('Left', hipsWorld, false, i), toeY('Right', hipsWorld, false, i));
+    const newY = Math.min(toeY('Left', hipsWorld, true, i), toeY('Right', hipsWorld, true, i));
+    const lift = oldY - newY; // >0 when straightening dropped the feet
+
+    // Write the straightened hip/knee quats.
+    for (const side of ['Left', 'Right']) {
+      for (const part of KNEE_STRAIGHTEN_BONES) {
+        const tr = findTrack(side + part);
+        if (!tr || !restQuats.get(side + part)) continue;
+        scratchQ.fromArray(tr.values, i * 4);
+        scratchQ.slerp(restQuats.get(side + part), t);
+        scratchQ.toArray(tr.values, i * 4);
+      }
+    }
+
+    // Raise the hips by the world-Y lift, expressed in the hips-parent local
+    // frame that the Hips.position track lives in.
+    yLift.set(0, lift, 0).applyQuaternion(hipsParentWorldQuat.clone().invert());
+    hipsPTrack.values[i * 3] += yLift.x;
+    hipsPTrack.values[i * 3 + 1] += yLift.y;
+    hipsPTrack.values[i * 3 + 2] += yLift.z;
+  }
+}
+
 function pushReadyArmsForward(clip, bonePrefix, targetRestPose) {
   const { restWorldQuats, restPositions, hipsParentWorldQuat } = targetRestPose;
   const findTrack = (suffix) => clip.tracks.find((t) => t.name === `${bonePrefix}${suffix}.quaternion`);
@@ -1675,6 +1751,7 @@ async function activateMannyClip(clipKey, url, label, btn) {
     // different (worse, too-upright) source content for the whole clip.
     if (clipKey === 'tp-ready') {
       mirrorRightLegOntoLeft(clip, currentBonePrefix, currentTargetRestPose);
+      reduceReadyKneeBend(clip, currentBonePrefix, currentTargetRestPose);
       straightenReadyTorso(clip, currentBonePrefix, currentTargetRestPose);
       pushReadyArmsForward(clip, currentBonePrefix, currentTargetRestPose);
     }
