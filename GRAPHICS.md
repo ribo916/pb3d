@@ -224,12 +224,21 @@ there is no separate dev-server process anymore. Status summary:
 - **READY stance is a modified source clip, not raw mocap.**
   `Steel_Idle_PreJump_ReadyPose__steelmanny.FBX` is still the source because
   its low athletic crouch is the right content choice, but
-  `character-preview/main.js` applies two targeted `tp-ready` fixes before
-  baking: `mirrorRightLegOntoLeft()` repairs the original asymmetric leg, and
-  `pushReadyArmsForward()` moves elbows forward/down with palms facing each
-  other and enough hand spacing to read like holding an invisible ball. These
-  fixes are included in `assets/animations/pickleball-locomotion.glb`; rebake
-  with `node tools/bake-locomotion-clips.mjs` after changing them.
+  `character-preview/main.js` applies three targeted `tp-ready` fixes before
+  baking: `mirrorRightLegOntoLeft()` repairs the original asymmetric leg,
+  `straightenReadyTorso()` pitches the whole upper body back at the waist to
+  undo the source clip's excessive forward hunch (`READY_TORSO_UNBEND`, a
+  NEGATIVE radian angle about the world X axis — verified `-0.4` for an
+  athletic upright stance that keeps the knee crouch; positive folds it
+  further forward) and then tilts the head back down so it doesn't look at the
+  sky after the torso stands up (`READY_HEAD_TILT`, a POSITIVE partial-
+  compensation angle — verified `0.28`; both share the `pitchBoneAboutWorldX`
+  helper), and `pushReadyArmsForward()` moves elbows forward/down with
+  palms facing each other and enough hand spacing to read like holding an
+  invisible ball. Order matters: torso straighten runs before the arm push so
+  the arms re-aim off the corrected shoulders. These fixes are included in
+  `assets/animations/pickleball-locomotion.glb`; rebake with
+  `node tools/bake-locomotion-clips.mjs` after changing them.
 - **All active characters are sourced from the single common location**
   `assets/models/players/mixamo/chNN.glb` (also the file
   `character-preview/` reads — no duplicated GLB bytes between the two

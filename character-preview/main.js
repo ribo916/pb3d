@@ -1509,6 +1509,67 @@ const TARGET_FK_ORDER = [
   'Hips',
   ...Object.values(MANNY_BONE_MAP).filter((suffix) => suffix !== 'Hips'),
 ];
+
+// The Ready source clip's low crouch also folds a lot of forward bend into the
+// waist, so the character reads as hunched over. Rotate the whole upper body
+// (Spine and everything above it) back about the world left-right axis at the
+// waist joint (Hips->Spine) to stand the torso up without touching the crouch
+// in the legs. Runs BEFORE pushReadyArmsForward so the arms re-aim off the
+// corrected shoulder position. In this rig the character faces +Z, up is +Y,
+// so the waist bend axis is X; a NEGATIVE angle pitches the torso back (less
+// forward bend). Verified via screenshots: 0 = source hunch, -0.4 = athletic
+// upright ready stance while keeping the knee crouch. Do NOT flip the sign --
+// positive folds the torso further forward.
+const READY_TORSO_UNBEND = -0.40; // radians (~23deg) of forward-bend removed
+// Standing the torso up rotates the head up with it (it looks at the sky), so
+// pitch the head back down. POSITIVE angle folds the head forward/down (same
+// world-X sign convention as the torso). It is a partial compensation, not the
+// full -READY_TORSO_UNBEND, so the player still looks forward rather than at
+// the ground. Verified via screenshots.
+const READY_HEAD_TILT = 0.28; // radians (~16deg) of downward head tilt
+
+// Pitch a single bone about the world left-right (X) axis by `angle`, leaving
+// everything else alone. Walks the FK chain from Hips (using whatever the
+// tracks currently hold, so it composes with an earlier same-clip edit) to get
+// the bone's parent world orientation, rotates the bone's world quat, and
+// writes back the new local. In this rig the character faces +Z / up is +Y, so
+// world X is the forward-bend axis; positive folds forward, negative tips back.
+function pitchBoneAboutWorldX(clip, bonePrefix, targetRestPose, suffix, angle) {
+  const { hipsParentWorldQuat } = targetRestPose;
+  const findTrack = (s) => clip.tracks.find((t) => t.name === `${bonePrefix}${s}.quaternion`);
+  const target = findTrack(suffix);
+  const hipsTrack = findTrack('Hips');
+  if (!target || !hipsTrack) return;
+  const chain = [];
+  for (let s = suffix; s; s = TARGET_PARENT[s]) chain.unshift(s); // ['Hips', ..., suffix]
+  const n = hipsTrack.times.length;
+  const rot = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), angle);
+  const localQ = new THREE.Quaternion();
+  for (let i = 0; i < n; i++) {
+    const parentWorld = hipsParentWorldQuat.clone();
+    for (let k = 0; k < chain.length - 1; k++) {
+      localQ.fromArray(findTrack(chain[k]).values, i * 4);
+      parentWorld.multiply(localQ);
+    }
+    localQ.fromArray(target.values, i * 4);
+    const world = parentWorld.clone().multiply(localQ);
+    const newWorld = rot.clone().multiply(world);
+    parentWorld.invert().multiply(newWorld).toArray(target.values, i * 4);
+  }
+}
+
+function straightenReadyTorso(clip, bonePrefix, targetRestPose, angle = READY_TORSO_UNBEND, headTilt = READY_HEAD_TILT) {
+  // Debug/iteration hooks: window.__READY_TORSO_UNBEND / __READY_HEAD_TILT
+  // (radians) override the baked constants so the screenshot harness can sweep
+  // angles without a re-edit.
+  if (typeof window !== 'undefined' && window.__READY_TORSO_UNBEND != null) angle = window.__READY_TORSO_UNBEND;
+  if (typeof window !== 'undefined' && window.__READY_HEAD_TILT != null) headTilt = window.__READY_HEAD_TILT;
+  // Rotate the whole upper body back at the waist (Spine cascades to every
+  // child), then tilt just the head back down to compensate.
+  pitchBoneAboutWorldX(clip, bonePrefix, targetRestPose, 'Spine', angle);
+  pitchBoneAboutWorldX(clip, bonePrefix, targetRestPose, 'Head', headTilt);
+}
+
 function pushReadyArmsForward(clip, bonePrefix, targetRestPose) {
   const { restWorldQuats, restPositions, hipsParentWorldQuat } = targetRestPose;
   const findTrack = (suffix) => clip.tracks.find((t) => t.name === `${bonePrefix}${suffix}.quaternion`);
@@ -1614,6 +1675,7 @@ async function activateMannyClip(clipKey, url, label, btn) {
     // different (worse, too-upright) source content for the whole clip.
     if (clipKey === 'tp-ready') {
       mirrorRightLegOntoLeft(clip, currentBonePrefix, currentTargetRestPose);
+      straightenReadyTorso(clip, currentBonePrefix, currentTargetRestPose);
       pushReadyArmsForward(clip, currentBonePrefix, currentTargetRestPose);
     }
     // NOT freezeRootHorizontalMotion here -- that function assumes local
