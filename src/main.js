@@ -597,6 +597,8 @@ function goToFlow(id) {
   FLOW_ACTIVE = id;
   var next = flowScreenEl(id);
   if (next) next.classList.add('active');
+  var root = $('flowRoot');
+  if (root) root.dataset.screen = id;   // gates #flowFx off on vs/loading (CSS)
   enterFlowScreen(id);
 }
 
