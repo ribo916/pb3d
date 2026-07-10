@@ -691,6 +691,22 @@
     .flow-char-tile.active { border-color: var(--flow-accent); box-shadow: inset 0 0 0 2px var(--flow-accent); }
     .flow-char-tile-badges { position: absolute; top: 4px; left: 4px; display: flex; gap: 3px; flex-wrap: wrap; }
     .flow-char-badge { font-size: 8px; font-weight: 800; padding: 1px 4px; border-radius: 5px; background: var(--flow-accent); color: var(--flow-accent-ink); }
+    /* Style tag pinned to each character tile (over the portrait). White bold text
+       on a deep solid color + shadows so it stays legible on any portrait/theme. */
+    .flow-char-persona { position: absolute; top: 4px; right: 4px; font-size: 7.5px; font-weight: 800;
+      letter-spacing: .3px; padding: 1px 5px; border-radius: 5px; color: #fff;
+      text-shadow: 0 1px 2px rgba(0,0,0,.55); box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+    /* Trait panel in the preview column: style tag + blurb + stat bars. */
+    .flow-trait-panel { display: flex; flex-direction: column; gap: 7px; padding: 10px; border-radius: 12px;
+      border: 1px solid var(--seg-border); background: var(--seg-bg); }
+    .flow-trait-head { display: flex; align-items: center; gap: 8px; }
+    .flow-persona-tag { font-size: 10px; font-weight: 800; letter-spacing: 1px; padding: 2px 9px; border-radius: 20px;
+      color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.45); box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+    .flow-persona-blurb { font-size: 10.5px; line-height: 1.35; color: var(--text-soft); }
+    .flow-trait-row { display: grid; grid-template-columns: 52px 1fr; align-items: center; gap: 8px; }
+    .flow-trait-name { font-size: 9px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; color: var(--text-soft); }
+    .flow-trait-bar { height: 7px; border-radius: 4px; background: color-mix(in srgb, var(--text-soft) 22%, transparent); overflow: hidden; }
+    .flow-trait-fill { height: 100%; border-radius: 4px; transition: width .25s ease; }
     .flow-char-preview-col { display: flex; flex-direction: column; gap: 10px; }
     #flowCharPreviewMount {
       width: 100%; aspect-ratio: 3 / 4; border-radius: 16px; overflow: hidden; position: relative;
@@ -731,6 +747,7 @@
     .flow-vs-portrait img { width: 100%; height: 100%; object-fit: cover; object-position: center 20%; display: block; }
     .flow-vs-name { display: inline-block; background: #000; color: #fff; font-size: clamp(13px, 3.4vw, 18px); font-weight: 800; letter-spacing: 1px; text-transform: uppercase; padding: 3px 8px; border-radius: 4px; }
     .flow-vs-role { margin-top: 4px; font-size: 10px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: rgba(255,255,255,.5); }
+    .flow-vs-style { display: inline-block; margin-top: 4px; font-size: 9px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; padding: 2px 8px; border-radius: 20px; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.45); box-shadow: 0 1px 3px rgba(0,0,0,.35); }
     .flow-vs-mark {
       font-family: var(--title-font); font-size: clamp(48px, 15vw, 120px); font-weight: 900;
       color: var(--flow-accent); transform: skewX(-8deg); text-shadow: 0 6px 24px color-mix(in srgb, var(--flow-accent) 45%, transparent);
@@ -1917,6 +1934,7 @@
         <div class="flow-char-preview-col">
           <div id="flowCharPreviewMount"><div id="flowCharPreviewLoading">Loading&nbsp;model&hellip;</div></div>
           <div class="flow-char-name flow-kicker" id="flowCharName" style="text-align:center;color:var(--flow-accent)">&nbsp;</div>
+          <div class="flow-trait-panel" id="flowCharTraits"></div>
           <div class="flow-char-actions">
             <button class="flow-icon-btn" id="flowRollSlot" type="button" title="Roll selected slot">🎲</button>
             <button class="flow-icon-btn" id="flowRollAll" type="button" style="flex:1">Roll All</button>

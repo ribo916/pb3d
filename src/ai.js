@@ -8,6 +8,7 @@ import { COURT, GRAVITY, bezierPoint } from './physics.js';
 import { SPECIALTY, POWER_CAP } from './constants.js';
 import * as DoublesStrategy from './strategies/doubles.js';
 import * as SinglesStrategy from './strategies/singles.js';
+import { PERSONAS, mergeTraits, normalizePersona } from './strategies/personas.js';
 
 const C = COURT;
 
@@ -19,18 +20,39 @@ function normalizeLevel(level) {
   return level || 'normal';
 }
 
+// Difficulty base configs. The old overloaded `smart` scalar is split into two
+// independent axes — `shotIQ` (selection quality) and `aggression` (risk) — plus
+// `reactJitter` (gaussian spread on reaction so the AI isn't metronomic). For the
+// three ladder tiers, aggression is seeded equal to the old `smart` so the
+// `balanced` persona reproduces today's attack rate; `family` is deliberately
+// re-tuned to a genuine beginner instead of a clone of `normal`. `smart` is kept
+// as an alias of `shotIQ` for any un-migrated reference. All numbers are a
+// starting point to be balance-checked with tools/play.mjs.
 export const LEVELS = {
-  family: { speed: 5.2, react: 0.18, err: 0.28, smart: 0.7, aggression: 0.45, miss: 0.08 },
-  easy:   { speed: 4.8, react: 0.30, err: 0.45, smart: 0.4, aggression: 0.25, miss: 0.18 },
-  normal: { speed: 5.2, react: 0.18, err: 0.28, smart: 0.7, aggression: 0.45, miss: 0.08 },
-  hard:   { speed: 5.6, react: 0.09, err: 0.12, smart: 0.92, aggression: 0.6, miss: 0.02 }
+  family: { speed: 4.4, react: 0.34, reactJitter: 0.10, err: 0.42, miss: 0.16, shotIQ: 0.34, smart: 0.34, aggression: 0.30 },
+  easy:   { speed: 4.8, react: 0.30, reactJitter: 0.08, err: 0.45, miss: 0.18, shotIQ: 0.40, smart: 0.40, aggression: 0.40 },
+  normal: { speed: 5.2, react: 0.18, reactJitter: 0.05, err: 0.28, miss: 0.08, shotIQ: 0.70, smart: 0.70, aggression: 0.70 },
+  hard:   { speed: 5.6, react: 0.09, reactJitter: 0.03, err: 0.12, miss: 0.02, shotIQ: 0.92, smart: 0.92, aggression: 0.92 }
 };
 
-export function makeAI(level) {
+export { PERSONAS };
+
+// Resolve the effective config for a difficulty tier + persona without building
+// a full AI — used by the menu UI to show accurate trait bars for the exact
+// opponent the player will face.
+export function resolveTraits(level, persona) {
+  var base = LEVELS[normalizeLevel(level)] || LEVELS.normal;
+  return mergeTraits(base, PERSONAS[normalizePersona(persona)]);
+}
+
+export function makeAI(level, persona) {
   level = normalizeLevel(level);
+  persona = normalizePersona(persona);
+  var base = LEVELS[level] || LEVELS.normal;
   return {
-    cfg: LEVELS[level] || LEVELS.normal,
+    cfg: mergeTraits(base, PERSONAS[persona]),
     level: level || 'normal',
+    persona: persona,
     target: { x: 0, z: -C.HALF_L + 0.7 }, // home: behind far baseline
     reactTimer: 0
   };

@@ -5,7 +5,8 @@ import * as Shots from '../shots.js';
 import * as Rules from '../rules.js';
 import { SPECIALTY, POWER_CAP, MOVEMENT } from '../constants.js';
 import { clamp } from '../utils.js';
-import { deeperOpponent, clampX, randomCornerX, rand } from './common.js';
+import { deeperOpponent, clampX, randomCornerX, rand,
+         situationalLob, scorePressure, ballDifficultyMult } from './common.js';
 
 const C = COURT;
 
@@ -83,7 +84,13 @@ export function chooseShot(ai, ball, match, isServe, ctx) {
   var opponents = ctx.opponents;
   var hitterPos = ctx.hitterPos;
 
-  if (!isServe && Math.random() < cfg.miss) {
+  // Score-awareness + pressure-linked errors: a hard incoming ball (low
+  // contactQuality) and protecting a late lead both raise the unforced-error
+  // chance; a sitter lowers it. Neutral mid-game with a clean contact.
+  var pressure = scorePressure(match, ctx.hitterTeam);
+  var effMiss = cfg.miss * ballDifficultyMult(ctx.contactQuality) * pressure.missMul;
+
+  if (!isServe && Math.random() < effMiss) {
     var mode = Math.random();
     if (mode < 0.10) {
       return { target: { x: rand(-1, 1), z: 0.4 }, apex: 0.9, spin: { x: 0, y: 0, z: 0 }, fault: 'net' };
@@ -111,12 +118,18 @@ export function chooseShot(ai, ball, match, isServe, ctx) {
     }
 
     var smart = cfg.smart;
+    // Split the old `smart` into skill (shotIQ) and pressure-adjusted risk
+    // (aggr); `bias` is how far risk appetite sits from skill — 0 for the
+    // neutral `balanced` style, so the baseline formulas are preserved.
+    var shotIQ = cfg.shotIQ != null ? cfg.shotIQ : smart;
+    var aggr = clamp(cfg.aggression * pressure.aggMul, 0, 1);
+    var bias = aggr - shotIQ;
     var absZ = Math.abs(ball.pos.z);
     var zone = Shots.zoneOf(absZ, C.KITCHEN, C.HALF_L);
     var ballHigh = ball.pos.y > 0.95;
     var intent;
 
-    if (ball.pos.y >= 1.3 && Math.random() < smart) {
+    if (ball.pos.y >= cfg.smashMin && Math.random() < aggr * cfg.speedupBias) {
       var smashDepth = C.HALF_L * 0.75;
       var smashAimX = rand(-C.HALF_W * 0.72, C.HALF_W * 0.72);
       if (opponents) {
@@ -138,17 +151,22 @@ export function chooseShot(ai, ball, match, isServe, ctx) {
     if (isReturn) {
       intent = 'power';
     } else if (isThirdShot && zone !== 'kitchen') {
-      var thirdShotDrop = Math.max(0, smart - 0.1) * 1.25;
+      // High shotIQ drops more; aggression drives instead. dropBias shapes the
+      // style (banger drives the 3rd, defensive drops it almost always).
+      var thirdShotDrop = clamp(Math.max(0, shotIQ - 0.1) * 1.25 - bias * 0.8, 0, 1) * cfg.dropBias;
       intent = (Math.random() < thirdShotDrop) ? 'touch' : 'power';
     } else if (ball.pos.y <= POWER_CAP.NET_H) {
       intent = 'touch';
-    } else if (Math.random() < 0.06 * smart) {
+    } else if (situationalLob(opponents, ball, cfg)) {
       intent = 'lob';
     } else if (zone === 'kitchen') {
-      if (ballHigh && Math.random() < smart) intent = 'power';
-      else intent = (Math.random() < Math.max(0, smart - 0.3) * 1.2) ? 'touch' : 'power';
+      if (ballHigh && Math.random() < aggr * cfg.speedupBias) intent = 'power';
+      else {
+        var dinkChance = clamp(Math.max(0, shotIQ - 0.3) * 1.2 - bias * 0.8, 0, 1) * cfg.dinkBias;
+        intent = (Math.random() < dinkChance) ? 'touch' : 'power';
+      }
     } else {
-      var dropChance = Math.max(0, smart - 0.45) * 1.1;
+      var dropChance = clamp(Math.max(0, shotIQ - 0.45) * 1.1 - bias * 0.8, 0, 1) * cfg.dropBias;
       intent = (Math.random() < dropChance) ? 'touch' : 'power';
     }
     var sr = Shots.resolve(absZ, ball.pos.y, intent, C.KITCHEN, C.HALF_L);

@@ -5,7 +5,8 @@ import * as Shots from '../shots.js';
 import * as Rules from '../rules.js';
 import { SPECIALTY, POWER_CAP, MOVEMENT, SINGLES } from '../constants.js';
 import { clamp } from '../utils.js';
-import { clampX, loneOpponent, singlesPassingTarget, feetDepth, rand } from './common.js';
+import { clampX, loneOpponent, singlesPassingTarget, feetDepth, rand,
+         situationalLob, scorePressure, ballDifficultyMult } from './common.js';
 
 const C = COURT;
 
@@ -63,7 +64,11 @@ export function chooseShot(ai, ball, match, isServe, ctx) {
   var hitterPos = ctx.hitterPos;
   var opp = loneOpponent(ctx.opponents);
 
-  if (!isServe && Math.random() < cfg.miss) {
+  // Score-awareness + pressure-linked errors (see doubles.js for rationale).
+  var pressure = scorePressure(match, ctx.hitterTeam);
+  var effMiss = cfg.miss * ballDifficultyMult(ctx.contactQuality) * pressure.missMul;
+
+  if (!isServe && Math.random() < effMiss) {
     var mode = Math.random();
     if (mode < 0.10) {
       return { target: { x: rand(-1, 1), z: 0.4 }, apex: 0.9, spin: { x: 0, y: 0, z: 0 }, fault: 'net' };
@@ -91,6 +96,9 @@ export function chooseShot(ai, ball, match, isServe, ctx) {
     }
 
     var smart = cfg.smart;
+    var shotIQ = cfg.shotIQ != null ? cfg.shotIQ : smart;
+    var aggr = clamp(cfg.aggression * pressure.aggMul, 0, 1);
+    var bias = aggr - shotIQ;
     var absZ = Math.abs(ball.pos.z);
     var zone = Shots.zoneOf(absZ, C.KITCHEN, C.HALF_L);
     var ballHigh = ball.pos.y > 0.95;
@@ -98,7 +106,7 @@ export function chooseShot(ai, ball, match, isServe, ctx) {
     var isReturn = match && match.rally && match.rally.shots === 2;
     var isThirdShot = match && match.rally && match.rally.shots === 3;
 
-    if (ball.pos.y >= 1.3 && Math.random() < smart) {
+    if (ball.pos.y >= cfg.smashMin && Math.random() < aggr * cfg.speedupBias) {
       return {
         target: { x: singlesPassingTarget(opp, { bodyChance: 0.08 }), z: feetDepth(opp) },
         apex: POWER_CAP.NET_H + 0.06,
@@ -110,17 +118,21 @@ export function chooseShot(ai, ball, match, isServe, ctx) {
     if (isReturn) {
       intent = 'power';
     } else if (isThirdShot && zone !== 'kitchen') {
-      var thirdShotDrop = Math.max(0, smart - 0.1) * 1.25 * SINGLES.THIRD_SHOT_DROP_SCALE;
+      var thirdShotDrop = clamp(Math.max(0, shotIQ - 0.1) * 1.25 - bias * 0.8, 0, 1) *
+        SINGLES.THIRD_SHOT_DROP_SCALE * cfg.dropBias;
       intent = (Math.random() < thirdShotDrop) ? 'touch' : 'power';
     } else if (ball.pos.y <= POWER_CAP.NET_H) {
       intent = 'touch';
-    } else if (Math.random() < 0.04 * smart) {
+    } else if (situationalLob(ctx.opponents, ball, cfg)) {
       intent = 'lob';
     } else if (zone === 'kitchen') {
-      if (ballHigh && Math.random() < smart) intent = 'power';
-      else intent = (Math.random() < Math.max(0, smart - 0.4)) ? 'touch' : 'power';
+      if (ballHigh && Math.random() < aggr * cfg.speedupBias) intent = 'power';
+      else {
+        var dinkChance = clamp(Math.max(0, shotIQ - 0.4) - bias * 0.8, 0, 1) * cfg.dinkBias;
+        intent = (Math.random() < dinkChance) ? 'touch' : 'power';
+      }
     } else {
-      var dropChance = Math.max(0, smart - 0.55) * 0.9;
+      var dropChance = clamp(Math.max(0, shotIQ - 0.55) * 0.9 - bias * 0.8, 0, 1) * cfg.dropBias;
       intent = (Math.random() < dropChance) ? 'touch' : 'power';
     }
 

@@ -12,20 +12,22 @@
 
 // The shippable Mixamo characters. `label` is the character's display name
 // (AJ is the established name for ch01). `swatch` is a purely decorative
-// per-tile accent color for the picker grid (no gameplay meaning).
+// per-tile accent color for the picker grid (no gameplay meaning). `persona`
+// is the AI play-style (see src/strategies/personas.js) used when this
+// character is CPU-controlled; it makes character choice tactically meaningful.
 export const CHARACTERS = [
-  { id: 'ch01', playerModelKey: 'player-ch01-v1', label: 'AJ', swatch: 0xff6b6b },
-  { id: 'ch03', playerModelKey: 'player-ch03-v1', label: 'Leo', swatch: 0xffd43b },
-  { id: 'ch04', playerModelKey: 'player-ch04-v1', label: 'Milo', swatch: 0x94d82d },
-  { id: 'ch06', playerModelKey: 'player-ch06-v1', label: 'Nina', swatch: 0x12b886 },
-  { id: 'ch07', playerModelKey: 'player-ch07-v1', label: 'Theo', swatch: 0x22b8cf },
-  { id: 'ch08', playerModelKey: 'player-ch08-v1', label: 'Owen', swatch: 0x4dabf7 },
-  { id: 'ch09', playerModelKey: 'player-ch09-v1', label: 'Max', swatch: 0x5c7cfa },
-  { id: 'ch10', playerModelKey: 'player-ch10-v1', label: 'Ivy', swatch: 0x9775fa },
-  { id: 'ch11', playerModelKey: 'player-ch11-v1', label: 'Wren', swatch: 0xda77f2 },
-  { id: 'ch12', playerModelKey: 'player-ch12-v1', label: 'Beau', swatch: 0xf06595 },
-  { id: 'ch14', playerModelKey: 'player-ch14-v1', label: 'Piper', swatch: 0xe8590c },
-  { id: 'ch15', playerModelKey: 'player-ch15-v1', label: 'Skye', swatch: 0x20c997 }
+  { id: 'ch01', playerModelKey: 'player-ch01-v1', label: 'AJ', swatch: 0xff6b6b, persona: 'balanced' },
+  { id: 'ch03', playerModelKey: 'player-ch03-v1', label: 'Leo', swatch: 0xffd43b, persona: 'banger' },
+  { id: 'ch04', playerModelKey: 'player-ch04-v1', label: 'Milo', swatch: 0x94d82d, persona: 'defensive' },
+  { id: 'ch06', playerModelKey: 'player-ch06-v1', label: 'Nina', swatch: 0x12b886, persona: 'balanced' },
+  { id: 'ch07', playerModelKey: 'player-ch07-v1', label: 'Theo', swatch: 0x22b8cf, persona: 'defensive' },
+  { id: 'ch08', playerModelKey: 'player-ch08-v1', label: 'Owen', swatch: 0x4dabf7, persona: 'banger' },
+  { id: 'ch09', playerModelKey: 'player-ch09-v1', label: 'Max', swatch: 0x5c7cfa, persona: 'defensive' },
+  { id: 'ch10', playerModelKey: 'player-ch10-v1', label: 'Ivy', swatch: 0x9775fa, persona: 'balanced' },
+  { id: 'ch11', playerModelKey: 'player-ch11-v1', label: 'Wren', swatch: 0xda77f2, persona: 'defensive' },
+  { id: 'ch12', playerModelKey: 'player-ch12-v1', label: 'Beau', swatch: 0xf06595, persona: 'banger' },
+  { id: 'ch14', playerModelKey: 'player-ch14-v1', label: 'Piper', swatch: 0xe8590c, persona: 'defensive' },
+  { id: 'ch15', playerModelKey: 'player-ch15-v1', label: 'Skye', swatch: 0x20c997, persona: 'balanced' }
 ];
 
 export function getCharacter(id) {
@@ -63,6 +65,7 @@ export function resolveSlotCharacter(position, characterId) {
     id: id,
     label: character.label,
     playerModelKey: character.playerModelKey,
+    persona: character.persona || 'balanced',
     jersey: colors.ring,
     paddle: colors.paddle,
     key: position + ':' + id

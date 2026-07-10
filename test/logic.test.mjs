@@ -13,6 +13,9 @@ import * as DoublesStrategy from '../src/strategies/doubles.js';
 import { normalizeMode } from '../src/modes.js';
 import { buildMusicCatalog, sanitizeMusicState } from '../src/audio.js';
 import { STABILITY, POWER_CAP, SPECIALTY, MOVEMENT, HIT, PRACTICE } from '../src/constants.js';
+import { PERSONAS, mergeTraits, normalizePersona, PERSONA_META, personaStats, STAT_LABELS } from '../src/strategies/personas.js';
+import { scorePressure, situationalLob, ballDifficultyMult, aggBias } from '../src/strategies/common.js';
+import { resolveTraits } from '../src/ai.js';
 
 const C = Physics.COURT;
 let passed = 0;
@@ -581,6 +584,108 @@ test('music state sanitization clamps volume and falls back to the first valid t
   assert.equal(state.trackKey, 'a');
   assert.equal(state.volume, 1);
   assert.equal(state.muted, true);
+});
+
+/* ---------------------------- AI traits & personas ---------------------------- */
+test('difficulty configs use the split trait vector and FAMILY is a real beginner', () => {
+  // shotIQ + aggression replace the old overloaded `smart`; smart kept as alias.
+  ['family', 'easy', 'normal', 'hard'].forEach((lvl) => {
+    const c = AI.LEVELS[lvl];
+    assert.equal(c.smart, c.shotIQ, lvl + ' keeps smart alias == shotIQ');
+    assert.ok(typeof c.aggression === 'number', lvl + ' has aggression');
+    assert.ok(typeof c.reactJitter === 'number', lvl + ' has reactJitter');
+  });
+  // FAMILY is no longer a byte-identical clone of NORMAL.
+  assert.ok(AI.LEVELS.family.shotIQ < AI.LEVELS.normal.shotIQ, 'family less skilled than normal');
+  assert.ok(AI.LEVELS.family.speed < AI.LEVELS.normal.speed, 'family slower than normal');
+});
+
+test('mergeTraits: balanced is the identity persona; styles separate risk from skill', () => {
+  const base = AI.LEVELS.normal;
+  const all = mergeTraits(base, PERSONAS.balanced);
+  assert.equal(all.aggression, base.aggression, 'balanced preserves aggression');
+  assert.equal(all.shotIQ, base.shotIQ, 'balanced preserves shotIQ');
+  assert.equal(all.smart, all.shotIQ, 'smart alias preserved');
+  assert.equal(all.dropBias, 1, 'neutral biases default to 1');
+  assert.ok(aggBias(all) === 0, 'balanced aggBias is exactly 0 (baseline neutral)');
+
+  const banger = mergeTraits(base, PERSONAS.banger);
+  const defensive = mergeTraits(base, PERSONAS.defensive);
+  assert.ok(banger.aggression > defensive.aggression, 'banger more aggressive than defensive');
+  assert.ok(banger.dropBias < defensive.dropBias, 'banger drops far less than defensive');
+  assert.ok(aggBias(banger) > 0 && aggBias(defensive) < 0, 'aggBias signs split by style');
+  assert.equal(normalizePersona('nope'), 'balanced', 'unknown style falls back to balanced');
+  assert.equal(normalizePersona('grinder'), 'defensive', 'legacy grinder folds onto defensive');
+  assert.equal(normalizePersona('retriever'), 'defensive', 'legacy retriever folds onto defensive');
+});
+
+test('aggression is actually consumed: banger drives the 3rd shot far more than the defensive', () => {
+  function thirdShotDriveRate(persona) {
+    const ai = AI.makeAI('normal', persona);
+    ai.cfg.miss = 0; // isolate shot selection from the unforced-error branch
+    const match = { rally: { shots: 3 }, scores: { near: 0, far: 0 }, pointTo: 11 };
+    const ball = { pos: { x: 0, y: 1.0, z: 4.0 }, vel: { x: 0, y: 0, z: 0 } };
+    const ctx = {
+      mode: 'doubles', hitterPos: { x: 0, z: 4 }, hitterTeam: 'far', contactQuality: 1,
+      opponents: { a: { pos: { x: 1, z: 3 } }, b: { pos: { x: -1, z: 3 } } }
+    };
+    let drives = 0, N = 500;
+    for (let i = 0; i < N; i++) {
+      if (DoublesStrategy.chooseShot(ai, ball, match, false, ctx).type === 'drive') drives++;
+    }
+    return drives / N;
+  }
+  const banger = thirdShotDriveRate('banger');
+  const defensive = thirdShotDriveRate('defensive');
+  assert.ok(banger > defensive + 0.25, 'banger drive-rate (' + banger.toFixed(2) +
+    ') clearly exceeds defensive (' + defensive.toFixed(2) + ')');
+});
+
+test('scorePressure tightens risk on a late lead and loosens it when behind late', () => {
+  const neutral = scorePressure({ scores: { near: 3, far: 2 }, pointTo: 11 }, 'near');
+  assert.equal(neutral.aggMul, 1, 'mid-game is neutral');
+  const lead = scorePressure({ scores: { near: 10, far: 5 }, pointTo: 11 }, 'near');
+  assert.ok(lead.aggMul < 1 && lead.missMul < 1, 'protect a late lead: play tighter');
+  const behind = scorePressure({ scores: { near: 5, far: 10 }, pointTo: 11 }, 'near');
+  assert.ok(behind.aggMul > 1, 'behind late: gamble');
+});
+
+test('situationalLob fires when opponents are jammed at the kitchen, not from open play', () => {
+  const cfg = AI.makeAI('normal', 'defensive').cfg;
+  const lowBall = { pos: { x: 0, y: 0.8, z: 4 } };
+  const jammed = { a: { pos: { x: 0.5, z: 1.5 } }, b: { pos: { x: -0.5, z: 1.8 } } };
+  const open = { a: { pos: { x: 0.5, z: 4 } }, b: { pos: { x: -0.5, z: 4 } } };
+  const realRandom = Math.random;
+  Math.random = () => 0.3; // between the open-play rate and the jammed rate
+  try {
+    assert.ok(situationalLob(jammed, lowBall, cfg), 'lobs over a jammed kitchen');
+    assert.ok(!situationalLob(open, lowBall, cfg), 'does not lob from open play');
+  } finally {
+    Math.random = realRandom;
+  }
+});
+
+test('ballDifficultyMult scales unforced errors by contact quality', () => {
+  assert.ok(ballDifficultyMult(1) < 1, 'a clean sitter lowers the miss chance');
+  assert.ok(ballDifficultyMult(0) > 1, 'a stretched, hard ball raises it');
+  assert.equal(ballDifficultyMult(null), 1, 'unknown quality is neutral');
+});
+
+test('persona presentation: every persona has meta, and stat bars reflect tier x style', () => {
+  Object.keys(PERSONAS).forEach((p) => {
+    assert.ok(PERSONA_META[p] && PERSONA_META[p].tag && PERSONA_META[p].blurb, p + ' has display meta');
+  });
+  // resolveTraits + personaStats produce in-range bars that track the axes.
+  assert.equal(Object.keys(PERSONAS).length, 3, 'exactly three play styles');
+  const proBanger = personaStats(resolveTraits('5.0', 'banger'));
+  const beginnerDefensive = personaStats(resolveTraits('4.0', 'defensive'));
+  STAT_LABELS.forEach((k) => {
+    assert.ok(proBanger[k] >= 0 && proBanger[k] <= 1, k + ' bar in range');
+  });
+  assert.ok(proBanger.Power > beginnerDefensive.Power, 'banger shows more Power than a defensive');
+  assert.ok(proBanger.Speed > beginnerDefensive.Speed, 'a Pro is faster than a 4.0');
+  assert.ok(personaStats(resolveTraits('5.0', 'defensive')).Touch >
+    personaStats(resolveTraits('5.0', 'banger')).Touch, 'defensive shows more Touch than a banger');
 });
 
 console.log('\n' + passed + ' assertions passed.');

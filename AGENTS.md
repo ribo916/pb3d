@@ -96,7 +96,8 @@ src/
   physics.js      ball integration, net-aware launch() solver, clearsNet()    (pure)
   shots.js        5 shot types + intent/zone classification (THE shot tuning) (pure)
   rules.js        side-out scoring + rally state machine                       (pure)
-  ai.js           opponent predict/chooseMovement/chooseShot, difficulty LEVELS (pure)
+  ai.js           opponent predict/chooseMovement/chooseShot, difficulty LEVELS (trait vector) (pure)
+  strategies/     mode strategies (doubles/singles/common) + personas.js (play styles) (pure)
   practice.js     practice-mode target generation + timing/contact feedback    (pure)
   utils.js        clamp/dist2D/lerp                                            (pure)
   input.js        desktop (WASD/mouse/keys) + dual-thumb touch controls
@@ -104,7 +105,7 @@ src/
   scene.js        court, net, lighting, ball + trail, fence, trees            (Three)
   players.js      Mii-style rig + cross-body swing animation                  (Three)
   camera.js       broadcast camera + follow/shake                             (Three)
-  characters.js   12-character Mixamo chooser data + slot/team identity        (pure)
+  characters.js   12-character Mixamo chooser data + slot/team identity + AI play style (pure)
   characterPreview.js live 3D preview used by the chooser modal                (Three)
   game.js         orchestrator: STATE machine, hit model, movement, aim marker, HUD wiring
   hud.js          DOM HUD (score, serve dots, callout, banner, shot tag, SERVE button)
@@ -160,12 +161,18 @@ side). `onFloor()` is the single floor-contact source of truth (1st bounce =
 placement check, 2nd = no-return). Geometry is injected via `setGeometry()` so
 the module stays dependency-free.
 
-**`ai.js`** — opponent brain. `LEVELS` (family/easy/normal/hard) tune speed,
-reaction, error scatter, "smart" shot selection, aggression, and unforced-error
-rate. `predict()` forward-sims the ball; `chooseShot()` picks intent by
-zone/height/skill and scatters aim by difficulty. Priority order in `chooseShot`:
-smash (high ball) → return-of-serve (shots=2, always power) → 3rd-shot drop
-(shots=3, skill-scaled high probability) → power cap → normal intent selection.
+**`ai.js`** — opponent brain. `LEVELS` (family/easy/normal/hard) is the **skill
+tier** (a trait vector: speed, reaction + `reactJitter`, error scatter, `shotIQ`,
+`aggression`, unforced-error rate). `src/strategies/personas.js` layers a **play
+style** (BALANCED / BANGER / DEFENSIVE) over the tier — assigned per character in
+`characters.js`, so opponent identity = DUPR × style. `makeAI(level, persona)`
+merges them; strategy formulas read `aggBias = aggression − shotIQ` (0 for
+balanced) so balanced reproduces the pre-persona AI. `predict()` forward-sims the
+ball; `chooseShot()` picks intent by zone/height/style, is score-aware, and
+scatters aim by difficulty. Priority in `chooseShot`: unforced error
+(pressure-linked) → smash (risk-gated) → return-of-serve (shots=2, always power)
+→ 3rd-shot drop (shots=3, shotIQ/aggression-scaled) → power cap → situational lob
+→ normal intent selection.
 
 **`game.js`** — the orchestrator. Owns the `STATE` machine
 (`MENU/SERVE/RALLY/POINT/OVER`), the mode-specific roster, sub-stepped physics, the
@@ -286,7 +293,9 @@ The important implementation contract:
   (`ch01`-`ch12`) selected per slot through a fighting-game-style chooser
   (`src/characters.js`, `src/main.js`, `src/characterPreview.js`). Slots
   (`nearYou`/`nearMate`/`farA`/`farB`) keep their own paddle/ring identity, so
-  duplicate character picks are allowed without losing team distinction. The
+  duplicate character picks are allowed without losing team distinction. Each
+  character also carries an **AI play style** (`persona`: BALANCED/BANGER/
+  DEFENSIVE) surfaced in the picker/VS UI and used when CPU-controlled. The
   old gender/hair/beard Quaternius customization UI is retired; its GLBs and
   build notes remain as legacy fallback/reference material in
   [`PLAYER-IMPORT.md`](PLAYER-IMPORT.md). Keep the primitive rig as gameplay

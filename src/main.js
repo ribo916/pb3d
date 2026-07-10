@@ -11,6 +11,8 @@ import { preloadAssetPack, assetStatusSummary } from './assets.js';
 import { CHARACTERS, DEFAULT_ROSTER, getCharacter, resolveSlotCharacter } from './characters.js';
 import { makeCharacterPreview } from './characterPreview.js';
 import { normalizeMode } from './modes.js';
+import { PERSONA_META, personaStats, STAT_LABELS } from './strategies/personas.js';
+import { resolveTraits } from './ai.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -654,6 +656,33 @@ function portraitUrl(id) {
   return '/assets/images/portraits/' + id + '.png';
 }
 
+// --- Persona / AI-style presentation (see src/strategies/personas.js) --------
+function personaOf(characterId) {
+  var c = getCharacter(characterId);
+  return (c && c.persona) || 'balanced';
+}
+
+// A small colored persona tag, e.g. "BANGER". `cls` picks the styling context.
+function personaTagHtml(persona, cls) {
+  var meta = PERSONA_META[persona] || PERSONA_META.balanced;
+  return '<span class="' + cls + '" style="background:' + meta.color + '">' + meta.tag + '</span>';
+}
+
+// The preview-pane trait panel: persona tag + tendency blurb + stat bars. Bars
+// reflect the resolved config (chosen DUPR × persona), so they show the actual
+// opponent, not just the style.
+function traitPanelHtml(persona) {
+  var meta = PERSONA_META[persona] || PERSONA_META.balanced;
+  var stats = personaStats(resolveTraits(checkedValue('difficulty', '4.0'), persona));
+  var bars = STAT_LABELS.map(function (name) {
+    var pct = Math.round((stats[name] || 0) * 100);
+    return '<div class="flow-trait-row"><span class="flow-trait-name">' + name + '</span>' +
+      '<div class="flow-trait-bar"><div class="flow-trait-fill" style="width:' + pct + '%;background:' + meta.color + '"></div></div></div>';
+  }).join('');
+  return '<div class="flow-trait-head"><span class="flow-persona-tag" style="background:' + meta.color + '">' + meta.tag + '</span></div>' +
+    '<div class="flow-persona-blurb">' + meta.blurb + '</div>' + bars;
+}
+
 function renderFlowCharGrid() {
   var slot = flowActiveSlot;
   $('flowCharGrid').innerHTML = CHARACTERS.map(function (c) {
@@ -662,6 +691,7 @@ function renderFlowCharGrid() {
     var isActive = rosterPicks[slot] === c.id;
     return '<button class="flow-char-tile' + (isActive ? ' active' : '') + '" data-character-id="' + c.id + '" tabindex="0">' +
       '<span class="flow-char-tile-badges">' + badges + '</span>' +
+      personaTagHtml(c.persona || 'balanced', 'flow-char-persona') +
       '<span class="flow-char-portrait"><img src="' + portraitUrl(c.id) + '" alt="' + c.label + '" loading="lazy"></span>' +
       '<span class="flow-char-cap">' + c.label + '</span></button>';
   }).join('');
@@ -670,6 +700,16 @@ function renderFlowCharGrid() {
 function showFlowCharPreview(slot, characterId) {
   var ch = resolveSlotCharacter(slot, characterId);
   $('flowCharName').textContent = positionLabel(slot) + ' — ' + ch.label;
+  // The human plays their own slot, so their persona is inert — say so instead
+  // of implying the AI style applies to you.
+  var traits = $('flowCharTraits');
+  if (traits) {
+    if (slot === 'nearYou') {
+      traits.innerHTML = '<div class="flow-persona-blurb">You control this player — AI style does not apply.</div>';
+    } else {
+      traits.innerHTML = traitPanelHtml(ch.persona);
+    }
+  }
   if (!flowPreview) return;
   $('flowCharPreviewLoading').style.display = '';
   flowPreview.show(ch).then(function () { $('flowCharPreviewLoading').style.display = 'none'; });
@@ -682,9 +722,12 @@ function randomCharacterId() {
 // ---- VS splash ----
 function flowVsPortrait(slot, characterId) {
   var ch = resolveSlotCharacter(slot, characterId);
+  // Only CPU slots have an active AI style; the human's own slot does not.
+  var style = (slot === 'nearYou') ? '' :
+    '<div>' + personaTagHtml(ch.persona, 'flow-vs-style') + '</div>';
   return '<div class="flow-vs-card">' +
     '<div class="flow-vs-portrait"><img src="' + portraitUrl(ch.id) + '" alt="' + ch.label + '"></div>' +
-    '<div><div class="flow-vs-name">' + ch.label + '</div><div class="flow-vs-role">' + positionLabel(slot) + '</div></div>' +
+    '<div><div class="flow-vs-name">' + ch.label + '</div><div class="flow-vs-role">' + positionLabel(slot) + '</div>' + style + '</div>' +
     '</div>';
 }
 

@@ -329,9 +329,9 @@ When `maxIntent` returns `'smash'`, **both human and AI execute a dedicated stee
 - spin = 7.0 topspin; margin = 0.06
 - aims at the computed `targetX`/`at.z` (player's stick direction is respected)
 
-**AI** (`ai.chooseShot()`): explicit branch at `ball.pos.y ≥ 1.3 m` (slightly lower threshold):
-- Same apex (0.92 m); spin = `5.0 + smart × 2.0`
-- Skill-gated: `Math.random() < smart` (Pro attacks ~92% of pop-ups; Easy ~40%)
+**AI** (`ai.chooseShot()`): explicit branch at `ball.pos.y ≥ smashMin` (style-tuned, ~1.2–1.45 m):
+- Same apex (0.92 m); spin = `5.0 + shotIQ × 2.0`
+- Risk-gated: `Math.random() < aggression × speedupBias` (a Pro banger attacks nearly every pop-up; a beginner/defensive lets more go)
 - CPU waits for a rising ball to reach peak before striking (`game._checkContacts` defers until `vel.y ≤ 0`)
 - CPU also waits through the opening two-bounce lock; no serve/return volleys.
 
@@ -441,19 +441,62 @@ Implemented in `rules.js` (pure, no Three.js).
 
 ## AI System
 
-### Difficulty Levels (`ai.js` `LEVELS`)
+### Difficulty Levels (`ai.js` `LEVELS`) — the skill tier
 
-| Level | DUPR label | `speed` | `react` | `err` | `smart` | `miss` |
-|---|---|---|---|---|---|---|
-| family | FAMILY | 5.2 | 0.18 | 0.28 | 0.70 | 0.08 |
-| easy | DUPR 4.0 | 4.8 | 0.30 | 0.45 | 0.40 | 0.18 |
-| normal | DUPR 4.5 | 5.2 | 0.18 | 0.28 | 0.70 | 0.08 |
-| hard | DUPR 5.0 | 5.6 | 0.09 | 0.12 | 0.92 | 0.02 |
+DUPR is the **skill tier** and is chosen in the menu. It sets every mechanical +
+skill trait for **all** CPUs on the court (the human's partner can be overridden
+via `partnerDiff`). The old overloaded `smart` scalar is now split into two
+independent axes — `shotIQ` and `aggression` — so play *style* (personas, below)
+is separable from skill.
 
-- **react** — seconds of delay before CPU hits (simulates reaction time)
+| Level | DUPR label | `speed` | `react` | `reactJitter` | `err` | `miss` | `shotIQ` | `aggression` |
+|---|---|---|---|---|---|---|---|---|
+| family | FAMILY | 4.4 | 0.34 | 0.10 | 0.42 | 0.16 | 0.34 | 0.30 |
+| easy | DUPR 4.0 | 4.8 | 0.30 | 0.08 | 0.45 | 0.18 | 0.40 | 0.40 |
+| normal | DUPR 4.5 | 5.2 | 0.18 | 0.05 | 0.28 | 0.08 | 0.70 | 0.70 |
+| hard | DUPR 5.0 | 5.6 | 0.09 | 0.03 | 0.12 | 0.02 | 0.92 | 0.92 |
+
+- **react** — seconds of delay before CPU hits; jittered per-ball by `reactJitter`
+  (gaussian) so the AI is not metronomic (`game._checkContacts`).
 - **err** — aim scatter radius (m); applied to `aim.x`, `aim.z`, and `apex`
-- **smart** — 0–1 score gating drop shot tendency, kitchen dink rate, speedup aggression
-- **miss** — unforced error rate (10 % into net, 90 % sail out)
+- **shotIQ** — 0–1 quality of shot *selection* (drop-when-right, dink discipline,
+  kitchen advance, poach tier, Pro-specialty unlock)
+- **aggression** — 0–1 risk appetite (power vs touch), *independent* of shotIQ. In
+  the base tiers it is seeded equal to shotIQ so the `balanced` style reproduces
+  the pre-persona AI. `smart` remains as an alias of `shotIQ`.
+- **miss** — base unforced-error rate; now **pressure-linked** (scaled by the
+  incoming ball's contact difficulty and by score pressure, see below).
+- **FAMILY** is now a genuine beginner (slow, sloppy, passive), no longer a clone
+  of NORMAL.
+
+### Play Styles / Personas (`src/strategies/personas.js`)
+
+Each CPU also has a **play style** layered over the skill tier — this is the
+per-opponent differentiator, assigned per character in `src/characters.js`
+(default `balanced`). Opponent identity = **DUPR (skill) × style**.
+
+| Style | Behavior | Trait shift |
+|---|---|---|
+| **BALANCED** | Identity — reproduces the baseline AI; no glaring weakness | none |
+| **BANGER** | Aggressive attacker: drives the 3rd, speeds up, rarely lobs | +aggression, −shotIQ, +speedupBias, −dropBias, low lob |
+| **DEFENSIVE** | Counter-puncher: dinks/drops/resets, situational lobs, steady | −aggression, +shotIQ, +speed, +dropBias/dinkBias/lobBias, −err |
+
+`AI.makeAI(level, persona)` merges the two via `personas.mergeTraits`. Strategy
+formulas read the **gap** `aggBias = aggression − shotIQ` (0 for balanced), so
+balanced stays neutral while banger/defensive diverge. The character picker, VS
+splash, and character preview surface each style (tag + blurb + Power/Touch/
+Control/Speed bars derived from the resolved `DUPR × style` config).
+
+**Score-awareness** (`common.scorePressure`): near game point the CPU tightens up
+protecting a lead (lower aggression + fewer misses) and gambles when behind late.
+
+**Pressure-linked errors** (`common.ballDifficultyMult`): the effective `miss`
+scales with the incoming ball's contact quality — a well-struck, stretched ball
+forces more errors than a sitter.
+
+**Situational lobbing** (`common.situationalLob`): replaces the old flat random
+lob roll — fires reactively when opponents are jammed at the kitchen and the ball
+is too low to attack, scaled by shotIQ + the style's `lobBias`.
 
 ### Shot Selection (`AI.chooseShot`)
 
@@ -461,19 +504,19 @@ Implemented in `rules.js` (pure, no Three.js).
 - `src/strategies/doubles.js` preserves the original doubles rhythm and deeper-opponent targeting.
 - `src/strategies/singles.js` is intentionally **passing-first**: more width, more hit-behind-recovery returns, and fewer routine third-shot drops than doubles.
 
-1. **Unforced error** (prob = `miss`) → fault (net or out)
+1. **Unforced error** (prob = pressure-linked `miss`) → fault (net or out)
 2. **Serve** → diagonal deep
-3. **Pro Erne** (smart ≥ 0.92 + position check) → see Specialty Shots
-4. **Pro ATP** (smart ≥ 0.92 + position check) → see Specialty Shots
-5. **Overhead smash** — `ball.y ≥ 1.3 m` AND `Math.random() < smart` → steep arc (apex 0.92 m), `isSmash: true`; skill-gated
+3. **Pro Erne** (`shotIQ ≥ 0.92` + position check) → see Specialty Shots
+4. **Pro ATP** (`shotIQ ≥ 0.92` + position check) → see Specialty Shots
+5. **Overhead smash** — `ball.y ≥ smashMin` (style-tuned, ~1.2–1.45 m) AND `Math.random() < aggression × speedupBias` → steep arc (apex 0.92 m), `isSmash: true`
 6. **Return of serve**
    - doubles: always deep power, usually at the deeper opponent's feet
    - singles: always deep power, but biased cross-court / behind recovery instead of at the body
 7. **Third shot** (`rally.shots === 3`, serving team's first open-play hit)
-   - doubles: strongly prefer drop; `dropChance = max(0, smart − 0.1) × 1.25` ≈ 37 % easy / 75 % normal / 97 % hard
-   - singles: still drop-capable, but scaled down (`SINGLES.THIRD_SHOT_DROP_SCALE`) so baseline exchanges feature more drives and passes
+   - doubles: `dropChance = clamp(max(0, shotIQ − 0.1) × 1.25 − aggBias × 0.8) × dropBias` (balanced ≈ 37/75/97 % by tier; banger drives it, defensive drops it)
+   - singles: same shape, scaled by `SINGLES.THIRD_SHOT_DROP_SCALE` so baseline exchanges feature more drives and passes
 8. **Power cap** — if `ball.y ≤ NET_H`, intent forced to `'touch'`
-9. **Skill-scaled intent** (zone + ball height + `smart`): kitchen speedup, dink, or drive; transition/deep drop vs drive
+9. **Style-scaled intent** (zone + ball height + `shotIQ`/`aggression`): kitchen speedup, dink, or drive; transition/deep drop vs drive; situational lob when opponents are jammed at the kitchen
 10. **Shot type** via `Shots.resolve`
 11. **Target**
    - doubles: deeper-opponent feet for drive/speedup/drop; otherwise corner/body/wide
@@ -487,7 +530,7 @@ Lane-aware doubles positioning:
 - **Kitchen advance** is gated separately for the two teams:
   - **Returning team**: advances immediately once `rally.phase === 'open'` (after the return lands). Their net partner starts at the kitchen in formation already.
   - **Serving team**: stays at the baseline until `rally.shots >= 3` (after they hit their 3rd shot). Then advances at the same rate as the returning team.
-  - Advance fraction = `clamp(smart × 1.6 − 0.2, 0, 1)` toward the kitchen line (smart-scaled):
+  - Advance fraction = `clamp(shotIQ × 1.6 − 0.2, 0, 1)` toward the kitchen line (shotIQ-scaled):
     | Difficulty | Advance | Position |
     |---|---|---|
     | easy (0.40) | 0.44 | mid-court |
@@ -562,7 +605,7 @@ Player has been pulled completely outside the sideline. The swing fires a **flat
 - P2 targets deep mid-court on the same lateral side.
 - `spinY` applies sidespin curving around the post.
 
-AI Pro (`smart ≥ 0.92`) can also execute ATPs via `AI.chooseShot`.
+AI Pro (`shotIQ ≥ 0.92`) can also execute ATPs via `AI.chooseShot`.
 
 ### Erne
 
@@ -588,7 +631,7 @@ Real pickleball's strategic rhythm is the first four shots. Each shot is charted
 | 3 — 3rd shot | Serving team | Drop into kitchen; bleed their kitchen advantage | `isThirdShot` (`shots === 3`): high drop probability (37–97% by DUPR); serving team CPUs hold baseline until after this shot |
 | 4 — 4th shot | Receiving team | Attack if drop is bad; dink if drop is good | No special branch — normal intent selection. Kitchen player reads bounce height: clean drop → forced dink; float/popup → speedup or smash |
 
-**Variance is intentional.** The Stability Index means none of these shots is free: a rushed drop produces a float or popup (attackable); a shanked return goes short and lets the server's team stay back. AI difficulty scales how consistently each team executes the pattern (`smart` and `err` levers).
+**Variance is intentional.** The Stability Index means none of these shots is free: a rushed drop produces a float or popup (attackable); a shanked return goes short and lets the server's team stay back. AI difficulty scales how consistently each team executes the pattern (`shotIQ`/`aggression` and `err` levers), and play style shifts which shots it favors.
 
 **Both teams at the kitchen.** After a successful exchange through shots 1–4, both teams are typically at the kitchen line. The game enters the dink battle mode (see Dink Battle section) waiting for someone to float a ball high enough to speed up or smash.
 
@@ -604,8 +647,9 @@ in exactly two places:
 | **`src/constants.js`** | Court geometry, physics (`PHYS`), hit timings (`HIT`), Stability Index (`STABILITY`), power cap (`POWER_CAP`), specialty triggers (`SPECIALTY`) |
 | **`src/shots.js`** | Shot profiles (`PROFILES`) — apex, depth, spin, margin per shot type |
 
-Changing AI difficulty feel? Edit `LEVELS` in `ai.js` (the one allowed exception —
-difficulty config belongs to the AI module).
+Changing AI difficulty feel? Edit `LEVELS` in `ai.js`. Changing AI **play style**
+feel? Edit `PERSONAS` in `src/strategies/personas.js`. Both are the allowed
+exception — AI skill/style config belongs to the AI modules, not `constants.js`.
 
 ---
 
@@ -643,8 +687,9 @@ AI smashes too often             → raise the 1.3 threshold in ai.js (line ~190
 ```
 Serving team reaches kitchen too fast   → raise the shots >= 3 gate in game._moveCPU
 Serving team stays back too long        → lower it (e.g. >= 2) or remove isServingTeam guard
-3rd-shot drop too rare on normal        → raise LEVELS.normal.smart in ai.js (shifts dropChance up)
-3rd-shot drop too frequent on easy      → lower the -0.1 offset or 1.25 multiplier in isThirdShot block (ai.js)
+3rd-shot drop too rare on normal        → raise LEVELS.normal.shotIQ (or lower .aggression) — shifts dropChance up
+3rd-shot drop too frequent on easy      → lower the -0.1 offset or 1.25 multiplier in isThirdShot block (strategies/*.js)
+A style attacks/drops too much          → tune PERSONAS[style] in src/strategies/personas.js (dAggr / dropBias / speedupBias)
 Return of serve sometimes drops         → the isReturn branch (shots===2) forces power; don't remove it
 ```
 
@@ -654,9 +699,11 @@ Return of serve sometimes drops         → the isReturn branch (shots===2) forc
 AI misses too much (easy)        → lower LEVELS.easy.miss in ai.js (default 0.18)
 AI too accurate (hard)           → raise LEVELS.hard.err (default 0.12)
 AI too reactive / robot-fast     → raise LEVELS.hard.react (default 0.09)
-AI doesn't go for kitchen (easy) → raise LEVELS.easy.smart (shifts advance fraction up)
-AI crashes kitchen too hard      → lower LEVELS.hard.smart or change 1.6 multiplier in _moveCPU
-Dink battle too passive          → lower the smart - 0.3 threshold in chooseShot kitchen branch
+AI doesn't go for kitchen (easy) → raise LEVELS.easy.shotIQ (shifts advance fraction up)
+AI crashes kitchen too hard      → lower LEVELS.hard.shotIQ or change 1.6 multiplier in _moveCPU
+Dink battle too passive          → lower the shotIQ - 0.3 threshold in chooseShot kitchen branch
+Opponents all feel the same      → they may all be BALANCED; assign styles in src/characters.js
+Reaction feels robotic           → raise LEVELS.<tier>.reactJitter (per-ball gaussian spread)
 ```
 
 ### Specialty Shots

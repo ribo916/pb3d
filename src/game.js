@@ -84,6 +84,14 @@ function makeNetFxTexture() {
   return tex;
 }
 
+// Approx. normal deviate (mean, sd) via the central-limit sum of uniforms.
+// Cheap and good enough for reaction-time jitter; no dependency needed.
+function gaussian(mean, sd) {
+  if (!sd) return mean;
+  var u = (Math.random() + Math.random() + Math.random()) / 3; // ~N(0.5, ...)
+  return mean + (u - 0.5) * 2 * 1.732 * sd;
+}
+
 function renderQuality(isMobile) {
   var forced = '';
   try {
@@ -220,7 +228,8 @@ Game.prototype._initWorld = function () {
       team: team, slot: slot, isHuman: isHuman, mesh: mesh,
       pos: { x: 0, z: 0 }, vel: { x: 0, z: 0 },
       move: { kind: 'ready', target: { x: 0, z: 0 }, split: 0, plant: 0, lunge: 0 },
-      ai: isHuman ? null : AI.makeAI(self.difficulty), aiSwingTimer: 0
+      ai: isHuman ? null : AI.makeAI(self.difficulty, colors && colors.persona),
+      aiSwingTimer: 0, aiReactTarget: 0
     };
   }
   if (this.mode === 'practice') {
@@ -240,7 +249,7 @@ Game.prototype._initWorld = function () {
       entry('far',  1, false, palettes.farB)
     ];
   }
-  if (this.partnerDiff && this.mode === 'doubles') this.players[1].ai = AI.makeAI(this.partnerDiff);
+  if (this.partnerDiff && this.mode === 'doubles') this.players[1].ai = AI.makeAI(this.partnerDiff, palettes.nearMate.persona);
   this.human = this.players[0].mesh; this.humanPos = this.players[0].pos; this.humanVel = this.players[0].vel;
 
   // "This is YOU" — a subtle ring on the ground under players[0].
@@ -973,8 +982,13 @@ Game.prototype._checkContacts = function (dt) {
         return;
       }
     }
+    // Reaction delay with per-ball gaussian jitter so the AI isn't metronomic
+    // (beginners vary more). Sample the target once, when the timer starts.
+    if (p.aiSwingTimer === 0) {
+      p.aiReactTarget = Math.max(0.02, p.ai.cfg.react + gaussian(0, p.ai.cfg.reactJitter || 0));
+    }
     p.aiSwingTimer += dt;
-    if (p.aiSwingTimer < p.ai.cfg.react) return;       // reaction delay
+    if (p.aiSwingTimer < p.aiReactTarget) return;
     p.aiSwingTimer = 0;
     this._cpuHit(p);
   }
@@ -1221,11 +1235,17 @@ Game.prototype._cpuHit = function (p) {
   }
 
   var opponents = this._opponentsFor(p.team);
+  // Stability at contact doubles as an incoming-difficulty signal: a stretched,
+  // sprinting contact (low index) makes the AI more error-prone. Computed once
+  // here and reused for the apex-quality degradation below.
+  var stabilityIdx = this._computeStability(p);
   var shot = AI.chooseShot(p.ai, this.ball, this.match, false, {
     mode: this.mode,
     opponents: opponents,
     hitterPos: pos,
-    servingTeam: this.match.server
+    hitterTeam: p.team,
+    servingTeam: this.match.server,
+    contactQuality: stabilityIdx
   });
   if (shot.isSmash || shot.type === 'erne') visualSwingType = 'smash';
   p.mesh.swing(visualSwingType);
@@ -1245,7 +1265,7 @@ Game.prototype._cpuHit = function (p) {
 
   // CPU stability → apex modifier. Smashes are committed overheads — skip quality
   // degradation so a sprinting CPU doesn't turn a smash into a lob.
-  var stabilityIdx = this._computeStability(p);
+  // (stabilityIdx computed above and reused as the shot-selection contactQuality.)
   var quality = shot.isSmash ? 'clean' : Shots.stabilityQuality(stabilityIdx);
   var apex = Shots.apexForQuality(shot.apex, quality);
 
