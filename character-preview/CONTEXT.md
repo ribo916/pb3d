@@ -340,13 +340,11 @@ Files:
   in case this is revisited; `tennis-source.fbx` in particular is the only
   remaining copy of that mocap take's full context — don't delete it
   without re-reading the "Asset provenance" section below.
-- `character-preview/local-clips/top-picks/<category>/*.FBX` (untracked) —
-  51 candidate mocap clips the user pulled from `_top_picks` in Downloads,
-  organized into 11 category folders (`idle`, `ready`, `run`, `backpedal`,
-  `side_shuffle`, `pivot_spin`, `serve`, `jump_smash`, `dive`, `hit_react`,
-  `victory_celebration`) for a future pass at filling the still-open
-  idle/serve/run/ready gap (and adding pickleball-relevant movement clips
-  beyond that). These are **Unreal Engine 5 "Manny" mannequin** exports (Epic's
+- `character-preview/local-clips/top-picks/<category>/*.FBX` — the tracked
+  candidate mocap clips currently used by this viewer cover `idle`,
+  `idle_variants`, `ready`, `run`, `backpedal`, `side_shuffle`, `serve`, and
+  `hit_react`.
+  These are **Unreal Engine 5 "Manny" mannequin** exports (Epic's
   free Paragon animation packs retargeted to the standard UE5 skeleton, per
   the FBX metadata: `Unreal FBX Exporter`, source path
   `.../paragonanims/Game/RetargetedAssets/<Hero>Manny/<Clip>.FBX`) — a
@@ -1719,9 +1717,9 @@ the abstract.
    double-check the `freezeRootHorizontalMotion` axis fix above applies
    correctly to whatever new clips get added (rebuild + re-measure Hips
    world Y across the clip, don't assume).
-   **Progress this session:** 51 candidate clips (idle/ready/run/backpedal/
-   side_shuffle/pivot_spin/serve/jump_smash/dive/hit_react/victory —
-   see the `top-picks` bullet above) are now previewable, live-retargeted
+   **Progress this session:** candidate clips (idle/ready/run/backpedal/
+   side_shuffle/serve/hit_react — see the `top-picks` bullet above) are
+   previewable, live-retargeted
    onto any of the 12 Mixamo characters, in this viewer for the user to
    pick from — this is PREVIEW ONLY, not the build-time pipeline. Once the
    user has picked favorites, they still need to go through

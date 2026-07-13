@@ -4,18 +4,19 @@ import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { ASSET_MANIFEST } from '../assets/manifest.js';
 import { makeGltfLoader, preloadPlayerModels } from '../src/assets.js';
+import { CHARACTERS as ROSTER_CHARACTERS } from '../src/characters.js';
 
 const statusEl = document.getElementById('status');
 const frameInfoEl = document.getElementById('frameInfo');
 const characterButtonsEl = document.getElementById('characterButtons');
-const clipButtonsEl = document.getElementById('clipButtons');
-const topPicksButtonsEl = document.getElementById('topPicksButtons');
-const skeletonButtonsEl = document.getElementById('skeletonButtons');
+const usedButtonsEl = document.getElementById('usedButtons');
+const availableButtonsEl = document.getElementById('availableButtons');
 const playPauseEl = document.getElementById('playPause');
 const scrubEl = document.getElementById('scrub');
 const speedEl = document.getElementById('speed');
 const skeletonOverlayEl = document.getElementById('skeletonOverlay');
 const rawSkeletonBesideEl = document.getElementById('rawSkeletonBeside');
+const uploadAnimationEl = document.getElementById('uploadAnimation');
 
 function setStatus(msg, isError = false) {
   statusEl.textContent = msg;
@@ -59,14 +60,9 @@ window.addEventListener('resize', () => {
 });
 
 // --- catalog + loading ---
-// Characters come from assets/manifest.js -- the same catalog the real game
-// reads -- instead of a second hardcoded list. Character GLBs are fetched
-// lazily via src/assets.js's preloadPlayerModels(), which is also what the
-// real game and character picker use, so this tool never diverges from the
-// shipped fetch/fallback/caching behavior. The 7 raw-FBX sport clips have no
-// shipped/optimized equivalent -- nothing has been built or cut from them --
-// so they stay on the original raw FBX + FBXLoader path below, fetched from
-// the untracked character-preview/local-clips/ folder.
+// Characters and game animation libraries come from the same tracked sources
+// the real game reads. Temporary uploads are loaded only from browser memory;
+// this tool should not depend on untracked local files.
 const fbxLoader = new FBXLoader();
 const gltfLoader = makeGltfLoader();
 
@@ -82,38 +78,41 @@ function loadGlb(url) {
   });
 }
 
-const CHARACTERS = ASSET_MANIFEST.models
-  .filter((m) => /^player-ch\d{2}-v1$/.test(m.key))
-  .map((m) => ({ key: m.key, label: 'CH' + m.key.match(/ch(\d{2})/)[1] }))
-  .sort((a, b) => a.label.localeCompare(b.label));
+const MANIFEST_MODELS = new Map(ASSET_MANIFEST.models.map((m) => [m.key, m]));
+const CHARACTERS = ROSTER_CHARACTERS
+  .map((c) => ({ id: c.id, key: c.playerModelKey, label: c.label, persona: c.persona, swatch: c.swatch }))
+  .filter((c) => MANIFEST_MODELS.has(c.key));
 
-// forehand/backhand/overhead ship inside one shared, already-fixed GLB (see
-// assets/manifest.js's 'mixamo-swings' entry -- this is the same file the
-// real game loads). Bone names are canonical `mixamorig:Name` at rest, which
-// three's GLTFLoader sanitizes to `mixamorigName` at runtime -- the exact
-// same convention detectBonePrefix()/retargetClipNames() below already
-// produce for the FBX-sourced clips, so no separate retargeting path is
-// needed for these three.
-const GLB_CLIP_LIBRARY_URL = (ASSET_MANIFEST.animations.find((a) => a.key === 'mixamo-swings') || {}).url;
-const GLB_CLIP_LABELS = { forehand: 'Forehand', backhand: 'Backhand', overhead: 'Overhead' };
-
-// Tennis Source (full)/Golf/Baseball/Soccer/Football-QB were dropped from
-// this row: they're raw, unconverted Mixamo FBX applied via the simple
-// name-matching retargetClipNames() path below, which assumes the target
-// character's bones share the same rest ORIENTATION as the clip's own rig.
-// That's true for Forehand/Backhand/Overhead (built through the same
-// Blender FBX->glTF pipeline as these characters -- see
-// tools/build-mixamo-clip-library.mjs) but not for these raw files: the
-// Blender conversion re-authors every bone's rest quaternion (confirmed --
-// e.g. Hips rest is (-0.70, 0.18, -0.15, 0.67) on the shipped ch01.glb vs.
-// identity on the original raw FBX), so applying these clips' rotation
-// tracks verbatim pitches the whole character face-down. Fixing this
-// properly needs either a second world-space FK retarget pipeline (the
-// same class of problem retargetMannyClip below took 18 rounds of bugs to
-// get right for a DIFFERENT source rig -- see CONTEXT.md) or rebuilding
-// these clips through the Blender pipeline like the swing clips were. Per
-// explicit user decision, neither was worth it for these exploratory
-// other-sport clips -- dropped instead of shipped broken.
+const ANIMATION_RECORDS = new Map(ASSET_MANIFEST.animations.map((a) => [a.key, a]));
+const GLB_LIBRARY_KEYS = {
+  swings: 'mixamo-swings',
+  locomotion: 'mixamo-locomotion',
+};
+const GLB_CLIP_LABELS = {
+  idle: 'Idle',
+  idle_noise: 'Idle Noise',
+  ready: 'Ready',
+  run: 'Run',
+  serve: 'Serve',
+  backpedal: 'Backpedal',
+  shuffle_left: 'Shuffle Left',
+  shuffle_right: 'Shuffle Right',
+  forehand: 'Forehand',
+  backhand: 'Backhand',
+  overhead: 'Overhead',
+};
+const USED_IN_GAME_CLIPS = [
+  'idle',
+  'ready',
+  'run',
+  'serve',
+  'backpedal',
+  'shuffle_left',
+  'shuffle_right',
+  'forehand',
+  'backhand',
+  'overhead',
+];
 
 // One representative clip per `_top_picks` category (originally 11
 // categories/51 raw files total; `pivot_spin` and `dive` were dropped after
@@ -156,13 +155,26 @@ const TOP_PICKS = [
   // content for this sport). RMB_Throw is a plausible, subtle, forward-
   // leaning underhand-ish toss motion instead.
   { key: 'tp-serve', category: 'serve', label: 'Serve (Throw)', url: './local-clips/top-picks/serve/RMB_Throw__PhaseManny.FBX' },
-  { key: 'tp-jump-smash', category: 'jump_smash', label: 'Jump Smash (Apex)', url: './local-clips/top-picks/jump_smash/Jump_Apex__CrunchManny.FBX' },
   // Was HitReact_Front, which snaps the head/neck back at an extreme angle
   // far beyond how far the rest of the torso moves ("broken neck" look).
   // HitReact_Left is a much subtler, natural-looking recoil.
   { key: 'tp-hit-react', category: 'hit_react', label: 'Hit React', url: './local-clips/top-picks/hit_react/HitReact_Left__AuroraManny.FBX' },
-  { key: 'tp-victory', category: 'victory_celebration', label: 'Victory Emote', url: './local-clips/top-picks/victory_celebration/Victory_Emote__KallariManny.FBX' },
 ];
+const TOP_PICKS_BY_KEY = new Map(TOP_PICKS.map((p) => [p.key, p]));
+const AVAILABLE_CLIPS = [
+  { type: 'glb', key: 'idle_noise', label: 'Idle Noise' },
+  { type: 'manny', key: 'tp-hit-react', label: 'Hit React' },
+];
+const GAME_CLIP_RAW_SOURCE = {
+  idle: 'tp-idle',
+  idle_noise: 'tp-idle-noise',
+  ready: 'tp-ready',
+  run: 'tp-run',
+  serve: 'tp-serve',
+  backpedal: 'tp-backpedal',
+  shuffle_left: 'tp-side-shuffle-left',
+  shuffle_right: 'tp-side-shuffle-right',
+};
 
 // Manny (UE5 mannequin) bone name -> mixamorig bone suffix, for the main
 // rotation-driving joints only. Corrective/twist/IK-helper bones (calf_knee_*,
@@ -427,47 +439,95 @@ function computeBoneBounds(root) {
   return any ? box : null;
 }
 
-function buildClipButton(key, label, onClick) {
+function isSkeletonLikeNode(obj) {
+  const name = obj && obj.name;
+  if (!name) return false;
+  return !!obj.isBone || /^mixamorig\d*/.test(name) || name === 'root' || name === 'pelvis' ||
+    Object.prototype.hasOwnProperty.call(MANNY_BONE_MAP, name) ||
+    Object.prototype.hasOwnProperty.call(SWING_SOURCE_CHILD, name);
+}
+
+function cloneRawRigAsBones(sourceRoot) {
+  function cloneNode(src) {
+    const childClones = [];
+    for (const child of src.children) {
+      const clonedChild = cloneNode(child);
+      if (clonedChild) childClones.push(clonedChild);
+    }
+    const keep = isSkeletonLikeNode(src) || childClones.length > 0;
+    if (!keep) return null;
+
+    const dst = isSkeletonLikeNode(src) ? new THREE.Bone() : new THREE.Object3D();
+    dst.name = src.name || '';
+    dst.position.copy(src.position);
+    dst.quaternion.copy(src.quaternion);
+    dst.scale.copy(src.scale);
+    for (const child of childClones) dst.add(child);
+    return dst;
+  }
+  const root = cloneNode(sourceRoot);
+  if (!root) return null;
+  root.updateMatrixWorld(true);
+  return root;
+}
+
+function rawSkeletonRootForSource(sourceRoot) {
+  const cloned = sourceRoot.clone(true);
+  if (computeBoneBounds(cloned)) return cloned;
+  return cloneRawRigAsBones(sourceRoot);
+}
+
+function buildAnimationButton(parent, key, label, onClick) {
   const btn = document.createElement('button');
   btn.textContent = label;
   btn.dataset.clip = key;
   btn.addEventListener('click', () => onClick(btn));
-  clipButtonsEl.appendChild(btn);
+  parent.appendChild(btn);
   return btn;
 }
 
-function buildTopPickButton(key, label, onClick) {
-  const btn = document.createElement('button');
-  btn.textContent = label;
-  btn.dataset.clip = key;
-  btn.addEventListener('click', () => onClick(btn));
-  topPicksButtonsEl.appendChild(btn);
-  return btn;
+function buildUsedButton(key, label, onClick) {
+  return buildAnimationButton(usedButtonsEl, key, label, onClick);
 }
 
-function buildSkeletonButton(key, label, onClick) {
-  const btn = document.createElement('button');
-  btn.textContent = label;
-  btn.dataset.clip = key;
-  btn.addEventListener('click', () => onClick(btn));
-  skeletonButtonsEl.appendChild(btn);
-  return btn;
+function buildAvailableButton(key, label, onClick) {
+  return buildAnimationButton(availableButtonsEl, key, label, onClick);
 }
 
-function buildCharacterButton(key, label) {
+function colorFromHexNumber(value) {
+  return '#' + (value >>> 0).toString(16).padStart(6, '0').slice(-6);
+}
+
+function buildCharacterButton(characterInfo) {
   const btn = document.createElement('button');
-  btn.textContent = label;
-  btn.dataset.character = key;
-  btn.addEventListener('click', () => activateCharacter(key));
+  const label = document.createElement('span');
+  label.textContent = characterInfo.label;
+  const sep = document.createElement('span');
+  sep.textContent = ' · ';
+  const id = document.createElement('span');
+  id.className = 'id';
+  id.textContent = characterInfo.id;
+  if (characterInfo.swatch != null) {
+    const color = colorFromHexNumber(characterInfo.swatch);
+    id.style.setProperty('--tag-bg', color);
+    id.style.setProperty('--tag-border', color);
+    id.style.setProperty('--tag-fg', '#10131a');
+  }
+  btn.appendChild(label);
+  btn.appendChild(sep);
+  btn.appendChild(id);
+  btn.dataset.character = characterInfo.key;
+  btn.addEventListener('click', () => activateCharacter(characterInfo.key));
   characterButtonsEl.appendChild(btn);
   return btn;
 }
 
 const clips = new Map(); // name -> THREE.AnimationClip, scoped to the active character
+const clipSources = new Map(); // name -> source metadata for synced raw comparison
 let character = null;
 let currentBonePrefix = 'mixamorig';
 let currentTargetRestPose = null; // { restQuats, restPositions }, captured fresh per character activation
-let glbSwingClips = null; // THREE.AnimationClip[] from pickleball-swings.glb, loaded once at init()
+let glbLibraries = {}; // manifest animation key -> loaded GLTF, loaded once at init()
 
 // THREE.SkeletonHelper drawn directly on the ACTIVE (retargeted) character,
 // so its actual bone positions/orientations can be visually compared,
@@ -492,10 +552,10 @@ let skeletonOverlayVisible = false;
 // `computeSourceWorldFrames`/`retargetMannyClip`), so the same `action.time`
 // value lands on the same point in both animations. Rebuilt whenever the
 // active top-pick clip or character changes; torn down for non-top-pick
-// clips (forehand/backhand/... and the raw FBX sport clips have no raw
-// Manny skeleton to compare against).
+// clips.
 let comparisonSkeleton = null; // { root, mixer, action, helper, clipKey } | null
 let comparisonSkeletonVisible = false;
+let comparisonRequestId = 0;
 
 function teardownComparisonSkeleton() {
   if (!comparisonSkeleton) return;
@@ -505,21 +565,17 @@ function teardownComparisonSkeleton() {
 }
 
 // Builds (or rebuilds, if the clip changed) the comparison skeleton for the
-// CURRENTLY ACTIVE top-pick clip, cloning the same raw FBX `retargetMannyClip`
-// itself reads from (never the shared cached object -- see that function's
-// doc comment for why mutating it would corrupt future retargets). Scaled
-// to roughly match the active character's own height (computed once, from
-// each skeleton's own bone-position bounding box) purely so the two are
-// visually comparable side by side -- this scale has no bearing on
-// correctness, only on making the comparison legible. Positioned at a fixed
-// world-space offset alongside the character.
-function rebuildComparisonSkeletonIfNeeded(clipKey, fbx, rawClip) {
+// current clip. For checked-in Manny FBXs this is the native Manny rig. For
+// checked-in GLB libraries this is the library's own skeleton/scene with the
+// same source clip, not another retargeted version.
+function rebuildComparisonSkeletonFromSource(clipKey, source) {
   if (comparisonSkeleton && comparisonSkeleton.clipKey === clipKey) return;
   teardownComparisonSkeleton();
-  if (!character) return;
+  if (!character || !source || !source.root || !source.clip) return;
 
-  const root = fbx.clone(true);
-  root.rotation.set(-Math.PI / 2, 0, 0); // same Z-up -> Y-up fix as activateSkeletonClip
+  const root = rawSkeletonRootForSource(source.root);
+  if (!root) return;
+  if (source.rotateZUp) root.rotation.set(-Math.PI / 2, 0, 0);
   root.updateMatrixWorld(true);
 
   const rawBox = computeBoneBounds(root);
@@ -547,12 +603,36 @@ function rebuildComparisonSkeletonIfNeeded(clipKey, fbx, rawClip) {
   root.visible = comparisonSkeletonVisible;
 
   const mixer = new THREE.AnimationMixer(root);
-  const action = mixer.clipAction(rawClip);
+  const action = mixer.clipAction(source.clip);
   action.setLoop(THREE.LoopRepeat, Infinity);
   action.play();
 
   comparisonSkeleton = { root, mixer, action, helper, clipKey };
   window.__comparisonSkeleton = comparisonSkeleton; // ad-hoc Playwright/devtools inspection, see window.__poc
+}
+
+function rebuildComparisonSkeletonIfNeeded(clipKey, fbx, rawClip) {
+  rebuildComparisonSkeletonFromSource(clipKey, { root: fbx, clip: rawClip, rotateZUp: true });
+}
+
+async function maybeBuildActiveComparison() {
+  if (!comparisonSkeletonVisible || !currentClip) return;
+  const activeKey = [...clips.entries()].find(([, c]) => c === currentClip)?.[0];
+  const source = activeKey ? clipSources.get(activeKey) : null;
+  if (!source) return;
+  const requestId = ++comparisonRequestId;
+  if (source.kind === 'manny') {
+    try {
+      const fbx = await loadFbxSource(source.pickKey, source.url);
+      if (requestId !== comparisonRequestId || !comparisonSkeletonVisible) return;
+      rebuildComparisonSkeletonIfNeeded(activeKey, fbx, fbx.animations[0]);
+    } catch (err) {
+      console.error(err);
+      setStatus(`Failed to load raw skeleton for "${source.label}": ${err.message || err}`, true);
+    }
+    return;
+  }
+  rebuildComparisonSkeletonFromSource(activeKey, source);
 }
 
 // Raw-skeleton preview state (see activateSkeletonClip below): plays a
@@ -590,9 +670,8 @@ const rawFbxCache = new Map(); // clipKey -> loaded FBX root object
 const fbxLoadPromises = new Map(); // clipKey -> in-flight load promise, deduped
 
 function setActiveClipButton(name) {
-  for (const btn of clipButtonsEl.children) btn.classList.toggle('active', btn.dataset.clip === name);
-  for (const btn of topPicksButtonsEl.children) btn.classList.toggle('active', btn.dataset.clip === name);
-  for (const btn of skeletonButtonsEl.children) btn.classList.toggle('active', btn.dataset.clip === name);
+  for (const btn of usedButtonsEl.children) btn.classList.toggle('active', btn.dataset.clip === name);
+  for (const btn of availableButtonsEl.children) btn.classList.toggle('active', btn.dataset.clip === name);
 }
 
 function playClip(name) {
@@ -603,10 +682,6 @@ function playClip(name) {
   // showing -- tear that down and bring the character back.
   exitSkeletonPreview();
 
-  // The raw-skeleton-beside-character comparison only applies to the
-  // top-pick clip it was built for; switching to any other clip
-  // (forehand/backhand/... or a different top pick) invalidates it.
-  // activateMannyClip rebuilds it right after this call for its own clip.
   if (comparisonSkeleton && comparisonSkeleton.clipKey !== name) teardownComparisonSkeleton();
 
   if (currentAction) currentAction.stop();
@@ -623,6 +698,7 @@ function playClip(name) {
   scrubbing = false;
 
   setActiveClipButton(name);
+  maybeBuildActiveComparison();
 }
 
 playPauseEl.addEventListener('click', () => {
@@ -631,26 +707,19 @@ playPauseEl.addEventListener('click', () => {
   playPauseEl.textContent = currentAction.paused ? 'Play' : 'Pause';
 });
 
-skeletonOverlayEl.addEventListener('click', () => {
-  skeletonOverlayVisible = !skeletonOverlayVisible;
+skeletonOverlayEl.addEventListener('change', () => {
+  skeletonOverlayVisible = skeletonOverlayEl.checked;
   if (skeletonOverlayHelper) skeletonOverlayHelper.visible = skeletonOverlayVisible;
-  skeletonOverlayEl.textContent = skeletonOverlayVisible ? 'Hide Skeleton Overlay' : 'Show Skeleton Overlay';
 });
 
-rawSkeletonBesideEl.addEventListener('click', () => {
-  comparisonSkeletonVisible = !comparisonSkeletonVisible;
+rawSkeletonBesideEl.addEventListener('change', () => {
+  comparisonSkeletonVisible = rawSkeletonBesideEl.checked;
   if (comparisonSkeleton) {
     comparisonSkeleton.root.visible = comparisonSkeletonVisible;
     comparisonSkeleton.helper.visible = comparisonSkeletonVisible;
   } else if (comparisonSkeletonVisible && currentClip) {
-    // Turned on with no comparison built yet (e.g. a top-pick clip is
-    // already playing from before this toggle existed this session) --
-    // build it now if the active clip has a cached raw source.
-    const activeKey = [...clips.entries()].find(([, c]) => c === currentClip)?.[0];
-    const cachedFbx = activeKey ? rawFbxCache.get(activeKey) : null;
-    if (cachedFbx) rebuildComparisonSkeletonIfNeeded(activeKey, cachedFbx, cachedFbx.animations[0]);
+    maybeBuildActiveComparison();
   }
-  rawSkeletonBesideEl.textContent = comparisonSkeletonVisible ? 'Hide Raw Skeleton Beside' : 'Show Raw Skeleton Beside (synced)';
 });
 
 scrubEl.addEventListener('input', () => {
@@ -1726,16 +1795,13 @@ function loadFbxSource(clipKey, url) {
   });
 }
 
-// Lazy-fetch/per-button-error pattern (these files live in the untracked
-// local-clips/ folder, so a fresh clone without them must degrade to a
-// per-button error instead of breaking the whole page) for the Manny/UE5-rig
+// Lazy-fetch/per-button-error pattern for the checked-in Manny/UE5-rig
 // top-picks clips: retargetMannyClip() does the actual bone mapping, since
 // these clips share no bone names with the Mixamo rig at all.
 async function activateMannyClip(clipKey, url, label, btn) {
   if (clips.has(clipKey)) {
     playClip(clipKey);
-    const cachedFbx = rawFbxCache.get(clipKey);
-    if (cachedFbx) rebuildComparisonSkeletonIfNeeded(clipKey, cachedFbx, cachedFbx.animations[0]);
+    maybeBuildActiveComparison();
     return;
   }
   btn.classList.remove('error');
@@ -1765,8 +1831,8 @@ async function activateMannyClip(clipKey, url, label, btn) {
     // the floor. retargetMannyClip's own Hips block already freezes the
     // correct (X/Y) horizontal axes by construction.
     clips.set(clipKey, clip);
+    clipSources.set(clipKey, { root: fbx, clip: fbx.animations[0], rotateZUp: true });
     playClip(clipKey);
-    rebuildComparisonSkeletonIfNeeded(clipKey, fbx, fbx.animations[0]);
   } catch (err) {
     console.error(err);
     btn.classList.add('error');
@@ -1807,7 +1873,8 @@ async function activateSkeletonClip(fetchKey, skeletonKey, url, label, btn) {
     if (skeletonPreviewRoot) scene.remove(skeletonPreviewRoot);
     if (character) character.visible = false;
 
-    const previewRoot = fbx.clone(true);
+    const previewRoot = rawSkeletonRootForSource(fbx);
+    if (!previewRoot || !computeBoneBounds(previewRoot)) throw new Error('source file has no raw skeleton');
     // This source FBX loads Z-up in three.js (confirmed empirically -- see
     // retargetMannyClip's doc comment); rotate -90 about X to match this
     // scene's Y-up convention (grid/camera/every other clip in this tool).
@@ -1850,6 +1917,119 @@ async function activateSkeletonClip(fetchKey, skeletonKey, url, label, btn) {
   }
 }
 
+function activateRawObjectPreview(rootObject, rawClip, label, opts = {}) {
+  if (!rootObject || !rawClip) throw new Error('no animation track in source file');
+
+  if (currentAction) currentAction.stop();
+  if (skeletonPreviewHelper) scene.remove(skeletonPreviewHelper);
+  if (skeletonPreviewRoot) scene.remove(skeletonPreviewRoot);
+  if (character) character.visible = false;
+  teardownComparisonSkeleton();
+
+  const previewRoot = rawSkeletonRootForSource(rootObject);
+  if (!previewRoot || !computeBoneBounds(previewRoot)) throw new Error('source file has no raw skeleton');
+  if (opts.rotateZUp) previewRoot.rotation.set(-Math.PI / 2, 0, 0);
+  previewRoot.position.set(0, 0, 0);
+  scene.add(previewRoot);
+
+  const helper = new THREE.SkeletonHelper(previewRoot);
+  scene.add(helper);
+
+  previewRoot.updateMatrixWorld(true);
+  const box = computeBoneBounds(previewRoot) || new THREE.Box3().setFromObject(previewRoot, true);
+  if (box && !box.isEmpty()) frameCameraToBounds(previewRoot, box);
+
+  skeletonPreviewActive = true;
+  skeletonPreviewRoot = previewRoot;
+  skeletonPreviewHelper = helper;
+
+  mixer = new THREE.AnimationMixer(previewRoot);
+  currentAction = mixer.clipAction(rawClip);
+  currentAction.reset();
+  currentAction.setLoop(THREE.LoopRepeat, Infinity);
+  currentAction.timeScale = Number(speedEl.value);
+  currentAction.play();
+  currentClip = rawClip;
+
+  scrubEl.value = '0';
+  playPauseEl.textContent = 'Pause';
+  currentAction.paused = false;
+  scrubbing = false;
+  setActiveClipButton('');
+  setStatus(label);
+  window.__uploadedPreview = { root: previewRoot, mixer, action: currentAction, clip: rawClip };
+}
+
+function isMannyRig(rootObject) {
+  return !!(rootObject && rootObject.getObjectByName('root') && rootObject.getObjectByName('pelvis'));
+}
+
+function hasMixamoTracks(clip) {
+  return !!(clip && clip.tracks && clip.tracks.some((track) => /^mixamorig\d*/.test(track.name || '')));
+}
+
+async function loadUploadedAnimationFile(file) {
+  const lower = file.name.toLowerCase();
+  if (lower.endsWith('.fbx')) {
+    const buffer = await file.arrayBuffer();
+    const root = fbxLoader.parse(buffer, '');
+    return { kind: 'fbx', root, animations: root.animations || [] };
+  }
+  if (lower.endsWith('.glb') || lower.endsWith('.gltf')) {
+    const data = lower.endsWith('.gltf') ? await file.text() : await file.arrayBuffer();
+    const gltf = await gltfLoader.parseAsync(data, '');
+    return { kind: 'gltf', root: gltf.scene, animations: gltf.animations || [] };
+  }
+  throw new Error('unsupported file type');
+}
+
+async function handleUploadAnimation(file) {
+  if (!file) return;
+  try {
+    setStatus('Loading temporary upload: ' + file.name);
+    const loaded = await loadUploadedAnimationFile(file);
+    const rawClip = loaded.animations[0];
+    if (!rawClip) throw new Error('no animation track in uploaded file');
+    const uploadKey = 'upload:' + file.name;
+    const label = file.name.replace(/\.[^.]+$/, '');
+
+    if (character && currentTargetRestPose && loaded.kind === 'fbx' && isMannyRig(loaded.root)) {
+      const clip = retargetMannyClip(uploadKey, loaded.root, rawClip, currentBonePrefix, currentTargetRestPose);
+      clips.set(uploadKey, clip);
+      clipSources.set(uploadKey, { root: loaded.root, clip: rawClip, rotateZUp: true });
+      playClip(uploadKey);
+      setStatus('Temporary upload retargeted: ' + label);
+      return;
+    }
+
+    if (character && hasMixamoTracks(rawClip)) {
+      const sourceClip = rawClip.clone();
+      const clip = retargetClipNames(rawClip.clone(), currentBonePrefix);
+      clips.set(uploadKey, clip);
+      clipSources.set(uploadKey, { root: loaded.root, clip: sourceClip, rotateZUp: false });
+      playClip(uploadKey);
+      setStatus('Temporary upload previewing on current character: ' + label);
+      return;
+    }
+
+    activateRawObjectPreview(
+      loaded.root,
+      rawClip,
+      'Temporary upload shown as raw skeleton only: ' + label,
+      { rotateZUp: loaded.kind === 'fbx' && isMannyRig(loaded.root) }
+    );
+  } catch (err) {
+    console.error(err);
+    setStatus(`Failed to load temporary upload "${file.name}": ${err.message || err}`, true);
+  } finally {
+    uploadAnimationEl.value = '';
+  }
+}
+
+uploadAnimationEl.addEventListener('change', () => {
+  handleUploadAnimation(uploadAnimationEl.files && uploadAnimationEl.files[0]);
+});
+
 let activateRequestId = 0;
 
 // Lazily fetches (via src/assets.js's preloadPlayerModels -- the same
@@ -1885,7 +2065,7 @@ async function activateCharacter(key) {
     currentAction = null;
     currentClip = null;
     clips.clear();
-    clipButtonsEl.innerHTML = '';
+    clipSources.clear();
 
     character = scene3;
     scene.add(character);
@@ -1898,34 +2078,33 @@ async function activateCharacter(key) {
     currentBonePrefix = detectBonePrefix(character);
     currentTargetRestPose = captureTargetRestPose(character, currentBonePrefix);
 
-    // Any animation baked into this specific character's own export (e.g. an
-    // idle/T-pose picked on Mixamo). "mixamo.com" is a watermark/attribution
-    // track free Mixamo exports embed, not a real animation -- skip it. (The
-    // shipped ch01-12.glb characters carry no baked-in clips at all -- this
-    // loop is a no-op for them today, kept for when idle/run/ready/serve
-    // clips get added to the character files.)
+    // Any animation baked into this specific character's own export. The
+    // shipped chNN character GLBs carry no baked-in clips today; keep these
+    // playable without adding buttons to the curated game/available sections.
     (record.payload.animations || []).forEach((clip, i) => {
       if (clip.name === 'mixamo.com') return;
       const name = clip.name || `character_clip_${i}`;
       clips.set(name, retargetClipNames(clip, currentBonePrefix));
-      buildClipButton(name, `Character: ${clip.name || i}`, () => playClip(name));
     });
 
-    // forehand/backhand/overhead from the shared, already-fixed GLB clip
-    // library -- no retargeting/strip/freeze needed here: bone names are
-    // already canonical on both the GLB characters and this GLB clip
-    // library, and root-motion/long-neck fixes are already baked in at
-    // build time (tools/build-mixamo-clip-library.mjs).
-    (glbSwingClips || []).forEach((clip) => {
-      clips.set(clip.name, clip);
-      buildClipButton(clip.name, GLB_CLIP_LABELS[clip.name] || clip.name, () => playClip(clip.name));
+    Object.values(glbLibraries).forEach((gltf) => {
+      ((gltf && gltf.animations) || []).forEach((clip) => {
+        clips.set(clip.name, clip);
+        const rawPickKey = GAME_CLIP_RAW_SOURCE[clip.name];
+        const rawPick = rawPickKey ? TOP_PICKS_BY_KEY.get(rawPickKey) : null;
+        if (rawPick) {
+          clipSources.set(clip.name, { kind: 'manny', pickKey: rawPick.key, url: rawPick.url, label: rawPick.label });
+        } else {
+          clipSources.set(clip.name, { root: gltf.scene, clip, rotateZUp: false });
+        }
+      });
     });
 
     for (const b of characterButtonsEl.children) {
       b.classList.toggle('active', b.dataset.character === key);
     }
 
-    const first = clips.has('forehand') ? 'forehand' : clips.keys().next().value;
+    const first = clips.has('ready') ? 'ready' : clips.keys().next().value;
     if (first) playClip(first);
 
     setStatus(`Loaded ${key}. ${clips.size} clip(s) available.`);
@@ -1942,16 +2121,27 @@ async function activateCharacter(key) {
 
 async function init() {
   try {
-    setStatus('Loading swing clip library…');
-    CHARACTERS.forEach((c) => buildCharacterButton(c.key, c.label));
-    TOP_PICKS.forEach(({ key, label, url }) => {
-      buildTopPickButton(key, label, (btn) => activateMannyClip(key, url, label, btn));
-      const skeletonKey = `sk-${key}`;
-      buildSkeletonButton(skeletonKey, label, (btn) => activateSkeletonClip(key, skeletonKey, url, label, btn));
+    setStatus('Loading animation libraries…');
+    CHARACTERS.forEach((c) => buildCharacterButton(c));
+
+    USED_IN_GAME_CLIPS.forEach((key) => {
+      buildUsedButton(key, GLB_CLIP_LABELS[key] || key, () => playClip(key));
     });
 
-    const swingGltf = await loadGlb(GLB_CLIP_LIBRARY_URL);
-    glbSwingClips = swingGltf.animations || [];
+    AVAILABLE_CLIPS.forEach((entry) => {
+      if (entry.type === 'glb') {
+        buildAvailableButton(entry.key, entry.label, () => playClip(entry.key));
+      } else {
+        const pick = TOP_PICKS_BY_KEY.get(entry.key);
+        if (pick) buildAvailableButton(entry.key, entry.label, (btn) => activateMannyClip(pick.key, pick.url, pick.label, btn));
+      }
+    });
+
+    for (const key of Object.values(GLB_LIBRARY_KEYS)) {
+      const record = ANIMATION_RECORDS.get(key);
+      if (!record || !record.url) throw new Error('missing animation library: ' + key);
+      glbLibraries[key] = await loadGlb(record.url);
+    }
 
     window.__THREE = THREE;
     window.__camera = camera;

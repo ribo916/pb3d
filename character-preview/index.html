@@ -9,49 +9,66 @@
     #panel {
       position: fixed; top: 12px; left: 12px; z-index: 10;
       background: rgba(20, 22, 28, 0.85); border: 1px solid #444;
-      border-radius: 8px; padding: 12px 14px; width: 300px;
+      border-radius: 8px; padding: 12px 14px; width: 340px;
       max-height: calc(100vh - 24px); overflow-y: auto;
       backdrop-filter: blur(4px);
     }
     #panel h1 { font-size: 14px; margin: 0 0 8px; font-weight: 600; color: #fff; }
     #panel .row { margin-bottom: 8px; }
     #panel label { display: block; font-size: 11px; color: #aaa; margin-bottom: 4px; }
+    #panel .hint { font-size: 10px; color: #858c99; line-height: 1.35; margin-top: 4px; }
     .clipButtons { display: flex; flex-wrap: wrap; gap: 6px; }
     .clipButtons button {
       flex: 1 1 auto; padding: 6px 8px; font-size: 12px; cursor: pointer;
       background: #2c313c; color: #eee; border: 1px solid #454b58; border-radius: 5px;
+    }
+    .clipButtons button .id {
+      display: inline-block; margin-left: 4px; padding: 1px 4px; border-radius: 4px;
+      background: var(--tag-bg, rgba(255,255,255,.10)); color: var(--tag-fg, #f5f8ff);
+      border: 1px solid var(--tag-border, rgba(255,255,255,.16)); font-size: 10px;
     }
     .clipButtons button.active { background: #3d7bd9; border-color: #3d7bd9; }
     .clipButtons button:hover { background: #3a4150; }
     .clipButtons button.active:hover { background: #4b86df; }
     .clipButtons button.loading { opacity: 0.6; cursor: wait; }
     .clipButtons button.error { background: #7a2f2f; border-color: #a33; }
+    .upload {
+      display: block; width: 100%; box-sizing: border-box; padding: 6px;
+      background: #20242d; border: 1px solid #454b58; border-radius: 5px; color: #dce3f2;
+      font-size: 11px;
+    }
     input[type="range"] { width: 100%; }
     #status { font-size: 11px; color: #9ad19a; white-space: pre-wrap; margin-top: 6px; }
     #status.error { color: #e08a8a; }
     #frameInfo { font-size: 11px; color: #ccc; margin-top: 4px; }
     button.toggle { width: 100%; padding: 6px; margin-top: 4px; }
+    .checkControl {
+      display: flex; align-items: center; gap: 8px; padding: 6px 0; cursor: pointer;
+      color: #dce3f2; font-size: 12px;
+    }
+    .checkControl input { width: 15px; height: 15px; accent-color: #3d7bd9; }
   </style>
 </head>
 <body>
   <div id="viewport"></div>
   <div id="panel">
-    <h1>Mixamo Characters — Tennis Swing Preview</h1>
+    <h1>Character Animation Preview</h1>
     <div class="row">
       <label>Character</label>
       <div class="clipButtons" id="characterButtons"></div>
     </div>
     <div class="row">
-      <label>Clip</label>
-      <div class="clipButtons" id="clipButtons"></div>
+      <label>Used in Game</label>
+      <div class="clipButtons" id="usedButtons"></div>
     </div>
     <div class="row">
-      <label>Top Picks (Manny/UE5 mocap, retargeted — one per category)</label>
-      <div class="clipButtons" id="topPicksButtons"></div>
+      <label>Available</label>
+      <div class="clipButtons" id="availableButtons"></div>
     </div>
     <div class="row">
-      <label>Raw Skeleton Preview (native rig, NO retargeting — ground truth for judging a clip)</label>
-      <div class="clipButtons" id="skeletonButtons"></div>
+      <label>Upload Temporary Animation</label>
+      <input class="upload" id="uploadAnimation" type="file" accept=".fbx,.glb,.gltf,model/gltf-binary,model/gltf+json" />
+      <div class="hint">Loaded in browser memory only. Nothing is written to the repo.</div>
     </div>
     <div class="row">
       <button class="toggle" id="playPause">Pause</button>
@@ -65,10 +82,10 @@
       <input type="range" id="speed" min="0.1" max="1.5" step="0.05" value="1" />
     </div>
     <div class="row">
-      <button class="toggle" id="skeletonOverlay">Show Skeleton Overlay</button>
+      <label class="checkControl"><input id="skeletonOverlay" type="checkbox" /> Skeleton Overlay</label>
     </div>
     <div class="row">
-      <button class="toggle" id="rawSkeletonBeside">Show Raw Skeleton Beside (synced)</button>
+      <label class="checkControl"><input id="rawSkeletonBeside" type="checkbox" /> Raw Skeleton Beside</label>
     </div>
     <div id="frameInfo">–</div>
     <div id="status">Loading…</div>
