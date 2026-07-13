@@ -76,7 +76,8 @@ npm run music:generate      # regenerate bundled placeholder WAVs, then rescan t
   kitchen/two-bounce adherence, and shot selection — but it exercises AI only, not
   human input (aim/poach/swing timing still need manual play). Env knobs:
   `SPEED` (sim multiplier, default 4), `VENUE` (park|tropical|indoor), `PALETTE`
-  (blue|green), `TOD` (day|night), `DIFF`, `MATCHES`, `MAXSEC`. Speed multiplies
+  (blue|green), `TOD` (day|night), `DIFF`, `MATCHES`, `MAXSEC`, `MECH` (v1|v2
+  flight mechanics; prints a per-match metrics summary). Speed multiplies
   *simulated* time (fixed 1/60 steps), so behavior matches 1x; drop to `SPEED=1`
   to confirm anything suspicious isn't a fast-forward artifact.
 - `playwright` is a declared dev dependency; run `npx playwright install chromium`
@@ -140,12 +141,23 @@ is `+z` (toward camera); far/AI side is `-z`. All court constants live in
 restitution, friction, spin decay), `RULES` (11, win-by-2), `CAMERA`, `HIT`
 (swing window 0.30, reach 1.5, cooldowns, human speed). Change tuning **here**.
 
-**`physics.js`** — pure ball integration. `step()` advances the ball one substep
-and returns discrete events (`bounce` / `floor-out` / `net`). `launch(p0, target,
-apex, margin, spin)` is a **net-aware** solver: it raises the arc 0.25 m at a time
-until `clearsNet()` (which simulates the *same* gravity + drag + Magnus as `step`)
-confirms it clears. **Do not** simplify `clearsNet` to a drag-free parabola or stop
-snapping the ball to the contact point on a hit — either reintroduces net clips.
+**`physics.js`** — pure ball integration. Two coexisting flight models selected
+by `Game` mechanics (`?mech=`); a bottom-right HUD badge shows the active one:
+- **v2 (DEFAULT)** — honest simulated flight: the ball *always* integrates
+  gravity + quadratic drag + Magnus (`stepV2`), and a hit solves a launch
+  velocity with `solveArc` (three families: flat **driven** for drive/speedup,
+  **arc** for touch shots — net clearance by construction — and **direct** for
+  smash/Erne). Spin curves/dips flight and shapes a spin-aware bounce. See
+  GAMEPLAY.md → "Trajectory System v2". Constants live in `constants.js`
+  `PHYS_V2`/`TIMING_V2`.
+- **v1 (`?mech=v1`, legacy)** — `step()` advances one substep + discrete events
+  (`bounce` / `floor-out` / `net`); the live hit path scripts a quadratic Bezier
+  and only runs `step()` post-bounce. `launch()`/`clearsNet()`/`solveShot()` are
+  the net-aware ballistic solvers (still used by v1 fault shots). Kept ONLY for
+  A/B comparison during user testing — **v1 will be removed once testing
+  completes**; do not build new features against it. (While it exists: don't
+  simplify `clearsNet` to a drag-free parabola or stop snapping the ball to the
+  contact point — either reintroduces net clips.)
 
 **`shots.js`** — THE shot tuning surface. Five types (`drive`, `drop`, `dink`,
 `lob`, `speedup`) as `PROFILES` (apex, depth, spin, net margin). `classify(zone,

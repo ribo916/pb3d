@@ -25,7 +25,7 @@ import { makePlayer } from './players.js';
 import { resolveSlotCharacter } from './characters.js';
 import { makeCamera, updateCamera } from './camera.js';
 import { clamp, dist2D } from './utils.js';
-import { HIT, PHYS, STABILITY, POWER_CAP, SPECIALTY, MOVEMENT, PRACTICE } from './constants.js';
+import { HIT, PHYS, PHYS_V2, STABILITY, POWER_CAP, SPECIALTY, MOVEMENT, PRACTICE, TIMING_V2 } from './constants.js';
 import { normalizeMode } from './modes.js';
 
 const C = Physics.COURT;
@@ -112,6 +112,20 @@ function renderQuality(isMobile) {
   };
 }
 
+// Mechanics selector: 'v2' (DEFAULT) = honest simulated physics + numeric shot
+// solver; 'v1' = the legacy scripted-Bezier flight (see physics.js /
+// GAMEPLAY.md). Chosen by opts.mechanics, overridable at runtime via
+// ?mech=v1|v2. v1 is kept only for A/B comparison during user testing and will
+// be removed once testing completes.
+function mechanicsMode(opt) {
+  var forced = '';
+  try {
+    forced = new URLSearchParams(window.location.search).get('mech') || '';
+  } catch (e) {}
+  forced = String(forced || opt || '').toLowerCase();
+  return forced === 'v1' ? 'v1' : 'v2';
+}
+
 function normalizeDifficulty(d) {
   if (d === '4.0' || d === 'beginner' || d === 'easy') return 'easy';
   if (d === '4.5' || d === 'intermediate' || d === 'normal') return 'normal';
@@ -140,6 +154,10 @@ export function Game(opts) {
   this.roster = opts.roster || {};
   this.onMatchOver = opts.onMatchOver || null;
   this.isMobile = !!opts.isMobile;
+  this.mechanics = mechanicsMode(opts.mechanics);
+  this.mechanicsV2 = this.mechanics === 'v2';
+  // Lightweight always-on match metrics for A/B tuning (see tools/play.mjs).
+  this.metrics = { pointsByReason: {}, rallyShots: [], netErrors: 0, serveFaults: 0 };
   this.state = STATE.MENU;
   this.excitement = 0;
   this.cameraShake = 0;
@@ -201,6 +219,7 @@ Game.prototype._initWorld = function () {
   });
   this._syncOverhead(); // honor an initial Top-Down camMode
   this.ball = Physics.makeBall();
+  this.ball.mech = this.mechanicsV2 ? 'v2' : 'v1'; // tags forward-sim forces in AI.predict
 
   // Roster: doubles keeps the classic four-player setup; singles uses the
   // human plus the far-side opponent slot.
@@ -501,8 +520,6 @@ Game.prototype._launchPracticeBall = function () {
   var target = this.practice.feedNum === 0 ? Practice.openingFeedTarget() : Practice.randomFeedTarget();
   var p0 = Physics.vec(this.practice.origin.x, this.practice.origin.y, this.practice.origin.z);
   var p2 = Physics.vec(target.x, 0, target.z);
-  var p1 = Physics.computeP1(p0, p2, PRACTICE.FEED_APEX, PRACTICE.FEED_MARGIN);
-  var duration = Physics.splineFlightTime(p0, p2, p1.y);
   this.practice.target = target;
   this.practice.active = true;
   this.practice.feedNum += 1;
@@ -510,10 +527,18 @@ Game.prototype._launchPracticeBall = function () {
   this.practice.nearestDist = Practice.nearestBallDistance(this.players[0].pos, p0);
   this.practice.swingAttempted = false;
   this.practice.swingSide = 0;
-  this.ball.spline = { P0: p0, P1: p1, P2: p2, duration: duration, elapsed: 0 };
-  this.ball.spin = Physics.vec(2.4, (Math.random() - 0.5) * 0.7, 0);
-  this.ball.live = true;
-  this.ball.pos = Physics.clone(p0);
+  if (this.mechanicsV2) {
+    var feedSpin = Physics.vec(2.4, (Math.random() - 0.5) * 0.7, 0);
+    this.ball.pos = Physics.clone(p0);
+    this._executeShotV2(p2.x, p2.z, PRACTICE.FEED_APEX, PRACTICE.FEED_MARGIN, feedSpin, { type: 'feed' });
+  } else {
+    var p1 = Physics.computeP1(p0, p2, PRACTICE.FEED_APEX, PRACTICE.FEED_MARGIN);
+    var duration = Physics.splineFlightTime(p0, p2, p1.y);
+    this.ball.spline = { P0: p0, P1: p1, P2: p2, duration: duration, elapsed: 0 };
+    this.ball.spin = Physics.vec(2.4, (Math.random() - 0.5) * 0.7, 0);
+    this.ball.live = true;
+    this.ball.pos = Physics.clone(p0);
+  }
   this.state = STATE.RALLY;
   this.lastHitCooldown = 0.04;
   if (this.audio) this.audio.sfx.serve();
@@ -576,12 +601,19 @@ Game.prototype._launchServe = function () {
   var targetX = Rules.sideX(rcv.team, rcv.side) * (C.HALF_W * 0.5);
   var targetZ = -fwd * (C.HALF_L * 0.74);
   var target = Physics.vec(targetX + (Math.random() - 0.5) * 0.4, 0, targetZ);
-  var serveSpin = Physics.vec(2.0, 0, 0);
-  var serveApex = 2.5;
-  var P1serve = Physics.computeP1(p0, target, serveApex, null);
-  var T = Physics.splineFlightTime(p0, target, P1serve.y);
-  this.ball.spline = { P0: p0, P1: P1serve, P2: target, duration: T, elapsed: 0 };
-  this.ball.spin = serveSpin; this.ball.live = true; this.ball.pos = Physics.clone(p0);
+  if (this.mechanicsV2) {
+    var srvSpec = Shots.specV2('serve', C.KITCHEN, C.HALF_L);
+    var srvSpin = Physics.vec(srvSpec.spinX * -fwd, 0, 0);
+    this.ball.pos = Physics.clone(p0);
+    this._executeShotV2(target.x, target.z, srvSpec.apex, srvSpec.margin, srvSpin, { type: 'serve' });
+  } else {
+    var serveSpin = Physics.vec(2.0, 0, 0);
+    var serveApex = 2.5;
+    var P1serve = Physics.computeP1(p0, target, serveApex, null);
+    var T = Physics.splineFlightTime(p0, target, P1serve.y);
+    this.ball.spline = { P0: p0, P1: P1serve, P2: target, duration: T, elapsed: 0 };
+    this.ball.spin = serveSpin; this.ball.live = true; this.ball.pos = Physics.clone(p0);
+  }
   Rules.onPaddleHit(this.match, this.match.server, { volley: false });
   if (this.audio) this.audio.sfx.serve();
   this.cameraShake = Math.max(this.cameraShake, 0.05);
@@ -596,6 +628,15 @@ Game.prototype._endPoint = function (result) {
   this.pointPause = 1.5;
   this.ball.live = false;
   this.excitement = 1.0;
+  // Metrics for A/B tuning (tools/play.mjs reads game.metrics).
+  var m = this.metrics;
+  if (m) {
+    var reason = result.reason || 'unknown';
+    m.pointsByReason[reason] = (m.pointsByReason[reason] || 0) + 1;
+    if (this.match && this.match.rally) m.rallyShots.push(this.match.rally.shots || 0);
+    if (reason === 'into-net') m.netErrors++;
+    if (reason === 'serve-fault' || reason === 'serve-wrong-court') m.serveFaults++;
+  }
   this.cameraShake = result.scored ? 0.25 : 0.12;
   this._triggerPointReaction(result.rallyWinner);
   var msg = this._resultMessage(result);
@@ -712,7 +753,11 @@ Game.prototype._tickRally = function (dt) {
   this.lastHitCooldown = Math.max(0, this.lastHitCooldown - dt);
   var steps = 4, h = dt / steps;
   for (var s = 0; s < steps; s++) {
-    if (this.ball.spline) {
+    if (this.mechanicsV2) {
+      if (this.ball.flight) this.ball.flight.elapsed += h;
+      var evs2 = Physics.stepV2(this.ball, h);
+      for (var j = 0; j < evs2.length; j++) { this._clearFlightOn(evs2[j]); this._handleBallEvent(evs2[j]); }
+    } else if (this.ball.spline) {
       this._stepSpline(h);
     } else {
       var evs = Physics.step(this.ball, h);
@@ -742,7 +787,11 @@ Game.prototype._tickPractice = function (dt) {
   this.lastHitCooldown = Math.max(0, this.lastHitCooldown - dt);
   var steps = 4, h = dt / steps;
   for (var s = 0; s < steps; s++) {
-    if (this.ball.spline) this._stepSpline(h);
+    if (this.mechanicsV2) {
+      if (this.ball.flight) this.ball.flight.elapsed += h;
+      var evs2 = Physics.stepV2(this.ball, h);
+      for (var j = 0; j < evs2.length; j++) { this._clearFlightOn(evs2[j]); this._handlePracticeBallEvent(evs2[j]); }
+    } else if (this.ball.spline) this._stepSpline(h);
     else {
       var evs = Physics.step(this.ball, h);
       for (var i = 0; i < evs.length; i++) this._handlePracticeBallEvent(evs[i]);
@@ -792,6 +841,12 @@ Game.prototype._stepSpline = function (h) {
       side: side, x: this.ball.pos.x, z: this.ball.pos.z, inBounds: inBounds
     });
   }
+};
+
+// v2: drop the cached flight prediction once the ball bounces/nets, so the AI
+// stops trusting a stale landing point and forward-integrates the roll-out.
+Game.prototype._clearFlightOn = function (e) {
+  if (e && (e.type === 'bounce' || e.type === 'floor-out' || e.type === 'net')) this.ball.flight = null;
 };
 
 Game.prototype._handleBallEvent = function (e) {
@@ -964,6 +1019,7 @@ Game.prototype._checkContacts = function (dt) {
 
   if (p.isHuman) {
     if (this.swingWindow <= 0 || this.swingUsed) return; // human must time a swing
+    if (this._holdForContact(p)) return; // v2: let the ball reach the body plane
     this._hit(p);
     this.swingUsed = true;
   } else {
@@ -975,8 +1031,11 @@ Game.prototype._checkContacts = function (dt) {
     }
     // If the ball is still rising and will reach smash height, wait for it.
     // This lets the CPU attack overhead instead of scooping it at ankle level.
+    // Use the ACTIVE mechanics' gravity: under v2 (9.81) a rising ball peaks
+    // ~27% higher than the v1 constant (13.5) predicts.
     if (this.ball.vel.y > 0 && this.ball.pos.y < POWER_CAP.SMASH_H) {
-      var peakY = this.ball.pos.y + (this.ball.vel.y * this.ball.vel.y) / (2 * PHYS.GRAVITY);
+      var gAct = this.mechanicsV2 ? PHYS_V2.GRAVITY : PHYS.GRAVITY;
+      var peakY = this.ball.pos.y + (this.ball.vel.y * this.ball.vel.y) / (2 * gAct);
       if (peakY >= POWER_CAP.SMASH_H) {
         p.aiSwingTimer = 0;
         return;
@@ -999,8 +1058,25 @@ Game.prototype._checkPracticeContacts = function () {
   var p = this.players[0];
   if (!this._reachOK(p.pos)) return;
   if (this.swingWindow <= 0 || this.swingUsed) return;
+  if (this._holdForContact(p)) return; // v2: let the ball reach the body plane
   this._hitPractice(p);
   this.swingUsed = true;
+};
+
+// v2 human strike deferral: an early swing press no longer strikes the ball
+// the instant it crosses the 1.5m reach ring (max stretch, guaranteed-bad
+// geometry). While the window is open, hold the strike until the ball is
+// within TIMING_V2.HOLD_Z in front of the body — like arcade tennis, pressing
+// early still connects, near ideal contact, with only the window as the limit.
+// Strike immediately if the ball is already close, receding, or the window is
+// on its final tick.
+Game.prototype._holdForContact = function (p) {
+  if (!this.mechanicsV2) return false;
+  if (this.swingWindow <= 1 / 30) return false;             // window closing: hit now
+  var fwd = (p.team === 'near') ? 1 : -1;
+  var zOff = (this.ball.pos.z - p.pos.z) * fwd;             // negative = in front
+  if (zOff >= -TIMING_V2.HOLD_Z) return false;              // near/behind the body plane
+  return (this.ball.vel.z * fwd) > 0;                       // still approaching → wait
 };
 
 // Resolve the AIMED shot for a human-controlled player from the held directional
@@ -1011,7 +1087,9 @@ Game.prototype._aimTarget = function (p, intentOverride) {
   var move = (this.input && this.input.state.move) ? this.input.state.move : { x: 0, z: 0 };
   var aim = clamp((this.swingAim || 0) + (move.x || 0), -1, 1);
   var intent = intentOverride || ((this.swingShot === 'lob') ? 'lob' : (this.swingPower || 'power'));
-  var sr = Shots.resolve(Math.abs(pos.z), this.ball.pos.y, intent, C.KITCHEN, C.HALF_L);
+  var sr = this.mechanicsV2
+    ? Shots.resolveV2(Math.abs(pos.z), this.ball.pos.y, intent, C.KITCHEN, C.HALF_L)
+    : Shots.resolve(Math.abs(pos.z), this.ball.pos.y, intent, C.KITCHEN, C.HALF_L);
   var landZ = Shots.aimDepth(sr.sp.landZ, -(move.z || 0), C.KITCHEN, C.HALF_L);
   return { aim: aim, x: aim * C.HALF_W * 0.92, z: -fwd * landZ, type: sr.type, sp: sr.sp };
 };
@@ -1024,6 +1102,15 @@ Game.prototype._allPlayersAtKitchen = function () {
   return true;
 };
 
+// Quality → apex degradation for the active mechanics. v1 multiplies; v2 adds
+// a modest, capped loft (a mishit is a "slightly high" attackable ball, never
+// a lob — see Shots.apexForQualityV2).
+Game.prototype._apexForQuality = function (baseApex, quality) {
+  return this.mechanicsV2
+    ? Shots.apexForQualityV2(baseApex, quality)
+    : Shots.apexForQuality(baseApex, quality);
+};
+
 // Compute the Stability Index [0,1] for player p at contact time.
 // High = standing still near ball; low = stretched + sprinting.
 Game.prototype._computeStability = function (p) {
@@ -1034,6 +1121,33 @@ Game.prototype._computeStability = function (p) {
   var speed = Math.sqrt(p.vel.x * p.vel.x + p.vel.z * p.vel.z);
   var velFactor = Math.max(0, 1 - (speed / HIT.HUMAN_SPEED) * STABILITY.VEL_WEIGHT);
   return distFactor * velFactor;
+};
+
+// v2 timing-quality for the human, anchored to CONTACT GEOMETRY: where the ball
+// sits relative to the body at the strike (facing-normalized z-offset, negative
+// = in front), graded against the same ideal contact practice mode coaches
+// (PRACTICE.TIMING_IDEAL_Z). Ball far out front = early → cross-body pull; ball
+// into the body = late → paddle-side push; both cost pace, edge hits loft. This
+// is the signal the player can actually see, it lines up with the swing
+// animation's contact pose, and it REINFORCES the Stability Index (same
+// geometry) instead of fighting it the way a press-clock anchor did.
+Game.prototype._humanTiming = function (p, swingType, fwd) {
+  if (!this.mechanicsV2) return { targetXSkew: 0, paceMul: 1, apexAdd: 0 };
+  var zOff = (this.ball.pos.z - p.pos.z) * fwd; // negative = in front, both teams
+  var offset = Shots.timingOffsetFromContact(zOff);
+  return Shots.applyTiming(offset, swingType, fwd);
+};
+
+// v2 timing-quality for a CPU: gaussian offset scaled by the tier's `timing`
+// sigma. CPUs take only the pace/loft consequences — the lateral skew is zeroed
+// because directional variance is already owned by cfg.err (strategies' aim
+// scatter); keeping both double-counts lateral error at the low tiers.
+Game.prototype._cpuTiming = function (ai, swingType, fwd) {
+  if (!this.mechanicsV2) return { targetXSkew: 0, paceMul: 1, apexAdd: 0 };
+  var sigma = (ai && ai.cfg && ai.cfg.timing != null) ? ai.cfg.timing : 0.2;
+  var offset = clamp(gaussian(0, sigma), -1, 1);
+  var tm = Shots.applyTiming(offset, swingType, fwd);
+  return { targetXSkew: 0, paceMul: tm.paceMul, apexAdd: tm.apexAdd };
 };
 
 // Return the player on the opposing team who is furthest from the net.
@@ -1072,6 +1186,61 @@ Game.prototype._executeSplineShot = function (P2x, P2z, apex, margin, spinVec, i
   this.ball.spin = spinVec;
   this.ball.live = true;
   this.ball.pos = Physics.clone(p0); // snap
+  this.lastHitCooldown = HIT.COOLDOWN_RALLY;
+};
+
+// Mechanics dispatcher: routes a resolved shot to the active flight model. Both
+// paths receive the SAME already-computed target/apex/margin/spin (apex is
+// quality-adjusted, spin is sign-flipped by -fwd, targetX includes aim blend);
+// opts carries the shot type + timing so v2 can pull vMax/direct/allowNet and
+// apply the timing pace/loft. This is the single seam between v1 and v2.
+Game.prototype._executeShot = function (targetX, targetZ, apex, margin, spinVec, opts) {
+  opts = opts || {};
+  if (this.mechanicsV2) {
+    this._executeShotV2(targetX, targetZ, apex, margin, spinVec, opts);
+  } else {
+    this._executeSplineShot(targetX, targetZ, apex, margin, spinVec, !!opts.isAtp);
+  }
+};
+
+// v2 executor: snap to contact, solve an honest launch velocity, cache the
+// forward-simmed flight for AI prediction. The ball then integrates under real
+// physics (stepV2) every substep — no scripted curve.
+Game.prototype._executeShotV2 = function (targetX, targetZ, apex, margin, spinVec, opts) {
+  opts = opts || {};
+  var profile = opts.type ? Shots.specV2(opts.type, C.KITCHEN, C.HALF_L) : null;
+  var vMax = (opts.vMax != null ? opts.vMax : (profile ? profile.vMax : 16));
+  var driven = (opts.driven != null ? opts.driven : (profile ? profile.driven : false));
+  var direct = (opts.direct != null ? opts.direct : (profile ? profile.direct : false));
+  var allowNet = (opts.allowNet != null ? opts.allowNet : (profile ? profile.allowNet : false));
+  var paceMul = (opts.paceMul != null ? opts.paceMul : 1);
+  var apexAdd = (opts.apexAdd != null ? opts.apexAdd : 0);
+  var p0 = Physics.vec(this.ball.pos.x, Math.max(0.5, this.ball.pos.y), this.ball.pos.z);
+  // Timing loft: a driven shot has no apex — raise its tape-crossing target
+  // instead (the drive floats up); arc shots take the loft on the apex.
+  var spec = {
+    apex: driven ? apex : apex + apexAdd,
+    margin: driven ? margin + apexAdd : margin,
+    spin: spinVec,
+    vMax: vMax * paceMul, driven: driven, direct: direct, allowNet: allowNet
+  };
+  var sol = Physics.solveArc(p0, { x: targetX, z: targetZ }, spec);
+  this.ball.pos = Physics.clone(p0); // snap to contact point
+  this.ball.vel = { x: sol.v0.x, y: sol.v0.y, z: sol.v0.z };
+  this.ball.spin = spinVec;
+  this.ball.spline = null;
+  this.ball.live = true;
+  this.ball.flight = { landing: sol.landing, T: sol.T, apexY: sol.apexY, samples: sol.samples, elapsed: 0 };
+  // Arc-shape metrics: mean apex + launch speed per shot type (the tuning
+  // blind spot that let "everything is a lob" slip past rally-length A/B).
+  if (this.metrics) {
+    var stats = this.metrics.shotStats || (this.metrics.shotStats = {});
+    var key = opts.type || 'other';
+    var st = stats[key] || (stats[key] = { n: 0, apexSum: 0, speedSum: 0 });
+    st.n++;
+    st.apexSum += sol.apexY;
+    st.speedSum += Math.sqrt(sol.v0.x * sol.v0.x + sol.v0.y * sol.v0.y + sol.v0.z * sol.v0.z);
+  }
   this.lastHitCooldown = HIT.COOLDOWN_RALLY;
 };
 
@@ -1114,7 +1283,7 @@ Game.prototype._hitPractice = function (p) {
     shot = this._buildPracticeReturnShot(at.x, at.z, POWER_CAP.NET_H + 0.06, 0.06,
       Physics.vec(7.0 * -fwd, at.aim * 1.5, 0), false);
   } else {
-    var apex = Shots.apexForQuality(at.sp.apex, quality);
+    var apex = this._apexForQuality(at.sp.apex, quality);
     var spinVec = Physics.vec((at.sp.spinX + (swingType === 'bh' ? -1.5 : 0)) * -fwd,
       at.aim * 1.5 + at.sp.spinY, 0);
     shot = this._buildPracticeReturnShot(at.x, at.z, apex, at.sp.margin, spinVec, false);
@@ -1149,7 +1318,7 @@ Game.prototype._hit = function (p) {
     var atpZ = -fwd * (C.HALF_L * 0.55);
     var atpSpin = Physics.vec(0, atpSign * 2.0, 0);
     this._flashShot('atp');
-    this._executeSplineShot(atpX, atpZ, 0.75, 0, atpSpin, true);
+    this._executeShot(atpX, atpZ, 0.75, 0, atpSpin, { type: 'atp', isAtp: true, allowNet: true });
     return;
   }
 
@@ -1159,7 +1328,7 @@ Game.prototype._hit = function (p) {
     var erneZ = -fwd * (C.HALF_L * 0.35);
     var erneSpin = Physics.vec(3.5 * -fwd, 0, 0);
     this._flashShot('erne');
-    this._executeSplineShot(erneX, erneZ, 0.95, 0.05, erneSpin, false);
+    this._executeShot(erneX, erneZ, 0.95, 0.05, erneSpin, { type: 'erne' });
     return;
   }
 
@@ -1181,10 +1350,13 @@ Game.prototype._hit = function (p) {
   var allAtKitchen = this._allPlayersAtKitchen();
   if (allAtKitchen && this.ball.pos.y <= POWER_CAP.NET_H) {
     var dbTarget = Shots.dinkBattleTarget(pos, this.ball.pos, fwd, C.KITCHEN, C.HALF_W);
-    var dbApex = Shots.apexForQuality(Shots.params('dink', C.KITCHEN, C.HALF_L).apex, quality);
+    var dbBaseApex = (this.mechanicsV2 ? Shots.specV2('dink', C.KITCHEN, C.HALF_L) : Shots.params('dink', C.KITCHEN, C.HALF_L)).apex;
+    var dbApex = this._apexForQuality(dbBaseApex, quality);
     var dbSpin = Physics.vec(-1.0 * -fwd, 0, 0);
     this._flashShot('dink');
-    this._executeSplineShot(dbTarget.x, dbTarget.z, dbApex, 0.16, dbSpin, false);
+    var dbTm = this._humanTiming(p, swingType, fwd);
+    this._executeShot(dbTarget.x + dbTm.targetXSkew, dbTarget.z, dbApex, 0.16, dbSpin,
+      { type: 'dink', paceMul: dbTm.paceMul, apexAdd: dbTm.apexAdd });
     return;
   }
 
@@ -1204,16 +1376,24 @@ Game.prototype._hit = function (p) {
   if (maxI === 'smash') {
     var smashSpin = Physics.vec(7.0 * -fwd, blend * 1.5, 0);
     this._flashShot('speedup');
-    this._executeSplineShot(targetX, at.z, POWER_CAP.NET_H + 0.06, 0.06, smashSpin, false);
+    var smashTm = this._humanTiming(p, swingType, fwd);
+    this._executeShot(targetX + smashTm.targetXSkew, at.z, POWER_CAP.NET_H + 0.06, 0.06, smashSpin,
+      { type: 'smash', paceMul: smashTm.paceMul, apexAdd: smashTm.apexAdd });
     this._checkPoach(p.team);
     return;
   }
 
-  var apex = Shots.apexForQuality(at.sp.apex, quality);
+  var apex = this._apexForQuality(at.sp.apex, quality);
   var spinVec = Physics.vec((at.sp.spinX + (swingType === 'bh' ? -1.5 : 0)) * -fwd,
                              blend * 1.5 + at.sp.spinY, 0);
   this._flashShot(at.type);
-  this._executeSplineShot(targetX, at.z, apex, at.sp.margin, spinVec, false);
+  var tm = this._humanTiming(p, swingType, fwd);
+  // Only a CLEAN power shot flies the driven (flat) family; a float/popup
+  // falls back to the arc solver with the quality-lofted apex — the mishit
+  // "sits up a little" and becomes attackable.
+  this._executeShot(targetX + tm.targetXSkew, at.z, apex, at.sp.margin, spinVec,
+    { type: at.type, paceMul: tm.paceMul, apexAdd: tm.apexAdd,
+      driven: quality === 'clean' ? null : false });
   this._checkPoach(p.team);
 };
 
@@ -1256,7 +1436,14 @@ Game.prototype._cpuHit = function (p) {
   if (shot.fault) {
     var tgtZf = (p.team === 'near') ? -shot.target.z : shot.target.z;
     var spinVecF = Physics.vec(shot.spin.x * -fwd, shot.spin.y, shot.spin.z);
-    this._executeHit(shot.target.x, tgtZf, shot.apex, shot.margin, spinVecF, shot.fault);
+    if (this.mechanicsV2) {
+      // v2 fault: solve honestly toward the AI's deliberately-bad target with net
+      // raising OFF, so it lands out or clips the tape — either way a fault.
+      this._executeShotV2(shot.target.x, tgtZf, shot.apex, shot.margin, spinVecF,
+        { type: shot.type, allowNet: true });
+    } else {
+      this._executeHit(shot.target.x, tgtZf, shot.apex, shot.margin, spinVecF, shot.fault);
+    }
     return;
   }
 
@@ -1267,10 +1454,15 @@ Game.prototype._cpuHit = function (p) {
   // degradation so a sprinting CPU doesn't turn a smash into a lob.
   // (stabilityIdx computed above and reused as the shot-selection contactQuality.)
   var quality = shot.isSmash ? 'clean' : Shots.stabilityQuality(stabilityIdx);
-  var apex = Shots.apexForQuality(shot.apex, quality);
+  var apex = this._apexForQuality(shot.apex, quality);
 
   var spinVec = Physics.vec(shot.spin.x * -fwd, shot.spin.y, shot.spin.z);
-  this._executeSplineShot(shot.target.x, tgtZ, apex, shot.margin, spinVec, isAtp);
+  var cpuSide = Shots.swingSide(pos.x, this.ball.pos.x, fwd);
+  var ctm = this._cpuTiming(p.ai, cpuSide, fwd);
+  // Clean power shots fly the driven family; mishits fall back to the arc.
+  this._executeShot(shot.target.x + ctm.targetXSkew, tgtZ, apex, shot.margin, spinVec,
+    { type: shot.type, isAtp: isAtp, paceMul: ctm.paceMul, apexAdd: ctm.apexAdd,
+      driven: quality === 'clean' ? null : false });
 
   // Poach check: can the net partner intercept this shot?
   this._checkPoach(p.team);
@@ -1281,38 +1473,50 @@ Game.prototype._cpuHit = function (p) {
 // If so, deflects the ball mid-spline toward open court on the hitter's side.
 Game.prototype._checkPoach = function (hitterTeam) {
   if (this.mode === 'singles' || this.mode === 'practice') return;
-  if (!this.ball.spline) return;
-  var sp = this.ball.spline;
+  // Trajectory + landing come from whichever flight model is active.
+  var path, landingX;
+  if (this.mechanicsV2) {
+    if (!this.ball.flight) return;
+    path = { samples: this.ball.flight.samples, landing: this.ball.flight.landing };
+    landingX = this.ball.flight.landing.x;
+  } else {
+    if (!this.ball.spline) return;
+    var sp = this.ball.spline;
+    path = { P0: sp.P0, P1: sp.P1, P2: sp.P2 };
+    landingX = sp.P2.x;
+  }
   var receivingTeam = hitterTeam === 'near' ? 'far' : 'near';
   // The partner is whichever player on the receiving team is NOT responsible.
-  var responsibleSlot = this._responsibleSlot(receivingTeam, sp.P2.x);
+  var responsibleSlot = this._responsibleSlot(receivingTeam, landingX);
   var partnerSlot = 1 - responsibleSlot;
   var partner = this._player(receivingTeam, partnerSlot);
   if (!partner || !partner.ai) return; // human partner: no auto-poach
 
-  if (!AI.checkPoach(partner.ai, sp.P0, sp.P1, sp.P2, partner.pos)) return;
+  if (!AI.checkPoach(partner.ai, path, partner.pos)) return;
 
   // Poach: swing the partner and redirect the ball toward open court.
   partner.mesh.swing('fh');
   if (this.audio) this.audio.sfx.paddle();
 
   // New landing target: away from where the hitter aimed, on the hitter's side.
-  var openX = -sp.P2.x * 0.7 + (Math.random() - 0.5) * 0.6;
+  var openX = -landingX * 0.7 + (Math.random() - 0.5) * 0.6;
   var openZ = (hitterTeam === 'near' ? 1 : -1) * (C.HALF_L * 0.72);
-  var fwd = (receivingTeam === 'near') ? 1 : -1;
-  var newP2 = Physics.vec(openX, 0, openZ);
-  var newP1 = Physics.computeP1(partner.pos.x !== undefined
-    ? Physics.vec(partner.pos.x, 1.1, partner.pos.z) : sp.P1,
-    newP2, 1.4, 0.18);
-  var newT = Physics.splineFlightTime(
-    Physics.vec(partner.pos.x, 1.1, partner.pos.z), newP2, newP1.y);
-  this.ball.spline = {
-    P0: Physics.vec(partner.pos.x, 1.1, partner.pos.z),
-    P1: newP1, P2: newP2, duration: newT, elapsed: 0
-  };
-  this.ball.pos = Physics.clone(this.ball.spline.P0);
+  var contact = Physics.vec(partner.pos.x, 1.1, partner.pos.z);
+
+  if (this.mechanicsV2) {
+    // Re-solve an honest redirected shot from the partner's contact point.
+    this.ball.pos = Physics.clone(contact);
+    this.ball.spin = Physics.vec(0, 0, 0);
+    this._executeShotV2(openX, openZ, 1.4, 0.18, this.ball.spin, { type: 'drive' });
+  } else {
+    var newP2 = Physics.vec(openX, 0, openZ);
+    var newP1 = Physics.computeP1(contact, newP2, 1.4, 0.18);
+    var newT = Physics.splineFlightTime(contact, newP2, newP1.y);
+    this.ball.spline = { P0: contact, P1: newP1, P2: newP2, duration: newT, elapsed: 0 };
+    this.ball.pos = Physics.clone(contact);
+    this.lastHitCooldown = HIT.COOLDOWN_RALLY;
+  }
   this._triggerHitEffect();
-  this.lastHitCooldown = HIT.COOLDOWN_RALLY;
 };
 
 /* ----------------------------- rendering ------------------------------ */
@@ -1615,6 +1819,14 @@ Game.prototype._initPracticeReturnVisuals = function () {
 Game.prototype._buildPracticeReturnShot = function (targetX, targetZ, apex, margin, spinVec, isAtp) {
   var p0 = Physics.vec(this.ball.pos.x, Math.max(0.5, this.ball.pos.y), this.ball.pos.z);
   var p2 = Physics.vec(targetX, 0, targetZ);
+  if (this.mechanicsV2) {
+    // Honest flight for the cosmetic return: solve a launch velocity, integrate
+    // it with stepV2 in _updatePracticeReturns. Marker sits at the solved landing.
+    var sol = Physics.solveArc(p0, { x: targetX, z: targetZ }, {
+      apex: apex, margin: margin, spin: spinVec, vMax: 22, allowNet: !!isAtp
+    });
+    return { v2: true, P0: p0, v0: sol.v0, spin: spinVec, landing: sol.landing };
+  }
   var p1 = isAtp
     ? { x: (p0.x + p2.x) * 0.5, y: 0.4, z: p0.z * 0.5 }
     : Physics.computeP1(p0, p2, apex, margin);
@@ -1631,26 +1843,60 @@ Game.prototype._spawnPracticeReturn = function (shot) {
   slot = slot || this.practiceReturns[0];
   slot.active = true;
   slot.age = 0;
-  slot.spline = {
-    P0: Physics.clone(shot.P0),
-    P1: Physics.clone(shot.P1),
-    P2: Physics.clone(shot.P2),
-    duration: shot.duration,
-    elapsed: 0
-  };
-  slot.pos = Physics.clone(shot.P0);
-  slot.vel = Physics.vec(0, 0, 0);
-  slot.spin = Physics.clone(shot.spin);
+  if (shot.v2) {
+    slot.spline = null;
+    slot.v2 = true;
+    slot.pos = Physics.clone(shot.P0);
+    slot.vel = Physics.clone(shot.v0);
+    slot.spin = Physics.clone(shot.spin);
+    slot.mark.position.set(shot.landing.x, 0.04, shot.landing.z);
+  } else {
+    slot.v2 = false;
+    slot.spline = {
+      P0: Physics.clone(shot.P0),
+      P1: Physics.clone(shot.P1),
+      P2: Physics.clone(shot.P2),
+      duration: shot.duration,
+      elapsed: 0
+    };
+    slot.pos = Physics.clone(shot.P0);
+    slot.vel = Physics.vec(0, 0, 0);
+    slot.spin = Physics.clone(shot.spin);
+    slot.mark.position.set(shot.P2.x, 0.04, shot.P2.z);
+  }
   slot.mesh.visible = true;
   slot.blob.visible = true;
   slot.mark.visible = true;
-  slot.mark.position.set(shot.P2.x, 0.04, shot.P2.z);
 };
 
 Game.prototype._updatePracticeReturns = function (dt) {
   for (var i = 0; i < this.practiceReturns.length; i++) {
     var rb = this.practiceReturns[i];
     if (!rb.active) continue;
+
+    if (rb.v2) {
+      // Honest integration of the cosmetic return ball (no rules/scoring).
+      rb.age += dt;
+      var vb = { pos: rb.pos, vel: rb.vel, spin: rb.spin, live: true };
+      var evs = Physics.stepV2(vb, dt);
+      rb.pos = vb.pos; rb.vel = vb.vel; rb.spin = vb.spin;
+      var landed = evs.some(function (e) { return e.type === 'bounce' || e.type === 'floor-out'; });
+      rb.mesh.position.set(rb.pos.x, rb.pos.y, rb.pos.z);
+      rb.mesh.rotation.x += rb.vel.z * dt * 2;
+      rb.mesh.rotation.z -= rb.vel.x * dt * 2;
+      rb.blob.position.set(rb.pos.x, 0.02, rb.pos.z);
+      var scv = clamp(1.3 - rb.pos.y * 0.16, 0.35, 1.3);
+      rb.blob.scale.setScalar(scv);
+      rb.blob.material.opacity = clamp(0.22 - rb.pos.y * 0.024, 0.05, 0.22);
+      rb.mark.material.opacity = clamp(0.65 - rb.age * 0.4, 0.26, 0.65);
+      if (landed || rb.age > 4) {
+        if (landed) this._triggerBounceEffect(rb.pos.x, rb.pos.z);
+        rb.active = false; rb.v2 = false;
+        rb.mesh.visible = false; rb.blob.visible = false; rb.mark.visible = false;
+      }
+      continue;
+    }
+
     var sp = rb.spline;
     if (!sp) {
       rb.active = false;

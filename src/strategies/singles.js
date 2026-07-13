@@ -6,7 +6,7 @@ import * as Rules from '../rules.js';
 import { SPECIALTY, POWER_CAP, MOVEMENT, SINGLES } from '../constants.js';
 import { clamp } from '../utils.js';
 import { clampX, loneOpponent, singlesPassingTarget, feetDepth, rand,
-         situationalLob, scorePressure, ballDifficultyMult } from './common.js';
+         situationalLob, scorePressure, ballDifficultyMult, rallyLengthMult } from './common.js';
 
 const C = COURT;
 
@@ -37,7 +37,7 @@ export function chooseMovement(ai, ball, rally, ctx) {
     tz = pred.z + fwd * SINGLES.INTERCEPT_CUSHION;
     tz = clamp(tz, -C.HALF_L - 0.35, C.HALF_L + 0.35);
     var dist = ctx.distance(tx, tz);
-    var timeLeft = ball.spline ? Math.max(0, ball.spline.duration - ball.spline.elapsed) : 0.65;
+    var timeLeft = (pred.tLeft != null) ? pred.tLeft : 0.65;
     var reachable = ai.cfg.speed * (timeLeft + ai.cfg.react + 0.2);
     kind = dist > reachable + 0.45 ? 'emergency' : 'intercept';
     if (dist > MOVEMENT.LUNGE_DIST && timeLeft < 0.34) {
@@ -66,7 +66,8 @@ export function chooseShot(ai, ball, match, isServe, ctx) {
 
   // Score-awareness + pressure-linked errors (see doubles.js for rationale).
   var pressure = scorePressure(match, ctx.hitterTeam);
-  var effMiss = cfg.miss * ballDifficultyMult(ctx.contactQuality) * pressure.missMul;
+  var rlMult = (ball.mech === 'v2') ? rallyLengthMult(match.rally && match.rally.shots) : 1;
+  var effMiss = cfg.miss * ballDifficultyMult(ctx.contactQuality) * pressure.missMul * rlMult;
 
   if (!isServe && Math.random() < effMiss) {
     var mode = Math.random();
@@ -136,7 +137,8 @@ export function chooseShot(ai, ball, match, isServe, ctx) {
       intent = (Math.random() < dropChance) ? 'touch' : 'power';
     }
 
-    var sr = Shots.resolve(absZ, ball.pos.y, intent, C.KITCHEN, C.HALF_L);
+    // Resolve against the profiles of the ACTIVE mechanics (see doubles.js).
+    var sr = (ball.mech === 'v2' ? Shots.resolveV2 : Shots.resolve)(absZ, ball.pos.y, intent, C.KITCHEN, C.HALF_L);
     type = sr.type; var sp = sr.sp;
 
     if (type === 'drive' || type === 'speedup') {

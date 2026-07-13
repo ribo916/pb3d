@@ -313,6 +313,15 @@ async function startMatch(difficulty, config) {
   $('camBtn').addEventListener('click', function (e) { e.preventDefault(); input.state.camCycleQueued = true; });
   $('camBtn').addEventListener('touchstart', function (e) { e.preventDefault(); input.state.camCycleQueued = true; }, { passive: false });
 
+  // Gameplay-mechanics version tag (bottom-right): v2 = simulated physics
+  // (default), v1 = legacy spline flight (?mech=v1). Removed with v1 once user
+  // testing completes.
+  const mechBadge = $('mechBadge');
+  if (mechBadge) {
+    mechBadge.textContent = game.mechanics;
+    mechBadge.classList.toggle('legacy', game.mechanics === 'v1');
+  }
+
   $('hud').style.display = 'block';
   updateAudioUI();
   game.start();

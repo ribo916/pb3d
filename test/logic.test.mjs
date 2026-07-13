@@ -14,7 +14,7 @@ import { normalizeMode } from '../src/modes.js';
 import { buildMusicCatalog, sanitizeMusicState } from '../src/audio.js';
 import { STABILITY, POWER_CAP, SPECIALTY, MOVEMENT, HIT, PRACTICE } from '../src/constants.js';
 import { PERSONAS, mergeTraits, normalizePersona, PERSONA_META, personaStats, STAT_LABELS } from '../src/strategies/personas.js';
-import { scorePressure, situationalLob, ballDifficultyMult, aggBias } from '../src/strategies/common.js';
+import { scorePressure, situationalLob, ballDifficultyMult, aggBias, rallyLengthMult } from '../src/strategies/common.js';
 import { resolveTraits } from '../src/ai.js';
 
 const C = Physics.COURT;
@@ -262,11 +262,21 @@ test('singles passing target goes away from defender on same half', () => {
   const ball = Physics.makeBall();
   ball.live = true;
   ball.pos = Physics.vec(0, 1.1, -4.8);
-  const shot = AI.chooseShot(ai, ball, m, false, {
-    mode: 'singles',
-    hitterPos: { x: 0.2, z: -4.8 },
-    opponents: { a: { pos: { x: 1.1, z: 4.6 } } }
-  });
+  // Pin the RNG above the body-shot (0.14) / miss / lob rolls so the assert
+  // exercises the passing-lane branch deterministically (same pattern as the
+  // situationalLob test).
+  const realRandom = Math.random;
+  Math.random = () => 0.5;
+  let shot;
+  try {
+    shot = AI.chooseShot(ai, ball, m, false, {
+      mode: 'singles',
+      hitterPos: { x: 0.2, z: -4.8 },
+      opponents: { a: { pos: { x: 1.1, z: 4.6 } } }
+    });
+  } finally {
+    Math.random = realRandom;
+  }
   assert.ok(shot.target.x < 0, 'targets away from right-side defender');
 });
 
@@ -282,11 +292,20 @@ test('singles return-of-serve stays deep and avoids middle body ball', () => {
   const ball = Physics.makeBall();
   ball.live = true;
   ball.pos = Physics.vec(0.2, 1.0, -5.2);
-  const shot = AI.chooseShot(ai, ball, m, false, {
-    mode: 'singles',
-    hitterPos: { x: 0.1, z: -5.1 },
-    opponents: { a: { pos: { x: 1.3, z: 4.2 } } }
-  });
+  // Pin the RNG above the body-shot / miss rolls (deterministic branch; same
+  // pattern as the situationalLob test).
+  const realRandom = Math.random;
+  Math.random = () => 0.5;
+  let shot;
+  try {
+    shot = AI.chooseShot(ai, ball, m, false, {
+      mode: 'singles',
+      hitterPos: { x: 0.1, z: -5.1 },
+      opponents: { a: { pos: { x: 1.3, z: 4.2 } } }
+    });
+  } finally {
+    Math.random = realRandom;
+  }
   assert.ok(shot.target.z > C.HALF_L * 0.7, 'return stays deep');
   assert.ok(Math.abs(shot.target.x) > C.HALF_W * 0.45, 'return is not centered at the body');
 });
@@ -323,7 +342,7 @@ test('AI dispatcher selects the correct movement strategy by mode', () => {
     lane: 1,
     incoming: true,
     responsible: true,
-    prediction: { x: 0.8, z: 4.5 },
+    prediction: { x: 0.8, z: 4.5, peakY: 2.0, tLeft: 0.8 }, // popup peak → split step
     servingTeam: 'far',
     opponents: { a: { pos: { x: -1.2, z: -4.5 } }, b: { pos: { x: 1.1, z: -3.1 } } },
     distance: () => 0.6
@@ -482,30 +501,27 @@ test('swingSide picks fh/bh from ball position relative to hitter, mirrored by t
 /* ----------------------- AI poach helpers ------------------------------ */
 test('checkPoach returns false for easy difficulty', () => {
   const ai = AI.makeAI('easy');
-  const P0 = Physics.vec(0, 0.8, -5);
-  const P1 = Physics.vec(0, 2.0, 0);
-  const P2 = Physics.vec(0, 0, 5);
-  assert.equal(AI.checkPoach(ai, P0, P1, P2, { x: 0, z: 2 }), false);
+  const path = { P0: Physics.vec(0, 0.8, -5), P1: Physics.vec(0, 2.0, 0), P2: Physics.vec(0, 0, 5) };
+  assert.equal(AI.checkPoach(ai, path, { x: 0, z: 2 }), false);
 });
 
 test('checkPoach returns true for Pro when partner is directly in path', () => {
   const ai = AI.makeAI('hard');
-  const P0 = Physics.vec(0, 0.8, -4);
-  const P1 = Physics.vec(0, 2.0, 0);
-  const P2 = Physics.vec(0, 0, 4);  // straight shot through centre
-  // Partner standing right on the trajectory
-  const partnerPos = { x: 0, z: 2 };
-  assert.equal(AI.checkPoach(ai, P0, P1, P2, partnerPos), true);
+  const path = { P0: Physics.vec(0, 0.8, -4), P1: Physics.vec(0, 2.0, 0), P2: Physics.vec(0, 0, 4) };
+  assert.equal(AI.checkPoach(ai, path, { x: 0, z: 2 }), true);
 });
 
 test('checkPoach returns false for Pro when partner is far from path', () => {
   const ai = AI.makeAI('hard');
-  const P0 = Physics.vec(0, 0.8, -4);
-  const P1 = Physics.vec(0, 2.0, 0);
-  const P2 = Physics.vec(0, 0, 4);
-  // Partner far to the side — well outside POACH_PRO_REACH
-  const partnerPos = { x: C.HALF_W, z: 2 };
-  assert.equal(AI.checkPoach(ai, P0, P1, P2, partnerPos), false);
+  const path = { P0: Physics.vec(0, 0.8, -4), P1: Physics.vec(0, 2.0, 0), P2: Physics.vec(0, 0, 4) };
+  assert.equal(AI.checkPoach(ai, path, { x: C.HALF_W, z: 2 }), false);
+});
+
+test('checkPoach (v2) accepts flight samples for the Pro physical check', () => {
+  const ai = AI.makeAI('hard');
+  const samples = [{ x: 0, z: -4 }, { x: 0, z: 0 }, { x: 0, z: 2 }, { x: 0, z: 4 }];
+  assert.equal(AI.checkPoach(ai, { samples, landing: { x: 0, z: 4 } }, { x: 0, z: 2 }), true);
+  assert.equal(AI.checkPoach(ai, { samples, landing: { x: 0, z: 4 } }, { x: C.HALF_W, z: 2 }), false);
 });
 
 /* -------------------- AI predict spline fast-path --------------------- */
@@ -665,6 +681,13 @@ test('situationalLob fires when opponents are jammed at the kitchen, not from op
   }
 });
 
+test('rallyLengthMult is neutral early and ramps (capped) for long rallies', () => {
+  assert.equal(rallyLengthMult(0), 1, 'no pressure at rally start');
+  assert.equal(rallyLengthMult(8), 1, 'still neutral through the threshold');
+  assert.ok(rallyLengthMult(30) > rallyLengthMult(15), 'monotonic ramp past the threshold');
+  assert.ok(rallyLengthMult(1000) <= 5.0, 'capped');
+});
+
 test('ballDifficultyMult scales unforced errors by contact quality', () => {
   assert.ok(ballDifficultyMult(1) < 1, 'a clean sitter lowers the miss chance');
   assert.ok(ballDifficultyMult(0) > 1, 'a stretched, hard ball raises it');
@@ -686,6 +709,252 @@ test('persona presentation: every persona has meta, and stat bars reflect tier x
   assert.ok(proBanger.Speed > beginnerDefensive.Speed, 'a Pro is faster than a 4.0');
   assert.ok(personaStats(resolveTraits('5.0', 'defensive')).Touch >
     personaStats(resolveTraits('5.0', 'banger')).Touch, 'defensive shows more Touch than a banger');
+});
+
+/* ======================= mechanics v2: physics core ======================= */
+import { PHYS_V2, TIMING_V2 } from '../src/constants.js';
+
+test('v2 free-fall converges to terminal velocity √(g/DRAG_K)', () => {
+  const term = Math.sqrt(PHYS_V2.GRAVITY / PHYS_V2.DRAG_K);
+  const ball = Physics.makeBall();
+  ball.pos = Physics.vec(0, 2000, 0); ball.vel = Physics.vec(0, 0, 0); ball.live = true;
+  for (let i = 0; i < 2400 && ball.pos.y > 100; i++) Physics.stepV2(ball, 1 / 120); // ~20s, stays airborne
+  const vy = Math.abs(ball.vel.y);
+  assert.ok(Math.abs(vy - term) / term < 0.05,
+    'terminal vy (' + vy.toFixed(2) + ') within 5% of √(g/k) (' + term.toFixed(2) + ')');
+});
+
+test('v2 drag is quadratic: deceleration at 2v ≈ 4× at v', () => {
+  const a1 = Physics.accelV2({ x: 5, y: 0, z: 0 }, { x: 0, y: 0, z: 0 });
+  const a2 = Physics.accelV2({ x: 10, y: 0, z: 0 }, { x: 0, y: 0, z: 0 });
+  assert.ok(Math.abs((-a2.x) / (-a1.x) - 4) < 0.05, 'quadratic drag scaling (~4×)');
+});
+
+test('v2 solveArc converges + clears the net across the shot envelope grid', () => {
+  const spin = { x: 3, y: 0, z: 0 };
+  const contacts = [
+    { x: 0, y: 0.5, z: C.HALF_L * 0.9 },   // deep low (baseline drive)
+    { x: 1.5, y: 0.9, z: C.HALF_L * 0.6 }, // transition
+    { x: 0, y: 0.4, z: C.KITCHEN + 0.3 },  // kitchen low (dink)
+    { x: -1, y: 1.7, z: C.KITCHEN + 0.1 }  // high (smash-ish)
+  ];
+  contacts.forEach((p0, i) => {
+    const target = { x: -p0.x * 0.5, z: -C.HALF_L * 0.6 };
+    const sol = Physics.solveArc(p0, target, { apex: Math.max(1.1, p0.y + 0.5), margin: 0.2, spin, vMax: 20 });
+    assert.ok(sol.ok, 'contact ' + i + ' solves (ok)');
+    assert.ok(sol.landing && Math.hypot(sol.landing.x - target.x, sol.landing.z - target.z) < 0.3,
+      'contact ' + i + ' lands within 0.3m of target');
+    assert.ok(sol.T > 0.2 && sol.T < 3.5, 'contact ' + i + ' flight time plausible');
+  });
+});
+
+test('v2 solveArc also solves for the far team direction (+z target)', () => {
+  const p0 = { x: 0, y: 0.6, z: -C.HALF_L * 0.85 };
+  const target = { x: 0.5, z: C.HALF_L * 0.6 };
+  const sol = Physics.solveArc(p0, target, { apex: 1.2, margin: 0.2, spin: { x: -3, y: 0, z: 0 }, vMax: 20 });
+  assert.ok(sol.ok, 'far-side shot solves');
+  assert.ok(Math.hypot(sol.landing.x - target.x, sol.landing.z - target.z) < 0.3, 'far-side lands near target');
+});
+
+test('v2 spin-aware bounce: topspin skids faster than backspin', () => {
+  function bounceVz(spinX) {
+    const ball = Physics.makeBall();
+    ball.pos = Physics.vec(0, 0.05, -3); ball.vel = Physics.vec(0, -3, -6); ball.spin = Physics.vec(spinX, 0, 0); ball.live = true;
+    for (let i = 0; i < 40; i++) {
+      const ev = Physics.stepV2(ball, 1 / 240).find(e => e.type === 'bounce' || e.type === 'floor-out');
+      if (ev) return Math.abs(ball.vel.z);
+    }
+    return null;
+  }
+  // Ball travels -z. In the absolute physics frame, topspin (rolls forward, Magnus
+  // dips it) is spin.x < 0 for a -z shot; backspin is spin.x > 0. (The game flips
+  // spin by -fwd before it reaches physics, so this frame is already absolute.)
+  const top = bounceVz(-6), flat = bounceVz(0), back = bounceVz(6);
+  assert.ok(top !== null && flat !== null && back !== null, 'all bounced');
+  assert.ok(top > flat && flat > back, 'topspin skids fastest, backspin checks up (' +
+    top.toFixed(2) + ' > ' + flat.toFixed(2) + ' > ' + back.toFixed(2) + ')');
+});
+
+test('v2 sidespin kicks the bounce laterally with correct sign', () => {
+  function bounceVx(spinY) {
+    const ball = Physics.makeBall();
+    ball.pos = Physics.vec(0, 0.05, -3); ball.vel = Physics.vec(0, -3, -6); ball.spin = Physics.vec(0, spinY, 0); ball.live = true;
+    for (let i = 0; i < 40; i++) {
+      const ev = Physics.stepV2(ball, 1 / 240).find(e => e.type === 'bounce' || e.type === 'floor-out');
+      if (ev) return ball.vel.x;
+    }
+    return null;
+  }
+  assert.ok(bounceVx(5) > bounceVx(0), 'positive sidespin kicks +x');
+  assert.ok(bounceVx(-5) < bounceVx(0), 'negative sidespin kicks -x');
+});
+
+test('v2 Magnus in flight: topspin lands shorter than no-spin', () => {
+  const p0 = { x: 0, y: 0.8, z: 5 };
+  const v0 = { x: 0, y: 5, z: -12 };
+  const flat = Physics.simulateFlight(p0, v0, { x: 0, y: 0, z: 0 });
+  const top = Physics.simulateFlight(p0, v0, { x: -6, y: 0, z: 0 }); // topspin (-x for a -z shot) dips it
+  assert.ok(Math.abs(top.landing.z) < Math.abs(flat.landing.z),
+    'topspin dips the ball shorter (' + top.landing.z.toFixed(2) + ' vs ' + flat.landing.z.toFixed(2) + ')');
+});
+
+/* ======================= mechanics v2: shot grammar ======================= */
+test('specV2 returns physical envelopes with the inlined shots present', () => {
+  ['drive', 'drop', 'dink', 'lob', 'speedup', 'serve', 'smash', 'erne', 'atp', 'feed'].forEach((t) => {
+    const sp = Shots.specV2(t, C.KITCHEN, C.HALF_L);
+    assert.ok(sp && typeof sp.landZ === 'number' && sp.spin && typeof sp.vMax === 'number', t + ' has a full envelope');
+  });
+  const drop = Shots.specV2('drop', C.KITCHEN, C.HALF_L);
+  assert.ok(Math.abs(drop.landZ - C.KITCHEN * 0.55) < 1e-9, 'drop still dies in the kitchen');
+  assert.ok(Shots.specV2('smash', C.KITCHEN, C.HALF_L).direct, 'smash is a direct shot');
+  assert.ok(Shots.specV2('atp', C.KITCHEN, C.HALF_L).allowNet, 'atp bypasses net raising');
+});
+
+test('resolveV2 maps intent+zone+height to a type with an envelope', () => {
+  const r = Shots.resolveV2(C.HALF_L * 0.8, 0.7, 'touch', C.KITCHEN, C.HALF_L);
+  assert.equal(r.type, 'drop');
+  assert.ok(r.sp.vMax <= 12, 'a drop is a slow shot');
+});
+
+test('v2 clean drop bounces below net height; a popup-quality drop sits up', () => {
+  // Solve a clean drop from the baseline, then sim it through the bounce and
+  // measure the apex of the FIRST bounce. Clean must stay below the net (0.86);
+  // a popup-quality drop (apex ×2.6) must rise into the attack zone.
+  const p0 = { x: 0, y: 0.6, z: C.HALF_L * 0.82 };
+  function bouncePeak(apexHint) {
+    const sp = Shots.specV2('drop', C.KITCHEN, C.HALF_L);
+    const target = { x: 0, z: -sp.landZ };
+    const sol = Physics.solveArc(p0, target, { apex: apexHint, margin: sp.margin, spin: sp.spin, vMax: sp.vMax });
+    const ball = Physics.makeBall();
+    ball.pos = { x: p0.x, y: p0.y, z: p0.z };
+    ball.vel = { x: sol.v0.x, y: sol.v0.y, z: sol.v0.z };
+    ball.spin = { x: sp.spin.x, y: sp.spin.y, z: 0 };
+    ball.live = true;
+    let bounced = false, peak = 0;
+    for (let i = 0; i < 1200; i++) {
+      const evs = Physics.stepV2(ball, 1 / 240);
+      if (!bounced && evs.some(e => e.type === 'bounce' || e.type === 'floor-out')) bounced = true;
+      else if (bounced) { peak = Math.max(peak, ball.pos.y); if (ball.pos.y <= C.BALL_R + 1e-3 && ball.vel.y < 0) break; }
+    }
+    return peak;
+  }
+  const dropApex = Shots.specV2('drop', C.KITCHEN, C.HALF_L).apex;
+  const clean = bouncePeak(dropApex);
+  const popup = bouncePeak(Shots.apexForQualityV2(dropApex, 'popup'));
+  assert.ok(clean < POWER_CAP.NET_H, 'clean drop bounce peak (' + clean.toFixed(2) + ') below net');
+  assert.ok(popup > clean, 'popup drop (' + popup.toFixed(2) + ') sits up higher than clean (' + clean.toFixed(2) + ')');
+});
+
+test('v2 mishits sit up but are NEVER lobs (additive, capped)', () => {
+  const lobApex = Shots.specV2('lob', C.KITCHEN, C.HALF_L).apex;
+  ['drive', 'drop', 'dink', 'speedup'].forEach((t) => {
+    const base = Shots.specV2(t, C.KITCHEN, C.HALF_L).apex;
+    const flt = Shots.apexForQualityV2(base, 'float');
+    const pop = Shots.apexForQualityV2(base, 'popup');
+    assert.ok(base < flt && flt < pop, t + ': clean < float < popup');
+    assert.ok(pop <= lobApex - 1.0, t + ' popup (' + pop.toFixed(2) + ') stays well below a deliberate lob (' + lobApex + ')');
+  });
+  const dropPop = Shots.apexForQualityV2(Shots.specV2('drop', C.KITCHEN, C.HALF_L).apex, 'popup');
+  assert.ok(dropPop >= 2.0, 'popped drop (' + dropPop.toFixed(2) + ') still reads as attackable to the CPU popup-hold (>= 2.0)');
+});
+
+test('v2 driven family: power shots fly flat and fast, hit DOWN from high contact', () => {
+  const spin = { x: -5, y: 0, z: 0 }; // topspin for a -z shot
+  // High-volley drive: must not balloon — apex stays near contact height.
+  const hv = Physics.solveArc({ x: 0, y: 1.3, z: 3.0 }, { x: 0, z: -C.HALF_L * 0.8 },
+    { apex: 1.15, margin: 0.18, spin, vMax: 19, driven: true });
+  assert.ok(hv.ok, 'high-volley drive solves');
+  assert.ok(hv.apexY <= 1.3 + 0.15, 'high-volley drive stays flat (apex ' + hv.apexY.toFixed(2) + ')');
+  assert.ok(Math.hypot(hv.v0.x, hv.v0.y, hv.v0.z) >= 13, 'high-volley drive has pace');
+  // Speedup from the kitchen: fast and short-hop, not a hanging arc.
+  const su = Physics.solveArc({ x: 0, y: 1.1, z: 2.3 }, { x: 0, z: -C.HALF_L * 0.55 },
+    { apex: 1.05, margin: 0.12, spin: { x: -5.5, y: 0, z: 0 }, vMax: 17, driven: true });
+  assert.ok(su.ok && Math.hypot(su.v0.x, su.v0.y, su.v0.z) >= 11, 'speedup has pace');
+  assert.ok(su.T <= 0.65, 'speedup arrives fast (T ' + su.T.toFixed(2) + ')');
+  // Low contact still clears with an upward launch.
+  const low = Physics.solveArc({ x: 0, y: 0.6, z: 5.8 }, { x: 0, z: -C.HALF_L * 0.8 },
+    { apex: 1.15, margin: 0.18, spin, vMax: 19, driven: true });
+  assert.ok(low.ok && low.v0.y > 0, 'low-contact drive lifts over the tape and lands');
+});
+
+test('v2 driven loft fallback: a speed-capped shot floats rather than netting', () => {
+  const capped = Physics.solveArc({ x: 0, y: 0.9, z: 5.5 }, { x: 0, z: -C.HALF_L * 0.8 },
+    { apex: 1.15, margin: 0.18, spin: { x: -5, y: 0, z: 0 }, vMax: 8, driven: true });
+  assert.ok(capped.apexY > 1.6, 'capped drive lofts (' + capped.apexY.toFixed(2) + ')');
+  assert.ok(capped.apexY < Shots.specV2('lob', C.KITCHEN, C.HALF_L).apex, 'but never to lob height');
+});
+
+test('timingOffsetFromContact grades ball-vs-body geometry like practice coaching', () => {
+  // zOffFwd: facing-normalized (ball.z - hitter.z); negative = ball in front.
+  assert.equal(Shots.timingOffsetFromContact(PRACTICE.TIMING_IDEAL_Z), 0, 'ideal contact (slightly out front) = perfect');
+  assert.equal(Shots.timingOffsetFromContact(-1.5), -1, 'ball far out front = fully early (saturated)');
+  const atBody = Shots.timingOffsetFromContact(0);
+  const behind = Shots.timingOffsetFromContact(0.3);
+  assert.ok(atBody > 0 && behind > atBody, 'ball at/behind the body grades late, monotonically');
+});
+
+test('v2 timing and stability optima now coincide (contact geometry coherence)', () => {
+  // At the ideal contact point the ball is 0.18m from the body — near-max
+  // stability AND perfect timing. At max reach (1.5m out front) both systems
+  // agree it is a bad hit: stability ~0 and timing fully early with pace loss.
+  const perfect = Shots.applyTiming(Shots.timingOffsetFromContact(PRACTICE.TIMING_IDEAL_Z), 'fh', 1);
+  assert.ok(Math.abs(perfect.targetXSkew) < 1e-9 && Math.abs(perfect.paceMul - 1) < 1e-9,
+    'ideal-geometry contact takes no timing penalty');
+  const stretched = Shots.applyTiming(Shots.timingOffsetFromContact(-1.5), 'fh', 1);
+  assert.ok(stretched.paceMul < 1 && stretched.apexAdd > 0,
+    'max-reach contact loses pace and lofts — consistent with its ~0 stability');
+});
+
+test('applyTiming direction: early pulls cross-body (away from paddle side), late pushes toward it', () => {
+  // Near-team forehand: paddle side is world +x (see swingSide).
+  assert.ok(Shots.applyTiming(-1, 'fh', 1).targetXSkew < 0, 'early fh pulls to -x (cross-body)');
+  assert.ok(Shots.applyTiming(1, 'fh', 1).targetXSkew > 0, 'late fh pushes to +x (paddle side)');
+});
+
+test('applyTiming: perfect timing is neutral, mistiming skews + saturates', () => {
+  const perfect = Shots.applyTiming(0, 'fh', 1);
+  assert.ok(Math.abs(perfect.targetXSkew) < 1e-9 && Math.abs(perfect.paceMul - 1) < 1e-9 && perfect.apexAdd === 0,
+    'perfect timing is a no-op');
+  const early = Shots.applyTiming(-1, 'fh', 1);
+  const late = Shots.applyTiming(1, 'fh', 1);
+  assert.ok(Math.sign(early.targetXSkew) === -Math.sign(late.targetXSkew), 'early and late skew opposite ways');
+  assert.ok(early.paceMul < 1 && late.paceMul < 1, 'both mistimes lose pace');
+  assert.ok(early.apexAdd > 0, 'edge hit lofts');
+  // backhand mirrors the skew direction relative to forehand
+  const earlyBh = Shots.applyTiming(-1, 'bh', 1);
+  assert.ok(Math.sign(earlyBh.targetXSkew) === -Math.sign(early.targetXSkew), 'bh mirrors fh skew');
+  // far team mirrors again
+  const earlyFar = Shots.applyTiming(-1, 'fh', -1);
+  assert.ok(Math.sign(earlyFar.targetXSkew) === -Math.sign(early.targetXSkew), 'far team mirrors near team skew');
+});
+
+test('v2 CPU timing sigma tightens with difficulty (hard < normal < easy < family)', () => {
+  const t = (lvl) => AI.makeAI(lvl, 'balanced').cfg.timing;
+  assert.ok(t('hard') < t('normal') && t('normal') < t('easy') && t('easy') < t('family'),
+    'timing noise decreases with skill');
+});
+
+test('v2 predict returns the cached flight landing exactly', () => {
+  const ball = Physics.makeBall();
+  ball.live = true;
+  ball.mech = 'v2';
+  ball.flight = { landing: { x: 1.2, z: -4.3 }, T: 1.1, apexY: 2.4, samples: [], elapsed: 0.3 };
+  const pred = AI.predict(ball);
+  assert.ok(Math.abs(pred.x - 1.2) < 1e-9 && Math.abs(pred.z + 4.3) < 1e-9, 'landing from cache');
+  assert.ok(Math.abs(pred.tLeft - 0.8) < 1e-9, 'tLeft = T - elapsed');
+  assert.ok(Math.abs(pred.peakY - 2.4) < 1e-9, 'peakY from cached apex');
+});
+
+test('v2 predict forward-sim (post-bounce) lands within 0.3m of a fine sim', () => {
+  const p0 = { x: 0, y: 0.9, z: 2 };
+  const v0 = { x: 1.0, y: 3.0, z: -5.0 };
+  const fine = Physics.simulateFlight(p0, v0, { x: 0, y: 0, z: 0 }, { dt: 1 / 240 });
+  const ball = Physics.makeBall();
+  ball.live = true; ball.mech = 'v2'; ball.flight = null; ball.spline = null;
+  ball.pos = { x: p0.x, y: p0.y, z: p0.z }; ball.vel = { x: v0.x, y: v0.y, z: v0.z }; ball.spin = { x: 0, y: 0, z: 0 };
+  const pred = AI.predict(ball);
+  assert.ok(Math.hypot(pred.x - fine.landing.x, pred.z - fine.landing.z) < 0.3,
+    'coarse predict within 0.3m of fine sim');
 });
 
 console.log('\n' + passed + ' assertions passed.');

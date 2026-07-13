@@ -37,6 +37,49 @@ export const PHYS = {
   SPIN_DECAY: 1.5      // spin magnitude decay per second
 };
 
+// Physics v2 — honest simulated flight (mechanics='v2'). The ball ALWAYS
+// integrates under gravity + quadratic drag + Magnus; hits run a numeric solver
+// (solveArc) instead of scripting a Bezier. Constants are near-real for a
+// pickleball (24.5 g, 74 mm) with pace trimmed for playability via PACE.
+//   Quadratic drag a = -DRAG_K·|v|·v  → terminal velocity √(GRAVITY/DRAG_K).
+//   With DRAG_K = 0.042 that is ≈ 15.3 m/s, matching a real pickleball.
+export const PHYS_V2 = {
+  GRAVITY: 9.81,        // m/s^2 downward (real)
+  DRAG_K: 0.042,        // quadratic drag coefficient (1/m); terminal vel ≈ √(g/k) ≈ 15.3 m/s
+  MAGNUS_K: 0.010,      // a = MAGNUS_K·(spin × v); spin stays in existing game units
+  RESTITUTION: 0.62,    // vertical bounce energy retained (real ball ≈ 0.64; start deader)
+  BITE: 0.42,           // fraction of tangential surface slip removed at bounce
+  SPIN_COUPLE: 0.11,    // spin units → surface speed (m/s) at contact ("effective radius")
+  SIDE_KICK: 0.05,      // lateral bounce kick per unit spin.y
+  SPIN_DECAY: 0.8,      // in-flight spin magnitude decay per second
+  SPIN_BOUNCE_KEEP: 0.6,// spin magnitude retained through a bounce
+  ROLL_BLEND: 0.35,     // post-bounce blend of spin.x toward rolling with new vz
+  SOLVER_DT: 1 / 120,   // integration step for solveArc / simulateFlight
+  PACE: 1.0             // global speed trim knob (playability tune; 1.0 = full physical)
+};
+
+// Timing-quality model (mechanics='v2'). Timing is anchored to CONTACT GEOMETRY:
+// where the ball sits relative to the hitter's body at the strike, measured as a
+// facing-normalized z-offset (negative = in front), graded against the same ideal
+// contact point practice mode coaches (PRACTICE.TIMING_IDEAL_Z — ball slightly out
+// front). Ball far in front = swung early → pulled cross-body; ball at/behind the
+// body = swung late → pushed to the paddle side; both lose pace and edge hits
+// loft. Perceivable (you see the ball vs the body), consistent with the Stability
+// Index (same geometry, same direction), and it makes match play agree with
+// practice's early/late coaching by construction. CPU players sample a gaussian
+// offset instead (LEVELS.timing) and take only the pace/loft effects — lateral
+// scatter stays owned by LEVELS.err.
+export const TIMING_V2 = {
+  Z_HALF_WIDTH: 0.6, // meters of contact-z deviation from ideal that saturates the effect
+  SKEW_X: 1.1,       // meters of lateral skew at full offset (early = cross-body pull, late = paddle-side push)
+  PACE_LOSS: 0.25,   // paceMul = 1 - PACE_LOSS·offsetNorm^2
+  LOFT_EDGE: 0.55,   // |offsetNorm| beyond which edge loft begins — only genuinely shanked timing
+  LOFT_ADD: 0.35,    // apex meters added at the window edge: a "slightly high" ball, never a lob
+  HOLD_Z: 0.45       // human strike deferral: with the window open, wait until the ball is
+                     // within this many meters in front of the body before striking (an early
+                     // press connects near ideal geometry instead of at the reach-ring edge)
+};
+
 // Match rules
 export const RULES = {
   POINT_TO: 11,
@@ -104,8 +147,14 @@ export const STABILITY = {
   VEL_WEIGHT: 0.45,      // fraction of max speed that zeroes out stability
   FLOAT_THRESHOLD: 0.45, // stability below this → float arc (high P1, overshooting P2)
   POPUP_THRESHOLD: 0.18, // stability below this → pop-up arc (spiked P1)
-  FLOAT_APEX_MULT: 1.65, // apex multiplier for float
-  POPUP_APEX_MULT: 2.6   // apex multiplier for pop-up
+  FLOAT_APEX_MULT: 1.65, // v1: apex multiplier for float
+  POPUP_APEX_MULT: 2.6,  // v1: apex multiplier for pop-up
+  // v2 mishit loft is ADDITIVE and CAPPED (design intent: a mishit is a
+  // "slightly high" attackable ball — it hangs or sits into the smash zone —
+  // never a lob; lobs are deliberate shots only).
+  FLOAT_APEX_ADD_V2: 0.55, // float: hangs, bounces above the net, speedup-attackable
+  POPUP_APEX_ADD_V2: 1.3,  // popup: descends through smash height at the kitchen
+  MISHIT_APEX_MAX_V2: 3.4  // hard cap, well below the deliberate lob apex (4.6)
 };
 
 // Power cap — incoming ball height limits how hard the hitter can return it.

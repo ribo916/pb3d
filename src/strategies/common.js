@@ -112,3 +112,15 @@ export function ballDifficultyMult(q) {
   if (q == null) return 1;
   return 0.6 + (1 - clamp01(q)) * 0.8; // q=1 → 0.6, q=0 → 1.4
 }
+
+// Rally-length pressure → unforced-error multiplier. Short rallies are
+// unaffected (mult 1 for the first ~10 shots); beyond that, patience frays and
+// the miss chance ramps, guaranteeing even a stalemate dink battle resolves
+// (mirrors real play, where a long exchange ends on someone forcing it). Capped.
+export function rallyLengthMult(shots) {
+  var s = shots || 0;
+  if (s <= 8) return 1;
+  // Ramp hard enough to overpower the clean-contact miss discount (0.6×) so a
+  // stalemate dink battle reliably resolves within a realistic window.
+  return Math.min(5.0, 1 + (s - 8) * 0.10);
+}

@@ -12,7 +12,7 @@
  * ==========================================================================*/
 'use strict';
 
-import { FT, STABILITY, POWER_CAP } from './constants.js';
+import { FT, STABILITY, POWER_CAP, TIMING_V2, PRACTICE } from './constants.js';
 
 // margin = net-clearance buffer (m). launch() is ballistic (no drag), but real
 // flight has drag that pulls slow/soft shots down short — so soft shots carry a
@@ -26,6 +26,109 @@ const PROFILES = {
 };
 
 export const TYPES = ['drive', 'drop', 'dink', 'lob', 'speedup'];
+
+/* ============================================================================
+ * MECHANICS V2 shot grammar. Under v2 the ball flies honest physics, so a shot
+ * is a *physical envelope* fed to physics.solveArc: an apex HINT (the solver
+ * raises it as needed to clear the net), a landing depth, a spin vector, a net
+ * margin, and a speed cap (vMax). All shots — including serve/smash/ATP/Erne
+ * that v1 hardcoded inside game.js — are profiles here so tuning stays in one
+ * place. `direct:true` = contact is above the target (smash/Erne): aim straight
+ * down the line, search speed only. `allowNet:true` = skip net-clearance raising
+ * (ATP goes around the post; deliberate faults go into it).
+ * ==========================================================================*/
+const PROFILES_V2 = {
+  //         apexHint depth               spinX  spinY margin vMax  flags
+  // `driven` = the flat family: solveArc crosses the tape at netH+margin and
+  // lands on target, hitting DOWN from high contact — apex is ignored except
+  // as the mishit-arc fallback (a float/popup drive balloons via the arc path).
+  drive:   { apex: 1.15, depthFrac: 0.80, spinX:  5.0, spinY: 0, margin: 0.18, vMax: 19, driven: true },
+  drop:    { apex: 2.10, absZ: 'drop',    spinX: -3.0, spinY: 0, margin: 0.26, vMax: 9 },
+  dink:    { apex: 1.35, absZ: 'dink',    spinX: -1.5, spinY: 0, margin: 0.14, vMax: 6.5 },
+  lob:     { apex: 4.60, depthFrac: 0.86, spinX: -1.0, spinY: 0, margin: 0.35, vMax: 14 },
+  speedup: { apex: 1.05, depthFrac: 0.55, spinX:  5.5, spinY: 0, margin: 0.12, vMax: 17, driven: true },
+  serve:   { apex: 2.30, depthFrac: 0.75, spinX:  2.5, spinY: 0, margin: 0.30, vMax: 16 },
+  smash:   { apex: 0.95, depthFrac: 0.70, spinX:  7.0, spinY: 0, margin: 0.05, vMax: 22, direct: true },
+  erne:    { apex: 0.95, depthFrac: 0.35, spinX:  4.0, spinY: 0, margin: 0.05, vMax: 18, direct: true },
+  atp:     { apex: 0.60, depthFrac: 0.55, spinX:  0.0, spinY: 3.0, margin: 0, vMax: 15, allowNet: true },
+  feed:    { apex: 2.55, depthFrac: 0.55, spinX:  1.0, spinY: 0, margin: 0.20, vMax: 12 }
+};
+
+// Landing distance from the net (meters) for a v2 profile on this court.
+function landingZV2(p, KITCHEN, HALF_L) {
+  if (p.absZ === 'drop') return KITCHEN * 0.55;   // soft, dies in the kitchen
+  if (p.absZ === 'dink') return KITCHEN + 0.25;   // just over the non-volley line
+  return HALF_L * (p.depthFrac || 0.80);
+}
+
+/* specV2(type, KITCHEN, HALF_L) -> physical envelope for physics.solveArc:
+ *   { apex, landZ, spin:{x,y,z}, margin, vMax, direct, allowNet }
+ * KITCHEN/HALF_L default to regulation if omitted (tests). */
+export function specV2(type, KITCHEN, HALF_L) {
+  if (KITCHEN == null) KITCHEN = 7 * FT;
+  if (HALF_L == null) HALF_L = 22 * FT;
+  var p = PROFILES_V2[type] || PROFILES_V2.drive;
+  return {
+    apex: p.apex,
+    landZ: landingZV2(p, KITCHEN, HALF_L),
+    spin: { x: p.spinX || 0, y: p.spinY || 0, z: 0 },
+    spinX: p.spinX || 0,   // aliases so a v2 envelope is drop-in for the v1 `sp` shape
+    spinY: p.spinY || 0,
+    margin: p.margin,
+    vMax: p.vMax,
+    driven: !!p.driven,
+    direct: !!p.direct,
+    allowNet: !!p.allowNet
+  };
+}
+
+/* v2 counterpart of resolve(): intent + position + ball height -> {type, sp}
+ * where sp is the physical envelope from specV2. */
+export function resolveV2(absZ, ballY, intent, kitchen, halfL) {
+  var zone = zoneOf(absZ, kitchen, halfL);
+  var type = classify(zone, intent, ballY > 0.95);
+  return { type: type, sp: specV2(type, kitchen, halfL) };
+}
+
+/* ============================================================================
+ * Timing-quality model (v2), anchored to CONTACT GEOMETRY.
+ *
+ * timingOffsetFromContact(zOffFwd) grades where the ball sat relative to the
+ * hitter's body at the strike. `zOffFwd` = (ball.z - hitter.z) normalized by the
+ * hitter's facing so NEGATIVE = in front for both teams — the same measurement
+ * practice mode's coaching grades (`Practice.scoreTiming`), against the same
+ * ideal contact point (PRACTICE.TIMING_IDEAL_Z: ball slightly out front).
+ * Returns offsetNorm ∈ [-1,1]: negative = early (ball still far out front —
+ * you committed too soon), 0 = perfect, positive = late (ball at/behind the
+ * body). Pure + testable; match play and practice agree by construction. */
+export function timingOffsetFromContact(zOffFwd) {
+  var d = (zOffFwd - PRACTICE.TIMING_IDEAL_Z) / TIMING_V2.Z_HALF_WIDTH;
+  return Math.max(-1, Math.min(1, isFinite(d) ? d : 0));
+}
+
+/* applyTiming(offsetNorm, side, fwd) → modifiers applied to a shot before
+ * solveArc:
+ *   targetXSkew — meters of lateral skew: an EARLY hit (contact out front, the
+ *                 paddle already rotated through) pulls the ball cross-body,
+ *                 away from the paddle side; a LATE hit (ball into the body)
+ *                 pushes it out toward the paddle side. Backhand mirrors.
+ *   paceMul     — multiplies the shot's vMax (any mistiming costs pace)
+ *   apexAdd     — extra apex meters past LOFT_EDGE (a shanked ball sits up)
+ * `side` ('fh'|'bh') and `fwd` (+1 near / -1 far) orient the skew in world x so
+ * the pull/push direction is correct for both wings and both teams. */
+export function applyTiming(offsetNorm, side, fwd) {
+  var o = Math.max(-1, Math.min(1, offsetNorm || 0));
+  var T = TIMING_V2;
+  // `wing` = world-x sign of the hitter's paddle side (fh = +x for the near
+  // team; bh and the far team each mirror). Late (o>0) pushes toward the wing,
+  // early (o<0) pulls away from it.
+  var wing = (side === 'bh' ? -1 : 1) * (fwd >= 0 ? 1 : -1);
+  var targetXSkew = o * T.SKEW_X * wing;
+  var paceMul = 1 - T.PACE_LOSS * o * o;
+  var edge = Math.max(0, Math.abs(o) - T.LOFT_EDGE) / Math.max(1e-6, 1 - T.LOFT_EDGE);
+  var apexAdd = edge * T.LOFT_ADD;
+  return { targetXSkew: targetXSkew, paceMul: paceMul, apexAdd: apexAdd };
+}
 
 // Resolve a shot's landing distance from the net (meters) for this court.
 function landingZ(type, KITCHEN, HALF_L) {
@@ -106,10 +209,21 @@ export function stabilityQuality(stability) {
   return 'clean';
 }
 
-/* Scale a base apex by shot quality. */
+/* Scale a base apex by shot quality (v1: multiplicative). */
 export function apexForQuality(baseApex, quality) {
   if (quality === 'popup') return baseApex * STABILITY.POPUP_APEX_MULT;
   if (quality === 'float') return baseApex * STABILITY.FLOAT_APEX_MULT;
+  return baseApex;
+}
+
+/* v2 mishit loft: ADDITIVE and CAPPED. Design intent: a mishit drop/dink/drive
+ * is a "slightly high" ball — a float hangs and bounces above the net
+ * (speedup-attackable), a popup sits into the smash zone — but it is NOT a lob.
+ * Lobs are deliberate shots only (explicit intent / situationalLob); the cap
+ * keeps every accident well below PROFILES_V2.lob.apex. */
+export function apexForQualityV2(baseApex, quality) {
+  if (quality === 'popup') return Math.min(STABILITY.MISHIT_APEX_MAX_V2, baseApex + STABILITY.POPUP_APEX_ADD_V2);
+  if (quality === 'float') return Math.min(STABILITY.MISHIT_APEX_MAX_V2, baseApex + STABILITY.FLOAT_APEX_ADD_V2);
   return baseApex;
 }
 

@@ -2,7 +2,7 @@
 
 A self-contained **Three.js pickleball game** with doubles and singles modes. You
 and a CPU partner can take on two CPUs, or you can play one-on-one, with real
-pickleball rules, arcade-tuned physics, and a real track-based
+pickleball rules, physics-driven ball flight, and a real track-based
 music picker that supports genre folders such as `KPOP`, `RAP`, `COUNTRY`, and `POP`.
 
 It started life as the 3D match inside a larger browser game and was extracted into
@@ -64,6 +64,32 @@ the ball enters your strike zone during that window (press with no ball nearby a
 you just whiff). The direction you're holding at contact steers the shot —
 left/right = cross-court vs down-the-line, forward/back = deeper/shorter. A white
 ring on the opponents' court previews where your held direction will place the ball.
+
+---
+
+## Gameplay mechanics: v2 (default) and legacy v1
+
+The game currently ships **two gameplay-mechanics versions** while user testing
+is in progress:
+
+- **v2 — the default.** Honest simulated ball flight: gravity, quadratic air
+  drag, and Magnus spin are integrated every frame; a numeric shot solver finds
+  each launch velocity, drives/speedups fly a flat "driven" trajectory family,
+  bounces are spin-aware, and contact timing shapes shot quality. See
+  [`GAMEPLAY.md` → Trajectory System v2](GAMEPLAY.md).
+- **v1 — legacy.** The original scripted-Bezier flight, kept only for
+  side-by-side comparison. Launch it with the URL parameter **`?mech=v1`**
+  (e.g. `http://localhost:5173/?mech=v1`); `?mech=v2` or no parameter gives v2.
+
+A small badge in the **bottom-right corner of the gameplay screen** always shows
+which version you are playing (`v2`, or an amber `v1` for legacy). The AI-match
+viewer takes the same switch: `MECH=v1 node tools/play.mjs`.
+
+> **Plan of record:** once all user testing is complete and v2 is confirmed,
+> **gameplay v1 will be removed entirely** — the spline flight path, its
+> solvers (`computeP1`, `splineFlightTime`, `bezierPoint`/`bezierVel`,
+> `launch`/`solveShot`/`clearsNet`), the v1 shot profiles, the `?mech=` switch,
+> and this badge. Don't build new features against v1 behavior.
 
 ---
 

@@ -18,6 +18,8 @@
  *   DIFF     difficulty radio value          (default 4.5)
  *   MATCHES  how many matches to play        (default 1)
  *   MAXSEC   real-seconds safety cap/match    (default 240)
+ *   MECH     v1|v2 flight mechanics           (default v2 — the game default;
+ *            MECH=v1 forces the legacy spline flight) — appended as ?mech=
  */
 import { chromium } from 'playwright';
 import path from 'node:path';
@@ -34,6 +36,7 @@ const TOD = process.env.TOD || 'day';
 const DIFF = process.env.DIFF || '4.5';
 const MATCHES = Number(process.env.MATCHES || 1);
 const MAXSEC = Number(process.env.MAXSEC || 240);
+const MECH = (process.env.MECH || 'v2').toLowerCase();
 
 const testServer = await startViteServer(ROOT);
 const server = testServer.server;
@@ -91,13 +94,47 @@ async function snapshot() {
       state: g.state,
       near: g.match.scores.near,
       far: g.match.scores.far,
-      games: g.match.games ? { near: g.match.games.near, far: g.match.games.far } : null
+      games: g.match.games ? { near: g.match.games.near, far: g.match.games.far } : null,
+      mech: g.mechanics,
+      metrics: g.metrics
     };
   });
 }
 
+// Compact histogram + fault-reason breakdown for A/B tuning.
+function printMetrics(metrics, mech) {
+  if (!metrics) return;
+  const rallies = metrics.rallyShots || [];
+  const n = rallies.length || 1;
+  const sorted = [...rallies].sort((a, b) => a - b);
+  const median = sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0;
+  const mean = rallies.reduce((a, b) => a + b, 0) / n;
+  const buckets = [0, 0, 0, 0, 0]; // 0-2, 3-4, 5-6, 7-9, 10+
+  rallies.forEach((r) => {
+    const i = r <= 2 ? 0 : r <= 4 ? 1 : r <= 6 ? 2 : r <= 9 ? 3 : 4;
+    buckets[i]++;
+  });
+  console.log(`\n--- metrics (${mech}) — ${rallies.length} points ---`);
+  console.log(`rally shots: median ${median}, mean ${mean.toFixed(1)}`);
+  console.log(`  hist  0-2:${buckets[0]}  3-4:${buckets[1]}  5-6:${buckets[2]}  7-9:${buckets[3]}  10+:${buckets[4]}`);
+  console.log(`net errors: ${metrics.netErrors}   serve faults: ${metrics.serveFaults}`);
+  const reasons = Object.entries(metrics.pointsByReason || {}).sort((a, b) => b[1] - a[1]);
+  console.log('point reasons: ' + reasons.map(([k, v]) => `${k}:${v}`).join('  '));
+  // Arc-shape stats (v2): mean apex + launch speed per shot type — the lens
+  // that catches "everything is a lob" (rally counts alone can't see it).
+  const stats = metrics.shotStats;
+  if (stats && Object.keys(stats).length) {
+    console.log('shot shape (mean apex m / mean launch m/s / count):');
+    Object.entries(stats).sort((a, b) => b[1].n - a[1].n).forEach(([type, s]) => {
+      console.log(`  ${type.padEnd(8)} ${(s.apexSum / s.n).toFixed(2)} / ${(s.speedSum / s.n).toFixed(1)} / ${s.n}`);
+    });
+  }
+}
+
 async function playOneMatch(i) {
-  await page.goto(base, { waitUntil: 'networkidle' });
+  // Always pass the mech explicitly so MECH=v1 overrides the game's v2 default.
+  const url = base + (base.includes('?') ? '&' : '?') + 'mech=' + MECH;
+  await page.goto(url, { waitUntil: 'networkidle' });
   await selectOption('venue', VENUE);
   await selectOption('palette', PALETTE);
   if (VENUE !== 'indoor') await selectOption('tod', TOD);
@@ -106,12 +143,13 @@ async function playOneMatch(i) {
   await page.waitForTimeout(600);
   await autoDrive(SPEED);
 
-  console.log(`\n=== match ${i + 1}/${MATCHES} — ${VENUE}/${PALETTE}/${TOD} diff ${DIFF} @ ${SPEED}x ===`);
+  console.log(`\n=== match ${i + 1}/${MATCHES} — ${VENUE}/${PALETTE}/${TOD} diff ${DIFF} @ ${SPEED}x — mech ${MECH} ===`);
   const t0 = Date.now();
-  let last = '';
+  let last = '', lastSnap = null;
   while (true) {
     const snap = await snapshot();
     if (snap) {
+      lastSnap = snap;
       const line = `${snap.state.padEnd(6)}  near ${snap.near} : ${snap.far} far` +
         (snap.games ? `   games ${snap.games.near}:${snap.games.far}` : '');
       if (line !== last) { console.log(line); last = line; }
@@ -120,6 +158,7 @@ async function playOneMatch(i) {
     if ((Date.now() - t0) / 1000 > MAXSEC) { console.log('(hit MAXSEC cap)'); break; }
     await page.waitForTimeout(150);
   }
+  if (lastSnap) printMetrics(lastSnap.metrics, lastSnap.mech);
   await page.waitForTimeout(3000); // let the winning celebration linger on screen
 }
 

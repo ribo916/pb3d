@@ -812,6 +812,15 @@
     #levelBadge { padding: 5px 11px; border-radius: 20px; font-size: 11px; font-weight: 800;
       color: #0a1420; letter-spacing: 0.5px; }
 
+    /* bottom-right: gameplay-mechanics version tag (v1 = legacy spline flight,
+       v2 = simulated physics). Removed together with v1 after user testing. */
+    .btns-br { position: absolute; bottom: env(safe-area-inset-bottom, 14px); right: 14px;
+      margin-bottom: 14px; pointer-events: none; display: flex; gap: 8px; align-items: center; }
+    #mechBadge { padding: 4px 9px; border-radius: 20px; font-size: 11px; font-weight: 800;
+      letter-spacing: 0.5px; color: rgba(255,255,255,0.72); background: rgba(8,18,30,0.55);
+      backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+    #mechBadge.legacy { color: #ffd27a; }
+
     /* pill text button (genre label) */
     .hud-text-btn { pointer-events: auto; height: 36px; padding: 0 12px; border: none;
       border-radius: 18px; font-size: 10px; font-weight: 800; letter-spacing: 0.5px;
@@ -1621,6 +1630,12 @@
     <!-- bottom-left: difficulty badge -->
     <div class="btns-bl">
       <div id="levelBadge">INTERMEDIATE</div>
+    </div>
+
+    <!-- bottom-right: gameplay-mechanics version (v2 = physics flight, default;
+         v1 = legacy — removed after user testing) -->
+    <div class="btns-br">
+      <div id="mechBadge">v2</div>
     </div>
   </div>
 

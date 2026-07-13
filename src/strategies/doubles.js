@@ -6,7 +6,7 @@ import * as Rules from '../rules.js';
 import { SPECIALTY, POWER_CAP, MOVEMENT } from '../constants.js';
 import { clamp } from '../utils.js';
 import { deeperOpponent, clampX, randomCornerX, rand,
-         situationalLob, scorePressure, ballDifficultyMult } from './common.js';
+         situationalLob, scorePressure, ballDifficultyMult, rallyLengthMult } from './common.js';
 
 const C = COURT;
 
@@ -43,13 +43,13 @@ export function chooseMovement(ai, ball, rally, ctx) {
   var incoming = ctx.incoming;
 
   if (pred && ctx.responsible) {
-    var isPopup = ball.spline && ball.spline.P1.y >= 2.0;
+    var isPopup = (pred.peakY != null) && pred.peakY >= 2.0;
     if (!isPopup) {
       tx = pred.x;
       tz = pred.z + fwd * 0.25;
     }
     var dist = ctx.distance(tx, tz);
-    var timeLeft = ball.spline ? Math.max(0, ball.spline.duration - ball.spline.elapsed) : 0.65;
+    var timeLeft = (pred.tLeft != null) ? pred.tLeft : 0.65;
     var reachable = ai.cfg.speed * (timeLeft + ai.cfg.react + 0.16);
     kind = dist > reachable + 0.6 ? 'emergency' : 'intercept';
     if (isPopup) {
@@ -88,7 +88,10 @@ export function chooseShot(ai, ball, match, isServe, ctx) {
   // contactQuality) and protecting a late lead both raise the unforced-error
   // chance; a sitter lowers it. Neutral mid-game with a clean contact.
   var pressure = scorePressure(match, ctx.hitterTeam);
-  var effMiss = cfg.miss * ballDifficultyMult(ctx.contactQuality) * pressure.missMul;
+  // Rally-length pressure applies only under v2 physics (bounds dink stalls);
+  // v1's tuned baseline is left exactly as it was.
+  var rlMult = (ball.mech === 'v2') ? rallyLengthMult(match.rally && match.rally.shots) : 1;
+  var effMiss = cfg.miss * ballDifficultyMult(ctx.contactQuality) * pressure.missMul * rlMult;
 
   if (!isServe && Math.random() < effMiss) {
     var mode = Math.random();
@@ -169,7 +172,9 @@ export function chooseShot(ai, ball, match, isServe, ctx) {
       var dropChance = clamp(Math.max(0, shotIQ - 0.45) * 1.1 - bias * 0.8, 0, 1) * cfg.dropBias;
       intent = (Math.random() < dropChance) ? 'touch' : 'power';
     }
-    var sr = Shots.resolve(absZ, ball.pos.y, intent, C.KITCHEN, C.HALF_L);
+    // Resolve against the profiles of the ACTIVE mechanics so PROFILES_V2 is
+    // the CPU tuning surface under v2, not just the human's.
+    var sr = (ball.mech === 'v2' ? Shots.resolveV2 : Shots.resolve)(absZ, ball.pos.y, intent, C.KITCHEN, C.HALF_L);
     type = sr.type; var sp = sr.sp;
 
     var aimX;

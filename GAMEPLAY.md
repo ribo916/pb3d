@@ -101,6 +101,142 @@ reliably miss.
 
 ---
 
+## Trajectory System v2 — Honest Simulated Physics + Shot Solver
+
+**Status: the DEFAULT.** v2 replaces the choreographed Bezier arc (v1, above)
+with genuinely simulated flight. v1 remains launchable with **`?mech=v1`** (or
+`new Game({ mechanics: 'v1' })`; `MECH=v1` for `tools/play.mjs`) strictly for
+A/B comparison during user testing — **v1 will be deleted once testing
+completes** (see README → Gameplay mechanics). The bottom-right HUD badge
+(`#mechBadge`) always shows the active version in-game.
+
+### What changes
+
+Under v2 the ball **always integrates real physics** every substep
+(`Physics.stepV2`) — there is no spline and no guaranteed landing point:
+
+- **Gravity** `PHYS_V2.GRAVITY = 9.81` (real, not the arcade 13.5).
+- **Quadratic air drag** `a = -DRAG_K·|v|·v` (`DRAG_K = 0.042`) → terminal
+  velocity ≈ 15.3 m/s, matching a real pickleball (a very draggy ball).
+- **Magnus** `a = MAGNUS_K·(spin × v)` shapes the arc *in flight* — topspin
+  genuinely dips the ball, backspin floats it, sidespin curves it. (In v1 spin
+  was cosmetic during flight.)
+- **Spin-aware bounce**: topspin skids low & fast, backspin checks up (reverses
+  at high spin), sidespin kicks laterally. Tuned by `BITE`, `SPIN_COUPLE`,
+  `SIDE_KICK`, `ROLL_BLEND`, `RESTITUTION = 0.62`.
+
+All v2 physics constants live in `constants.js` `PHYS_V2`. `PHYS_V2.PACE` is the
+global speed-trim knob for the playability tune.
+
+### The shot solver (`Physics.solveArc`) — three trajectory families
+
+A hit no longer scripts a curve — it **solves for a launch velocity**. `solveArc`
+takes the contact point, the aimed target, and a shot *envelope* and picks one of
+three families:
+
+- **DRIVEN** (`driven: true` — drive, speedup): the flat family. Solves launch
+  vy (may be **negative** — hit downward from a high contact) + horizontal speed
+  so the ball **crosses the net just above the tape** (`netHeight + margin`) and
+  lands at the target. If the `vMax` speed cap can't carry the depth at tape
+  height, the crossing target rises 0.3 m at a time — **loft is the
+  physics-forced fallback, never the default.** This is what makes drives and
+  speedups read as pace instead of arcs.
+- **ARC** (default — drop, dink, lob, serve, feed): seed ballistically at the
+  apex hint, secant on launch speed for range, raise the apex until the arc
+  clears the net (the proven v1 `launch()` loop — clearance guaranteed by
+  construction).
+- **DIRECT** (smash, Erne): aim down the depressed line to the target, search
+  speed only.
+
+All modes end with a lateral pass canceling Magnus drift. `allowNet` (ATP,
+deliberate faults) skips clearance raising.
+
+### Shot grammar (`shots.js` `PROFILES_V2` / `specV2`)
+
+Every shot — including serve, smash, ATP, Erne and the practice feed, which v1
+hardcoded inside `game.js` — is a physical envelope here:
+
+| Type | family | apex hint | spinX | vMax | Notes |
+|---|---|---|---|---|---|
+| drive | **driven** | (1.15)* | +5.0 topspin | 19 | flat, tape-skimming, down from high contact |
+| drop | arc | 2.10 | −3.0 backspin | 9 | soft, dies in kitchen (bounce peak < net) |
+| dink | arc | 1.35 | −1.5 | 6.5 | soft kitchen exchange |
+| lob | arc | 4.60 | −1.0 | 14 | **deliberate only** — explicit intent / situationalLob |
+| speedup | **driven** | (1.05)* | +5.5 | 17 | fast attack on a high ball |
+| serve | arc | 2.30 | +2.5 | 16 | diagonal deep |
+| smash | direct | 0.95 | +7.0 | 22 | steep overhead |
+| erne | direct | 0.95 | +4.0 | 18 | |
+| atp | arc | 0.60 | sidespin | 15 | `allowNet` — around the post |
+| feed | arc | 2.55 | +1.0 | 12 | practice machine |
+
+\* driven shots ignore the apex hint when struck clean; it is the base for the
+mishit arc fallback.
+
+**Mishits sit up — they are never lobs** (design intent: lobs are deliberate;
+an accidental high ball is just "slightly high" and attackable).
+`Shots.apexForQualityV2` adds a modest, capped loft: float = base +
+`STABILITY.FLOAT_APEX_ADD_V2` (0.55 — hangs, bounces above the net,
+speedup-attackable); popup = base + `POPUP_APEX_ADD_V2` (1.3 — descends through
+smash height); both hard-capped at `MISHIT_APEX_MAX_V2` (3.4), well below the
+deliberate lob (4.6). A float/popup-quality drive/speedup also **drops out of
+the driven family** into the arc solver — the mishit balloons a little and
+becomes the punishable sitter. (v1 keeps its multiplicative `apexForQuality`.)
+
+### Timing = quality + direction (`TIMING_V2`, `Shots.applyTiming`)
+
+Human timing (v2 only) is anchored to **contact geometry** — where the ball sits
+relative to the hitter's body at the strike — not to a press-clock. At contact,
+`Shots.timingOffsetFromContact((ball.z − hitter.z)·fwd)` grades the
+facing-normalized z-offset against the same ideal contact point practice mode
+coaches (`PRACTICE.TIMING_IDEAL_Z` — ball slightly out front), normalized by
+`TIMING_V2.Z_HALF_WIDTH` (0.6 m):
+
+- **early** (ball still far out front — you committed too soon) pulls the shot
+  cross-body, away from the paddle side; **late** (ball at/behind the body)
+  pushes it toward the paddle side (skew ≤ `SKEW_X = 1.1 m`, mirrored for
+  backhand and the far team);
+- any mistiming costs pace (`paceMul = 1 − PACE_LOSS·offset²`);
+- edge hits loft slightly (`LOFT_ADD = 0.35` past `LOFT_EDGE = 0.55`) — a
+  shanked ball sits up a little; on a driven shot the loft raises the
+  tape-crossing target instead (the drive floats up).
+
+**Strike deferral** (`TIMING_V2.HOLD_Z = 0.45`, `game._holdForContact`): with
+the window open, the strike waits until the approaching ball is within
+`HOLD_Z` in front of the body (or the window is on its final tick) instead of
+firing the instant the ball crosses the 1.5 m reach ring. An early press
+therefore connects near ideal geometry with only a small penalty — arcade-
+tennis behavior — rather than guaranteeing a max-stretch float.
+
+Because timing and the Stability Index read the same geometry, they **reinforce**
+each other: the ideal contact (ball ~0.2 m out front, body set) is optimal for
+both; a max-reach stab is punished by both. Match-play timing and practice-mode
+early/late coaching agree by construction. CPUs sample a gaussian offset scaled
+by `LEVELS.timing` (family 0.45 → hard 0.10) and take **only the pace/loft
+effects** — the lateral skew is zeroed for CPUs because directional variance is
+already owned by `LEVELS.err` (keeping both would double-count lateral error at
+the low tiers).
+
+### AI under v2
+
+`AI.predict` returns a unified `{x, z, tLeft, peakY}` from the cached solver
+flight (`ball.flight`, exact and O(1)) — the AI reads the real landing, scatter
+included, exactly as it read the spline endpoint in v1. Post-bounce balls
+forward-integrate with the v2 forces. Strategies read
+`prediction.peakY`/`prediction.tLeft` instead of spline internals, and resolve
+shot envelopes against the active mechanics (`ball.mech === 'v2'` →
+`Shots.resolveV2`), so `PROFILES_V2` is the CPU tuning surface under v2 too. A
+**rally-length pressure** term (`common.rallyLengthMult`, v2-only) ramps the
+unforced-error rate in long exchanges so dink battles resolve in a realistic
+window instead of stalling.
+
+### Metrics
+
+`game.metrics` (rally-length histogram, net errors, serve faults, point reasons)
+is always on; `tools/play.mjs` prints a summary per match for A/B tuning
+(`MECH=v1` vs `MECH=v2`, same difficulty/seed).
+
+---
+
 ## Shot Types
 
 Defined in `shots.js` `PROFILES`. Each profile sets the **default** arc;

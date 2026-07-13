@@ -32,7 +32,8 @@ opens a headed window and plays a full **AI-vs-AI** match (all four players
 AI-driven), fast-forwarding the sim while the render loop keeps drawing, and streams
 score/state transitions to the terminal. Tune with env vars: `SPEED` (sim
 multiplier, default 4), `VENUE` (park|tropical|indoor), `PALETTE` (blue|green),
-`TOD` (day|night), `DIFF`, `MATCHES`, `MAXSEC`. `SPEED` multiplies *simulated* time
+`TOD` (day|night), `DIFF`, `MATCHES`, `MAXSEC`, `MECH` (v1|v2 flight mechanics —
+prints a rally-length/fault metrics summary for A/B tuning). `SPEED` multiplies *simulated* time
 (fixed 1/60 steps), so behavior matches 1x — drop to `SPEED=1` to confirm anything
 suspicious isn't a fast-forward artifact. It exercises the AI only, not human input
 (aim/poach/swing timing still need manual play).
