@@ -1,0 +1,5 @@
+name = "pb3d"
+compatibility_date = "2026-07-15"
+
+[assets]
+directory = "./dist"
