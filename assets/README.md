@@ -10,9 +10,10 @@ For the retired Quaternius CC0 humanoid pipeline (download flow,
 `tools/build-player-model.mjs`, and its traps), see
 [`../PLAYER-IMPORT.md`](../PLAYER-IMPORT.md). `player-male-v1` and
 `player-female-v1` were built this way historically, but their runtime GLBs and
-manifest slots have been removed. The active roster now uses the Mixamo
-`player-ch01-v1` through `player-ch12-v1`, `player-ch14-v1`, and
-`player-ch15-v1` slots.
+manifest slots have been removed. The active roster now uses the 12 Mixamo
+slots `player-ch01-v1`, `player-ch03-v1`, `player-ch04-v1`,
+`player-ch06-v1` through `player-ch12-v1`, `player-ch14-v1`, and
+`player-ch15-v1` (there is no `ch02`/`ch05`/`ch13`).
 
 ## Structure
 
@@ -21,15 +22,18 @@ assets/
   models/
     venues/       Optional `.glb` / `.gltf` venue props or full venue shells.
     players/      Skinned or static player models.
-      mixamo/     Active optimized Mixamo character catalog (ch01-ch12, ch14,
-                  ch15), wired in `assets/manifest.js` as player model slots.
+      mixamo/     Active optimized Mixamo character catalog (12 files: ch01,
+                  ch03, ch04, ch06-ch12, ch14, ch15 — no ch02/ch05/ch13),
+                  wired in `assets/manifest.js` as player model slots.
                   Also read by `character-preview/`, so this is the one common
                   location for these files.
   textures/
     court/        Optional court/surface texture sets.
     venues/       Optional prop and venue texture sets.
   environments/   Optional HDR/equirect environment maps.
-  animations/     Future player animation clips or animation-only GLBs.
+  animations/     Shared animation-only GLBs: pickleball-swings.glb (forehand/
+                  backhand/overhead) and pickleball-locomotion.glb (idle/ready/
+                  run/serve/backpedal/shuffle_left/shuffle_right).
   manifest.js     Runtime asset slots consumed by `src/assets.js`.
 ```
 

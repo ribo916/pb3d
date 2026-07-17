@@ -552,9 +552,12 @@ The AI (`chooseShot`) applies the same logic via the `opponents` parameter for
 
 ## Serve
 
-- Diagonal deep serve into the correct service box (cross-court).
-- Implemented as a spline: `apex = 2.5 m`, light topspin `spinX = 2.0`.
-- `Physics.computeP1` + `splineFlightTime` — same path as all other shots.
+- Diagonal deep serve into the correct service box (cross-court), ~75% depth.
+- **v2 (default):** a solved arc from the `serve` envelope (`shots.js`
+  `PROFILES_V2.serve`): apex hint `2.30 m`, topspin `spinX = 2.5`, `vMax = 16`,
+  margin `0.30`. Runs through `Physics.solveArc` like every other v2 shot.
+- **v1 (legacy `?mech=v1`):** a spline hardcoded in `game.js` — `apex = 2.5 m`,
+  topspin `spinX = 2.0`, via `Physics.computeP1` + `splineFlightTime`.
 - Rules enforce diagonal placement; landing in the wrong box = `serve-wrong-court` fault.
 
 ---
@@ -762,7 +765,7 @@ Real pickleball's strategic rhythm is the first four shots. Each shot is charted
 
 | Shot # | Who hits | Real intent | How the code models it |
 |---|---|---|---|
-| 1 — Serve | Serving team | Deep diagonal; push receiver back | `isServe` path: apex 2.4 m, `spinX 2.0`, targets 75% depth diagonally |
+| 1 — Serve | Serving team | Deep diagonal; push receiver back | `isServe` path: v2 `serve` envelope (apex hint 2.30 m, `spinX 2.5`), targets 75% depth diagonally (v1: apex 2.5 m, `spinX 2.0`) |
 | 2 — Return | Receiving team | Deep; buy time to reach kitchen | `isReturn` (`shots === 2`): intent always forced to `'power'`; receiver's partner starts at kitchen in formation |
 | 3 — 3rd shot | Serving team | Drop into kitchen; bleed their kitchen advantage | `isThirdShot` (`shots === 3`): high drop probability (37–97% by DUPR); serving team CPUs hold baseline until after this shot |
 | 4 — 4th shot | Receiving team | Attack if drop is bad; dink if drop is good | No special branch — normal intent selection. Kitchen player reads bounce height: clean drop → forced dink; float/popup → speedup or smash |

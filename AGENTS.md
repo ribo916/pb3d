@@ -25,8 +25,8 @@ difficulties, and desktop + mobile controls.
 
 The gameplay was ported from a larger project's 3D match and is now fully
 self-contained: **real track-based music, no 2D overworld, no save system** —
-pure gameplay plus audio. The graphics-overhaul branch adds a verified rendering
-and authored-asset scaffold, plus a 12-character Mixamo chooser. Character art
+pure gameplay plus audio. A verified rendering and authored-asset scaffold, plus
+a 12-character Mixamo chooser, are merged into `master`. Character art
 is improved, but the animation set and team-identity treatment are still not
 final. See [`GRAPHICS.md`](GRAPHICS.md).
 
@@ -100,11 +100,13 @@ src/
   ai.js           opponent predict/chooseMovement/chooseShot, difficulty LEVELS (trait vector) (pure)
   strategies/     mode strategies (doubles/singles/common) + personas.js (play styles) (pure)
   practice.js     practice-mode target generation + timing/contact feedback    (pure)
+  movement.js     local-velocity + visual-move (run/shuffle/backpedal) classify (pure)
   utils.js        clamp/dist2D/lerp                                            (pure)
   input.js        desktop (WASD/mouse/keys) + dual-thumb touch controls
   audio.js        Web Audio SFX + HTMLAudioElement music player + persisted music state
+  assets.js       optional GLB loader + fallback-safe getModel/preload         (Three)
   scene.js        court, net, lighting, ball + trail, fence, trees            (Three)
-  players.js      Mii-style rig + cross-body swing animation                  (Three)
+  players.js      primitive rig + authored-GLB adapter + swing/locomotion clips (Three)
   camera.js       broadcast camera + follow/shake                             (Three)
   characters.js   12-character Mixamo chooser data + slot/team identity + AI play style (pure)
   characterPreview.js live 3D preview used by the chooser modal                (Three)
@@ -302,7 +304,8 @@ The important implementation contract:
   intensities + the ball's `emissiveIntensity` (the original raised it to ~1.2 at
   night so the ball stays visible).
 - **Character models** — the active roster uses 12 optimized Mixamo characters
-  (`ch01`-`ch12`) selected per slot through a fighting-game-style chooser
+  (`ch01`, `ch03`, `ch04`, `ch06`-`ch12`, `ch14`, `ch15`; no `ch02`/`ch05`/`ch13`)
+  selected per slot through a fighting-game-style chooser
   (`src/characters.js`, `src/main.js`, `src/characterPreview.js`). Slots
   (`nearYou`/`nearMate`/`farA`/`farB`) keep their own paddle/ring identity, so
   duplicate character picks are allowed without losing team distinction. Each

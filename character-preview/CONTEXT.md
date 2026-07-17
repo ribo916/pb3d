@@ -31,21 +31,13 @@ slightly outward (`LeftForeArm = (0.03, -0.08, 0.99)`, `RightForeArm =
 stylized characters' hands nearly touch/overlap. This avoids both the source
 pose's behind-the-body elbows and the first Codex attempt's too-flared elbows.
 Verified through the live `character-preview` path with Playwright on all 12
-characters for spacing, plus screenshots on `ch01`, `ch06`, and tightest-case
-`ch12`; screenshots were captured to
-`tools/shots/ready-elbows-ch01-front.png`,
-`tools/shots/ready-elbows-ch01-3q.png`,
-`tools/shots/ready-elbows-ch06-front.png`,
-`tools/shots/ready-elbows-ch06-3q.png`,
-`tools/shots/ready-elbows-ch12-front.png`, and
-`tools/shots/ready-elbows-ch12-3q.png`. Numeric spacing check after the final
+characters for spacing, plus front + 3/4 screenshots on `ch01`, `ch06`, and
+tightest-case `ch12`. Numeric spacing check after the final
 tune: all 12 characters have at least `0.247m` hand-to-hand distance, with most
 in the `0.30m-0.53m` range. After preview approval, the shipped game GLB
 `assets/animations/pickleball-locomotion.glb` was rebaked with
 `node tools/bake-locomotion-clips.mjs`, so the real game now uses the same
-READY clip. Game-side verification screenshots were captured to
-`tools/shots/game-ready-baked-front.png` and
-`tools/shots/game-ready-baked-3q.png`.
+READY clip.
 
 **Latest session — swapped 4 `TOP_PICKS` source clips for better ones; NOT a
 retarget-math fix, a content-choice fix.** The user judged the actual motion
@@ -316,13 +308,18 @@ Files:
   `src/assets.js` for the one asset that loader doesn't cover (the
   `pickleball-swings.glb` swing-clip library, fetched eagerly at page load
   since it's small and always relevant).
-- `assets/models/players/mixamo/ch01.glb`…`ch12.glb` — the shipped, optimized
-  character assets (0.2-1.6MB each; see `tools/build-mixamo-character.mjs`),
+- `assets/models/players/mixamo/*.glb` — the 12 shipped, optimized character
+  assets (`ch01`, `ch03`, `ch04`, `ch06`–`ch12`, `ch14`, `ch15`; 0.2-1.7MB each;
+  see `tools/build-mixamo-character.mjs`),
   the SAME files (one common location, not duplicated) wired into the real
-  game's `assets/manifest.js` as `player-ch01-v1`…`player-ch12-v1`.
+  game's `assets/manifest.js` as `player-ch01-v1`, `player-ch03-v1`, … through
+  `player-ch15-v1`.
   `assets/animations/pickleball-swings.glb` is the shared 0.07MB
-  forehand/backhand/overhead swing-clip library (see
-  `tools/build-mixamo-clip-library.mjs`), also one common file. The original
+  forehand/backhand/overhead swing-clip library, and
+  `assets/animations/pickleball-locomotion.glb` the shared 0.14MB
+  idle/ready/run/serve/backpedal/strafe library (see
+  `tools/build-mixamo-clip-library.mjs` and `tools/bake-locomotion-clips.mjs`),
+  also one common file each. The original
   raw, unoptimized per-character FBX (5-54MB each) and the raw
   forehand/backhand/overhead FBX were deleted once this swap was verified
   working end-to-end (all 12 characters + all 3 swing clips, no console
@@ -364,7 +361,9 @@ Files:
 
 ## What the viewer does
 
-- **Character row**: 12 characters, `CH01`–`CH12`, switchable live, each
+- **Character row**: the 12 shipped characters (`ch01`, `ch03`, `ch04`,
+  `ch06`–`ch12`, `ch14`, `ch15` — derived from `assets/manifest.js`, so
+  `ch02`/`ch05`/`ch13` are not shown), switchable live, each
   fetched lazily on first click (with a per-button loading/error state) via
   `preloadPlayerModels()` — clicking back to a previously-viewed character
   hits that loader's cache, no re-fetch.
@@ -405,10 +404,13 @@ Files:
 
 ## Asset provenance
 
-- **Characters** (`ch01.fbx`…`ch12.fbx` originally, now `ch01.glb`…`ch12.glb`
-  in `public/`): standard Mixamo library characters, downloaded directly from
+- **Characters** (originally the `ch01.fbx`…`ch12.fbx` download set, now the
+  optimized `.glb` files under `assets/models/players/mixamo/`): standard Mixamo
+  library characters, downloaded directly from
   mixamo.com. Originals live in `/Users/ribo/downloads/` renamed to
-  `CH01.fbx`…`CH12.fbx` (uppercase there; lowercase `chNN` copies here).
+  `CH01.fbx`…`CH12.fbx` (uppercase there; lowercase `chNN` copies here). Note the
+  *shipped* roster later dropped `ch02`/`ch05`, rejected `ch13`, and added
+  `ch14`/`ch15` — see the "Character roster reference" note above.
   **Licensing confirmed** (user-verified source + checked against Adobe's
   current Mixamo terms, see "Licensing status" below): free for unlimited
   commercial use, including shipping in a game, no attribution required. The
@@ -1611,9 +1613,13 @@ the position/scale fix.
   need custom capture or an accepted approximation). Also: real lateral
   movement (strafe/backpedal), not just forward run — pickleball positioning
   is lateral-heavy and a forward-run clip reused sideways will look like
-  sliding. **Separately and more basically**: there's no idle, ready, run, or
-  serve clip at all yet (only forehand/backhand/overhead) — see the Open
-  TODOs section below.
+  sliding.
+  **UPDATE (resolved for locomotion):** idle, ready, run, serve, backpedal, and
+  left/right strafe now ship in `assets/animations/pickleball-locomotion.glb`
+  (clips idle/idle_noise/ready/run/serve/backpedal/shuffle_left/shuffle_right),
+  baked via `tools/bake-locomotion-clips.mjs` — see the top-of-file "READ THIS
+  FIRST" and GRAPHICS.md. Still genuinely open: pickleball-specific dink/drop/
+  volley/lob/ATP/Erne clips and contact-frame calibration.
 - **RESOLVED (decision made, not built) — bone-naming vs. pb3d's existing
   adapter.** pb3d's `syncPrimitiveArms`/`visual_left_upper_arm`-style node
   mechanism is unrelated to Mixamo `mixamorig*` bone names and isn't used for
@@ -1641,6 +1647,12 @@ the position/scale fix.
   swing/sports mocap clips.
 
 ## Character roster reference
+
+> **NOTE (current shipped roster):** the table below documents the *original
+> downloaded FBX set* (`ch01`–`ch12`). The roster that actually ships in the
+> game is now **12 characters: `ch01`, `ch03`, `ch04`, `ch06`–`ch12`, `ch14`,
+> `ch15`** — `ch02` and `ch05` were dropped, `ch13` was rejected, and `ch14`/
+> `ch15` were added later (see `assets/manifest.js` / `src/characters.js`).
 
 | Key | File | Size | Notes |
 |---|---|---|---|
@@ -1708,25 +1720,19 @@ the abstract.
    user as too upright) and its one real flaw, the asymmetric left leg, was
    fixed directly via `mirrorRightLegOntoLeft()` instead. See "READ THIS
    FIRST" above.
-- [ ] **Add the missing animations: idle, serve, run, ready.** Only
-   forehand/backhand/overhead exist today. Without these, any wired-in
-   character freezes in its bind pose whenever not mid-swing (confirmed
-   accepted as a known/documented gap for the `ch12` proof of concept — see
-   `GRAPHICS.md`). Same build pipeline (`tools/build-mixamo-clip-library.mjs`)
-   should extend to cover these once suitable mocap source clips are found;
-   double-check the `freezeRootHorizontalMotion` axis fix above applies
-   correctly to whatever new clips get added (rebuild + re-measure Hips
-   world Y across the clip, don't assume).
-   **Progress this session:** candidate clips (idle/ready/run/backpedal/
-   side_shuffle/serve/hit_react — see the `top-picks` bullet above) are
-   previewable, live-retargeted
-   onto any of the 12 Mixamo characters, in this viewer for the user to
-   pick from — this is PREVIEW ONLY, not the build-time pipeline. Once the
-   user has picked favorites, they still need to go through
-   `tools/build-mixamo-clip-library.mjs` (or an equivalent) to actually ship
-   them, same as forehand/backhand/overhead did.
+- [x] **DONE — the missing locomotion animations shipped: idle, ready, run,
+   serve, backpedal, strafe left/right.** Baked from the perfected
+   character-preview retargets into `assets/animations/pickleball-locomotion.glb`
+   (manifest key `mixamo-locomotion`) via `tools/bake-locomotion-clips.mjs` +
+   the `window.__bake` hook in `main.js`, and merged onto every player model
+   through `collectAnimationClips()`. Characters no longer freeze in bind pose
+   when not mid-swing. See the top-of-file "READ THIS FIRST" and GRAPHICS.md's
+   "Mixamo Character Pipeline". **Still open:** the `hit_react` state (needs a
+   gameplay hook, not just a clip) and contact-frame calibration to
+   `contactT = 0.5`.
 - [x] **DONE — all 12 characters are wired into the real game.** All of
-   `ch01`-`ch12` have full `assets/manifest.js` entries (facing measured per
+   `ch01`, `ch03`, `ch04`, `ch06`-`ch12`, `ch14`, `ch15` have full
+   `assets/manifest.js` entries (facing measured per
    character via `tools/validate-player-glb.mjs`, all `+Z`;
    `paddleSocketRotation`/`paddleSocketScale` reused from `ch12`'s values and
    visually confirmed correct for every character via the character

@@ -6,8 +6,8 @@ rendering, venue, player-model, or screenshot-verification work.
 
 ## Current State
 
-The graphics-overhaul branch has completed its verification pass through Phase 9.
-The game now has:
+The graphics overhaul completed its verification pass through Phase 9 and is
+merged to `master`. The game now has:
 
 - Vite + npm Three.js static build output.
 - Renderer color management, tone mapping, shadows, quality presets, and a
@@ -20,7 +20,9 @@ The game now has:
 - The gendered Quaternius-customization roster (`player-male-v1`/
   `player-female-v1`, gender/hair/hair-color/facial-hair/shirt-color/
   pants-color picker) has been **fully retired**. All 4 roster slots now pick
-  one of the active Mixamo characters (`ch01`-`ch12`, `ch14`, `ch15`) via a fighting-game-style
+  one of the 12 active Mixamo characters (`ch01`, `ch03`, `ch04`, `ch06`-`ch12`,
+  `ch14`, `ch15` — there is intentionally no `ch02`/`ch05`/`ch13`) via a
+  fighting-game-style
   picker (see "Mixamo Character Pipeline" below) — no per-character cosmetic
   customization exists anymore; each Mixamo GLB renders with its own imported
   look untouched (`customizable: false`). The `player-male-v1`/
@@ -31,7 +33,8 @@ The game now has:
 - Authored-player identity hooks for color slots, scale/build, cosmetic variants,
   paddle socket, and animation clip names. The active Mixamo roster opts out of
   cosmetic tinting with `customizable: false`.
-- Visual-only idle/ready/run/forehand/backhand/serve/smash animation blending.
+- Visual-only idle/ready/run/backpedal/strafe-left/strafe-right/serve/forehand/
+  backhand/smash animation blending.
 - Player GLB validation and Player 1 comparison screenshot tooling.
 - Visual-only paddle-hit, bounce/contact, net-hit, serve camera shake, and point
   reaction effects.
@@ -46,12 +49,12 @@ characters are the active roster; any missing non-`ch01` character falls back to
 `ch01`, and if that is unavailable the primitive rig remains the runtime
 fallback.
 
-## Branch And Release Status
+## Release Status
 
-- Latest graphics checkpoint: `f61aeb4 Complete Phase 9 verification`.
-- Work remains on `feature/graphics-overhaul`.
-- Do not merge this branch to `master` as-is.
-- The branch is useful as a verified rendering/asset/animation scaffold.
+- The graphics overhaul and the 12-character Mixamo pipeline are **merged to
+  `master`** (via `feature/graphics-overhaul` and
+  `feature/mixamo-character-pipeline`, both since deleted). This is a verified
+  rendering/asset/animation scaffold, not final premium presentation.
 - The next serious graphics investment should focus on animation completion,
   team/role identity, and final character presentation, not further code-only
   crispness.
@@ -103,7 +106,8 @@ assets/
   models/
     players/
       mixamo/
-        ch01.glb .. ch12.glb, ch14.glb, ch15.glb  (active Mixamo catalog)
+        ch01, ch03, ch04, ch06-ch12, ch14, ch15 .glb
+                                     (12 active; no ch02/ch05/ch13)
     venues/
       park-props.glb
       tropical-props.glb
@@ -111,15 +115,18 @@ assets/
   textures/
   environments/
   animations/
-    pickleball-swings.glb   (shared forehand/backhand/overhead clip library)
+    pickleball-swings.glb       (shared forehand/backhand/overhead clip library)
+    pickleball-locomotion.glb   (idle/idle_noise/ready/run/serve/backpedal/
+                                 shuffle_left/shuffle_right)
 ```
 
 Important contracts:
 
 - `assets/manifest.js` is the runtime slot map.
-- `player-ch01-v1` through `player-ch12-v1`, plus `player-ch14-v1` and
-  `player-ch15-v1`, are the active selectable player slots, resolved from
-  `src/characters.js`; non-`ch01` slots fall back to
+- The active selectable player slots are `player-ch01-v1`, `player-ch03-v1`,
+  `player-ch04-v1`, `player-ch06-v1` through `player-ch12-v1`, `player-ch14-v1`,
+  and `player-ch15-v1` — 12 in all, resolved from `src/characters.js`
+  (`ch02`/`ch05`/`ch13` are intentionally absent). Non-`ch01` slots fall back to
   `player-ch01-v1` if their GLB is absent or fails to load.
 - `src/assets.js` loads optional GLB assets and provides fallback-safe access.
 - Optional entries should stay optional until their procedural fallback has been
@@ -174,14 +181,16 @@ reached at `/character-preview/` under the normal `npm run dev` server —
 there is no separate dev-server process anymore. Status summary:
 
 - **All 12 characters are wired end-to-end and gameplay-calibrated** —
-  `assets/manifest.js` has `player-ch01-v1`…`player-ch12-v1` model entries
+  `assets/manifest.js` has model entries for `player-ch01-v1`, `player-ch03-v1`,
+  `player-ch04-v1`, `player-ch06-v1`…`player-ch12-v1`, `player-ch14-v1`, and
+  `player-ch15-v1` (`ch02`/`ch05`/`ch13` were never adopted)
   (facing measured via `tools/validate-player-glb.mjs` for each — all 12 rest
   poses face `+Z`, matching the primitive rig's convention, so no rotation
   correction was needed for any of them) and a shared
   `pickleball-swings.glb` animations-bucket entry (forehand/backhand/overhead
   only). `ch12`'s original proof-of-concept calibration values
   (`paddleSocketRotation`/`paddleSocketScale`) were reused as the starting
-  point for `ch01`-`ch11` and confirmed correct per-character via the
+  point for the other 11 characters and confirmed correct per-character via the
   in-menu character picker's live preview — no per-character adjustment was
   needed. `src/characters.js` no longer has a gender concept or a
   `GENDERS.male.playerModelKey` substitution; each roster slot independently
@@ -276,7 +285,8 @@ there is no separate dev-server process anymore. Status summary:
 ### Roster-Wide Players
 
 The full doubles roster resolves all active slots through `src/characters.js`.
-Each slot independently picks one of `ch01`-`ch12`, while team/role identity
+Each slot independently picks one of the 12 characters (`ch01`, `ch03`, `ch04`,
+`ch06`-`ch12`, `ch14`, `ch15`), while team/role identity
 stays keyed by slot rather than by character. Keep the primitive rig
 authoritative for every player and reuse the same socket/material/clip contract
 for any future replacement or upgrade of these models. The legacy
@@ -370,7 +380,7 @@ paths before adding much larger authored art.
 
 Phase 9 verification covered:
 
-- `npm test`: 29 assertions passed.
+- `npm test`: 81 assertions passed.
 - `npm run shots`: passed, with serve/rally/point loop verified.
 - `npm run build`: passed, with the known >500 kB bundle warning.
 - Production preview: HTTP 200, no page errors, four players, `serve` state.
@@ -379,20 +389,8 @@ Phase 9 verification covered:
   serve/rally/point cycles to `near 2 : 5 far` before the safety cap, with no
   reported page errors.
 
-Screenshots inspected included:
-
-- `court.png`
-- `court-night.png`
-- `court-tropical-day.png`
-- `court-indoor-blue.png`
-- `rally-0.png`
-- `rally-1.png`
-- `rally-2.png`
-- `phase8-effects.png`
-- `roster-closeup.png`
-- `mobile-portrait-phase9.png`
-- `mobile-small-phase9.png`
-- `mobile-landscape-phase9.png`
+(The canonical screenshots to inspect are listed under "Verification Commands"
+above — `npm run shots` writes them to `tools/shots/`.)
 
 ## Next Recommended Work
 

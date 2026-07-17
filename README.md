@@ -7,7 +7,7 @@ music picker that supports genre folders such as `KPOP`, `RAP`, `COUNTRY`, and `
 
 It started life as the 3D match inside a larger browser game and was extracted into
 this clean, decoupled project — focused on gameplay, music, and presentation
-without a 2D overworld or save system. The graphics-overhaul branch now has an
+without a 2D overworld or save system. It now has an
 authored-player adapter and a 12-character Mixamo chooser; animation completion
 and team-identity polish are still active follow-up areas.
 
@@ -197,7 +197,7 @@ npm run music:generate
 
 ## Graphics status
 
-The graphics-overhaul branch has a verified rendering and asset-loading scaffold:
+The game has a verified rendering and asset-loading scaffold:
 upgraded procedural courts/lighting/effects, optional GLB venue props, a
 12-character Mixamo roster, animation blending, and mobile HUD fixes.
 
