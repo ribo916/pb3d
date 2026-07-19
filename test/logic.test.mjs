@@ -25,17 +25,6 @@ function test(name, fn) {
 }
 
 /* ---------------------------- shots ---------------------------- */
-test('shot profiles resolve to the tuned values', () => {
-  const drive = Shots.params('drive', C.KITCHEN, C.HALF_L);
-  assert.equal(drive.apex, 1.3);
-  assert.equal(drive.spinX, 4.0);
-  assert.ok(Math.abs(drive.landZ - C.HALF_L * 0.82) < 1e-9, 'drive lands at 82% depth');
-  const dink = Shots.params('dink', C.KITCHEN, C.HALF_L);
-  assert.ok(Math.abs(dink.landZ - (C.KITCHEN + 0.25)) < 1e-9, 'dink lands just past kitchen');
-  const drop = Shots.params('drop', C.KITCHEN, C.HALF_L);
-  assert.ok(Math.abs(drop.landZ - C.KITCHEN * 0.55) < 1e-9, 'drop dies in kitchen');
-});
-
 test('zoneOf classifies court bands', () => {
   assert.equal(Shots.zoneOf(C.KITCHEN, C.KITCHEN, C.HALF_L), 'kitchen');
   assert.equal(Shots.zoneOf(C.HALF_L - 0.5, C.KITCHEN, C.HALF_L), 'deep');
@@ -52,44 +41,12 @@ test('classify maps intent + zone + height to shot type', () => {
 });
 
 test('aimDepth clamps to legal landing range', () => {
-  const base = Shots.params('drive', C.KITCHEN, C.HALF_L).landZ;
+  const base = Shots.specV2('drive', C.KITCHEN, C.HALF_L).landZ;
   const deep = Shots.aimDepth(base, 1, C.KITCHEN, C.HALF_L);
   const shallow = Shots.aimDepth(base, -1, C.KITCHEN, C.HALF_L);
   assert.ok(deep <= C.HALF_L * 0.92 + 1e-9, 'deep within max');
   assert.ok(shallow >= C.KITCHEN * 0.5 - 1e-9, 'shallow above min');
   assert.ok(deep > shallow, 'forward aims deeper than back');
-});
-
-/* ---------------------------- physics ---------------------------- */
-test('launch raises the arc so the shot clears the net', () => {
-  const p0 = Physics.vec(0, 0.6, C.HALF_L * 0.8);     // near baseline, low contact
-  const target = Physics.vec(0, 0, -C.HALF_L * 0.7);  // deep far court
-  const spin = Physics.vec(4, 0, 0);                  // topspin (dips)
-  const v = Physics.launch(p0, target, 1.0, 0.22, spin);
-  assert.ok(Physics.clearsNet(p0, v, 0.22, spin), 'launched velocity clears the net');
-});
-
-test('step bounces the ball and reports in/out of bounds', () => {
-  const ball = Physics.makeBall();
-  ball.pos = Physics.vec(0, 0.05, -3); ball.vel = Physics.vec(0, -2, 0); ball.live = true;
-  let bounced = null;
-  for (let i = 0; i < 30 && !bounced; i++) {
-    const evs = Physics.step(ball, 1 / 120);
-    bounced = evs.find(e => e.type === 'bounce' || e.type === 'floor-out');
-  }
-  assert.ok(bounced, 'a floor event fired');
-  assert.equal(bounced.type, 'bounce');
-  assert.equal(bounced.inBounds, true);
-});
-
-test('ball landing outside the sideline is floor-out', () => {
-  const ball = Physics.makeBall();
-  ball.pos = Physics.vec(C.HALF_W + 1, 0.05, -3); ball.vel = Physics.vec(0, -2, 0); ball.live = true;
-  let ev = null;
-  for (let i = 0; i < 30 && !ev; i++) {
-    ev = Physics.step(ball, 1 / 120).find(e => e.type === 'bounce' || e.type === 'floor-out');
-  }
-  assert.equal(ev.type, 'floor-out');
 });
 
 /* ---------------------------- rules ---------------------------- */
@@ -325,7 +282,7 @@ test('AI dispatcher selects the correct movement strategy by mode', () => {
   ball.live = true;
   ball.pos = Physics.vec(0.8, 1.0, -1.5);
   ball.vel = Physics.vec(0, 0, 5);
-  ball.spline = { P0: Physics.vec(0, 1, -4), P1: Physics.vec(0, 2, 0), P2: Physics.vec(0.8, 0, 4.5), duration: 1, elapsed: 0.2 };
+  ball.flight = { landing: { x: 0.8, z: 4.5 }, T: 1, apexY: 2, samples: [], elapsed: 0.2 };
   const singles = AI.chooseMovement(ai, ball, { shots: 2, phase: 'return' }, {
     mode: 'singles',
     player: { team: 'near', pos: { x: 0, z: 5 }, move: {} },
@@ -408,51 +365,10 @@ test('practice miss feedback maps swing misses to early or late buckets', () => 
   assert.equal(late.key, 'late');
 });
 
-/* ----------------------- spline / bezier helpers ----------------------- */
-test('bezierPoint returns P0 at t=0 and P2 at t=1', () => {
-  const P0 = { x: 0, y: 0.8, z: 5 };
-  const P1 = { x: 0, y: 2.0, z: 0 };
-  const P2 = { x: 1, y: 0,   z: -4 };
-  const at0 = Physics.bezierPoint(P0, P1, P2, 0);
-  const at1 = Physics.bezierPoint(P0, P1, P2, 1);
-  assert.ok(Math.abs(at0.x - P0.x) < 1e-9 && Math.abs(at0.z - P0.z) < 1e-9, 't=0 is P0');
-  assert.ok(Math.abs(at1.x - P2.x) < 1e-9 && Math.abs(at1.z - P2.z) < 1e-9, 't=1 is P2');
-});
-
-test('bezierPoint midpoint satisfies the quadratic formula (0.25·P0 + 0.5·P1 + 0.25·P2)', () => {
-  const P0 = { x: -2, y: 0, z: 2 };
-  const P1 = { x:  0, y: 4, z: 0 };
-  const P2 = { x:  2, y: 0, z: -2 };
-  // Expected: 0.25*(-2,0,2) + 0.5*(0,4,0) + 0.25*(2,0,-2) = (0, 2, 0)
-  const expected = { x: 0, y: 2, z: 0 };
-  const mid = Physics.bezierPoint(P0, P1, P2, 0.5);
-  assert.ok(Math.abs(mid.x - expected.x) < 1e-9, 'midpoint.x correct');
-  assert.ok(Math.abs(mid.y - expected.y) < 1e-9, 'midpoint.y correct');
-  assert.ok(Math.abs(mid.z - expected.z) < 1e-9, 'midpoint.z correct');
-});
-
-test('computeP1 returns y >= net height + margin', () => {
-  const P0 = Physics.vec(0, 0.8, C.HALF_L * 0.7);
-  const P2 = Physics.vec(1, 0, -C.HALF_L * 0.7);
-  const apexY = 1.3;
-  const margin = 0.22;
-  const P1 = Physics.computeP1(P0, P2, apexY, margin);
-  const minNetH = Physics.netHeightAt(P1.x) + margin;
-  assert.ok(P1.y >= minNetH - 1e-9, 'P1.y clears the net by at least margin');
-  assert.ok(Math.abs(P1.z) < 1e-9, 'P1.z is at the net plane (z=0)');
-});
-
-test('splineFlightTime is positive and roughly physical', () => {
-  const P0 = Physics.vec(0, 0.8, 5);
-  const P2 = Physics.vec(0, 0, -4);
-  const T = Physics.splineFlightTime(P0, P2, 1.5);
-  assert.ok(T > 0.2 && T < 4.0, 'flight time is physically plausible (0.2s–4s)');
-});
-
-test('makeBall includes a null spline field', () => {
+test('makeBall includes a null flight field', () => {
   const b = Physics.makeBall();
-  assert.ok('spline' in b, 'spline property present');
-  assert.equal(b.spline, null);
+  assert.ok('flight' in b, 'flight property present');
+  assert.equal(b.flight, null);
 });
 
 /* ---------------------- stability / quality helpers -------------------- */
@@ -463,15 +379,6 @@ test('stabilityQuality returns correct tier at boundary values', () => {
     'just above popup threshold → float');
   assert.equal(Shots.stabilityQuality(STABILITY.FLOAT_THRESHOLD + 0.01), 'clean',
     'above float threshold → clean');
-});
-
-test('apexForQuality scales monotonically: clean < float < popup', () => {
-  const base = 1.4;
-  const clean = Shots.apexForQuality(base, 'clean');
-  const flt   = Shots.apexForQuality(base, 'float');
-  const popup = Shots.apexForQuality(base, 'popup');
-  assert.ok(clean <= flt, 'float apex >= clean apex');
-  assert.ok(flt < popup, 'popup apex > float apex');
 });
 
 /* ----------------------- power cap helpers ----------------------------- */
@@ -524,19 +431,17 @@ test('checkPoach (v2) accepts flight samples for the Pro physical check', () => 
   assert.equal(AI.checkPoach(ai, { samples, landing: { x: 0, z: 4 } }, { x: C.HALF_W, z: 2 }), false);
 });
 
-/* -------------------- AI predict spline fast-path --------------------- */
-test('AI predict uses spline endpoint when ball.spline is set', () => {
+/* -------------------- AI predict flight fast-path --------------------- */
+test('AI predict uses cached flight landing when ball.flight is set', () => {
   const ball = Physics.makeBall();
   ball.live = true;
-  ball.spline = {
-    P0: Physics.vec(0, 1, 3),
-    P1: Physics.vec(0, 2, 0),
-    P2: Physics.vec(1.5, 0, -4.2),
-    duration: 1.0, elapsed: 0.3
+  ball.flight = {
+    landing: { x: 1.5, z: -4.2 },
+    T: 1.0, apexY: 2, samples: [], elapsed: 0.3
   };
   const pred = AI.predict(ball);
   assert.ok(Math.abs(pred.x - 1.5) < 1e-9 && Math.abs(pred.z - -4.2) < 1e-9,
-    'predict returns P2 directly when spline is active');
+    'predict returns the cached landing when flight is active');
 });
 
 /* ------------------------- movement helpers ---------------------------- */
@@ -937,7 +842,6 @@ test('v2 CPU timing sigma tightens with difficulty (hard < normal < easy < famil
 test('v2 predict returns the cached flight landing exactly', () => {
   const ball = Physics.makeBall();
   ball.live = true;
-  ball.mech = 'v2';
   ball.flight = { landing: { x: 1.2, z: -4.3 }, T: 1.1, apexY: 2.4, samples: [], elapsed: 0.3 };
   const pred = AI.predict(ball);
   assert.ok(Math.abs(pred.x - 1.2) < 1e-9 && Math.abs(pred.z + 4.3) < 1e-9, 'landing from cache');
@@ -950,7 +854,7 @@ test('v2 predict forward-sim (post-bounce) lands within 0.3m of a fine sim', () 
   const v0 = { x: 1.0, y: 3.0, z: -5.0 };
   const fine = Physics.simulateFlight(p0, v0, { x: 0, y: 0, z: 0 }, { dt: 1 / 240 });
   const ball = Physics.makeBall();
-  ball.live = true; ball.mech = 'v2'; ball.flight = null; ball.spline = null;
+  ball.live = true; ball.flight = null;
   ball.pos = { x: p0.x, y: p0.y, z: p0.z }; ball.vel = { x: v0.x, y: v0.y, z: v0.z }; ball.spin = { x: 0, y: 0, z: 0 };
   const pred = AI.predict(ball);
   assert.ok(Math.hypot(pred.x - fine.landing.x, pred.z - fine.landing.z) < 0.3,

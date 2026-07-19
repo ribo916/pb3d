@@ -27,20 +27,10 @@ export const COURT = {
   SERVE_LINE_TOL: 0.1     // server may be this far in front of the baseline and still serve
 };
 
-// Arcade-tuned physics constants (slightly punchier than real life so rallies read well)
-export const PHYS = {
-  GRAVITY: 13.5,       // m/s^2 downward
-  AIR_DRAG: 0.045,     // linear drag coefficient per second
-  RESTITUTION: 0.66,   // vertical bounce energy retained
-  FRICTION: 0.78,      // horizontal speed retained on bounce
-  MAGNUS: 0.020,       // spin -> lateral/vertical curve factor
-  SPIN_DECAY: 1.5      // spin magnitude decay per second
-};
-
-// Physics v2 — honest simulated flight (mechanics='v2'). The ball ALWAYS
-// integrates under gravity + quadratic drag + Magnus; hits run a numeric solver
-// (solveArc) instead of scripting a Bezier. Constants are near-real for a
-// pickleball (24.5 g, 74 mm) with pace trimmed for playability via PACE.
+// Physics — honest simulated flight. The ball ALWAYS integrates under gravity +
+// quadratic drag + Magnus; hits run a numeric solver (solveArc). Constants are
+// near-real for a pickleball (24.5 g, 74 mm) with pace trimmed for playability
+// via PACE.
 //   Quadratic drag a = -DRAG_K·|v|·v  → terminal velocity √(GRAVITY/DRAG_K).
 //   With DRAG_K = 0.042 that is ≈ 15.3 m/s, matching a real pickleball.
 export const PHYS_V2 = {
@@ -58,7 +48,7 @@ export const PHYS_V2 = {
   PACE: 1.0             // global speed trim knob (playability tune; 1.0 = full physical)
 };
 
-// Timing-quality model (mechanics='v2'). Timing is anchored to CONTACT GEOMETRY:
+// Timing-quality model. Timing is anchored to CONTACT GEOMETRY:
 // where the ball sits relative to the hitter's body at the strike, measured as a
 // facing-normalized z-offset (negative = in front), graded against the same ideal
 // contact point practice mode coaches (PRACTICE.TIMING_IDEAL_Z — ball slightly out
@@ -145,13 +135,11 @@ export const MOVEMENT = {
 export const STABILITY = {
   SWEET_SPOT: { family: 1.2, easy: 0.7, normal: 1.0, hard: 1.4 },
   VEL_WEIGHT: 0.45,      // fraction of max speed that zeroes out stability
-  FLOAT_THRESHOLD: 0.45, // stability below this → float arc (high P1, overshooting P2)
-  POPUP_THRESHOLD: 0.18, // stability below this → pop-up arc (spiked P1)
-  FLOAT_APEX_MULT: 1.65, // v1: apex multiplier for float
-  POPUP_APEX_MULT: 2.6,  // v1: apex multiplier for pop-up
-  // v2 mishit loft is ADDITIVE and CAPPED (design intent: a mishit is a
-  // "slightly high" attackable ball — it hangs or sits into the smash zone —
-  // never a lob; lobs are deliberate shots only).
+  FLOAT_THRESHOLD: 0.45, // stability below this → float arc (hangs above the net)
+  POPUP_THRESHOLD: 0.18, // stability below this → pop-up arc (sits into smash zone)
+  // Mishit loft is ADDITIVE and CAPPED (design intent: a mishit is a "slightly
+  // high" attackable ball — it hangs or sits into the smash zone — never a lob;
+  // lobs are deliberate shots only).
   FLOAT_APEX_ADD_V2: 0.55, // float: hangs, bounces above the net, speedup-attackable
   POPUP_APEX_ADD_V2: 1.3,  // popup: descends through smash height at the kitchen
   MISHIT_APEX_MAX_V2: 3.4  // hard cap, well below the deliberate lob apex (4.6)

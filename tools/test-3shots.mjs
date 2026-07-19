@@ -49,8 +49,8 @@ for (let i = 0; i < 200; i++) {
       ballY: +b.pos.y.toFixed(2),
       ballZ: +b.pos.z.toFixed(2),
       ballLive: b.live,
-      splineApex: b.spline ? +b.spline.P1.y.toFixed(2) : null,
-      splineP2z: b.spline ? +b.spline.P2.z.toFixed(2) : null,
+      flightApex: b.flight ? +b.flight.apexY.toFixed(2) : null,
+      flightLandZ: b.flight ? +b.flight.landing.z.toFixed(2) : null,
       near: g.match.scores.near,
       far: g.match.scores.far,
       lastHitter: rally ? rally.lastHitter : null,
@@ -72,9 +72,9 @@ for (let i = 0; i < 200; i++) {
     shots.push({ shotNum: shotCount, snap, file: fname });
     console.log(`\nShot ${shotCount} — phase:${snap.phase} lastHitter:${snap.lastHitter}`);
     console.log(`  ball pos: x=${snap.ballX} y=${snap.ballY} z=${snap.ballZ}`);
-    if (snap.splineApex !== null) {
-      console.log(`  spline: apex=${snap.splineApex} P2z=${snap.splineP2z}`);
-      const landZ = snap.splineP2z;
+    if (snap.flightApex !== null) {
+      console.log(`  flight: apex=${snap.flightApex} landZ=${snap.flightLandZ}`);
+      const landZ = snap.flightLandZ;
       const kitchenZ = 2.134;
       const baselineZ = 6.706;
       if (Math.abs(landZ) < kitchenZ) console.log(`  → LANDS IN KITCHEN (z=${landZ})`);
@@ -90,11 +90,11 @@ for (let i = 0; i < 200; i++) {
 // Print final ball position summary
 console.log('\n--- Shot log summary ---');
 for (const s of shots) {
-  const landZ = s.snap.splineP2z;
+  const landZ = s.snap.flightLandZ;
   const depth = landZ !== null
     ? (Math.abs(landZ) < 2.134 ? 'KITCHEN' : Math.abs(landZ) > 5.0 ? 'DEEP' : 'MID-COURT')
-    : '(no spline)';
-  console.log(`Shot ${s.snap.shots}: ${s.snap.lastHitter} → ${depth} (P2z=${landZ}) apex=${s.snap.splineApex}`);
+    : '(no flight)';
+  console.log(`Shot ${s.snap.shots}: ${s.snap.lastHitter} → ${depth} (landZ=${landZ}) apex=${s.snap.flightApex}`);
 }
 
 if (errors.length) console.error('PAGE ERRORS:', errors.join('\n'));

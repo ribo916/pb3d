@@ -67,29 +67,13 @@ ring on the opponents' court previews where your held direction will place the b
 
 ---
 
-## Gameplay mechanics: v2 (default) and legacy v1
+## Gameplay mechanics
 
-The game currently ships **two gameplay-mechanics versions** while user testing
-is in progress:
-
-- **v2 — the default.** Honest simulated ball flight: gravity, quadratic air
-  drag, and Magnus spin are integrated every frame; a numeric shot solver finds
-  each launch velocity, drives/speedups fly a flat "driven" trajectory family,
-  bounces are spin-aware, and contact timing shapes shot quality. See
-  [`GAMEPLAY.md` → Trajectory System v2](GAMEPLAY.md).
-- **v1 — legacy.** The original scripted-Bezier flight, kept only for
-  side-by-side comparison. Launch it with the URL parameter **`?mech=v1`**
-  (e.g. `http://localhost:5173/?mech=v1`); `?mech=v2` or no parameter gives v2.
-
-A small badge in the **bottom-right corner of the gameplay screen** always shows
-which version you are playing (`v2`, or an amber `v1` for legacy). The AI-match
-viewer takes the same switch: `MECH=v1 node tools/play.mjs`.
-
-> **Plan of record:** once all user testing is complete and v2 is confirmed,
-> **gameplay v1 will be removed entirely** — the spline flight path, its
-> solvers (`computeP1`, `splineFlightTime`, `bezierPoint`/`bezierVel`,
-> `launch`/`solveShot`/`clearsNet`), the v1 shot profiles, the `?mech=` switch,
-> and this badge. Don't build new features against v1 behavior.
+Ball flight is honestly simulated: gravity, quadratic air drag, and Magnus spin
+are integrated every frame; a numeric shot solver finds each launch velocity,
+drives/speedups fly a flat "driven" trajectory family, bounces are spin-aware, and
+contact timing shapes shot quality. See
+[`GAMEPLAY.md` → Trajectory System](GAMEPLAY.md).
 
 ---
 

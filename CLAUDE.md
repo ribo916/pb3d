@@ -32,8 +32,8 @@ opens a headed window and plays a full **AI-vs-AI** match (all four players
 AI-driven), fast-forwarding the sim while the render loop keeps drawing, and streams
 score/state transitions to the terminal. Tune with env vars: `SPEED` (sim
 multiplier, default 4), `VENUE` (park|tropical|indoor), `PALETTE` (blue|green),
-`TOD` (day|night), `DIFF`, `MATCHES`, `MAXSEC`, `MECH` (v1|v2 flight mechanics —
-prints a rally-length/fault metrics summary for A/B tuning). `SPEED` multiplies *simulated* time
+`TOD` (day|night), `DIFF`, `MATCHES`, `MAXSEC` (prints a rally-length/fault
+metrics summary for tuning). `SPEED` multiplies *simulated* time
 (fixed 1/60 steps), so behavior matches 1x — drop to `SPEED=1` to confirm anything
 suspicious isn't a fast-forward artifact. It exercises the AI only, not human input
 (aim/poach/swing timing still need manual play).
@@ -53,9 +53,11 @@ touch `document`/`window`. `node test/logic.test.mjs` depends on that. New
 pure-logic code goes in the same pattern so it stays node-testable.
 
 ### Don't regress the net solver
-`physics.clearsNet()` deliberately simulates gravity + drag + Magnus (not a
-drag-free parabola), and `game._executeHit()` snaps the ball to the contact point.
-Both prevent "balls into the net." Don't simplify either.
+`physics.solveArc()` searches for a launch velocity that carries the ball to the
+aimed target while clearing the net, integrating the SAME gravity + drag + Magnus
+forces as live flight (`stepV2`) — not a drag-free parabola. `game._executeShotV2()`
+snaps the ball to the contact point before launching. Both prevent "balls into the
+net." Don't simplify either.
 
 ### Music assets
 Music is already implemented. To add or replace selectable tracks, drop supported

@@ -66,7 +66,7 @@ export function chooseShot(ai, ball, match, isServe, ctx) {
 
   // Score-awareness + pressure-linked errors (see doubles.js for rationale).
   var pressure = scorePressure(match, ctx.hitterTeam);
-  var rlMult = (ball.mech === 'v2') ? rallyLengthMult(match.rally && match.rally.shots) : 1;
+  var rlMult = rallyLengthMult(match.rally && match.rally.shots);
   var effMiss = cfg.miss * ballDifficultyMult(ctx.contactQuality) * pressure.missMul * rlMult;
 
   if (!isServe && Math.random() < effMiss) {
@@ -137,8 +137,8 @@ export function chooseShot(ai, ball, match, isServe, ctx) {
       intent = (Math.random() < dropChance) ? 'touch' : 'power';
     }
 
-    // Resolve against the profiles of the ACTIVE mechanics (see doubles.js).
-    var sr = (ball.mech === 'v2' ? Shots.resolveV2 : Shots.resolve)(absZ, ball.pos.y, intent, C.KITCHEN, C.HALF_L);
+    // Resolve against PROFILES_V2 (see doubles.js).
+    var sr = Shots.resolveV2(absZ, ball.pos.y, intent, C.KITCHEN, C.HALF_L);
     type = sr.type; var sp = sr.sp;
 
     if (type === 'drive' || type === 'speedup') {

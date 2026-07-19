@@ -3,39 +3,28 @@
  * shot type does and which shot an intent + court position produces.
  * Pure logic (no DOM/Three). Ported from the original Picklelife js/shots.js.
  *
- * A "shot" is a parameter profile fed to physics.launch(p0, target, apex,
- * margin, spin): apex = arc height, landZ = how far past the net it lands
- * (meters, opponent side), spinX = topspin(+)/backspin(-), spinY = sidespin,
- * margin = net-clearance buffer. launch() auto-raises a too-low arc to clear
- * the net, so a low-apex dink aimed just over the net is lofted only the
- * minimum needed.
+ * A "shot" is a *physical envelope* fed to physics.solveArc: an apex HINT (the
+ * solver raises it as needed to clear the net), a landing depth (meters past the
+ * net, opponent side), a spin vector (spinX = topspin(+)/backspin(-), spinY =
+ * sidespin), a net margin, and a speed cap (vMax). The solver auto-raises a
+ * too-low arc to clear the net, so a low-apex dink aimed just over the net is
+ * lofted only the minimum needed.
  * ==========================================================================*/
 'use strict';
 
 import { FT, STABILITY, POWER_CAP, TIMING_V2, PRACTICE } from './constants.js';
 
-// margin = net-clearance buffer (m). launch() is ballistic (no drag), but real
-// flight has drag that pulls slow/soft shots down short — so soft shots carry a
-// GENEROUS margin to avoid clipping the tape. apex is also lifted a touch.
-const PROFILES = {
-  drive:   { apex: 1.3, depthFrac: 0.82, spinX:  4.0, spinY: 0, margin: 0.22 },
-  drop:    { apex: 1.75, absZ: null,     spinX: -2.0, spinY: 0, margin: 0.22 },
-  dink:    { apex: 1.4, absZ: null,      spinX: -1.0, spinY: 0, margin: 0.16 },
-  lob:     { apex: 4.2, depthFrac: 0.85, spinX: -1.0, spinY: 0, margin: 0.30 },
-  speedup: { apex: 1.3, depthFrac: 0.50, spinX:  4.0, spinY: 0, margin: 0.18 }
-};
-
 export const TYPES = ['drive', 'drop', 'dink', 'lob', 'speedup'];
 
 /* ============================================================================
- * MECHANICS V2 shot grammar. Under v2 the ball flies honest physics, so a shot
- * is a *physical envelope* fed to physics.solveArc: an apex HINT (the solver
- * raises it as needed to clear the net), a landing depth, a spin vector, a net
- * margin, and a speed cap (vMax). All shots — including serve/smash/ATP/Erne
- * that v1 hardcoded inside game.js — are profiles here so tuning stays in one
- * place. `direct:true` = contact is above the target (smash/Erne): aim straight
- * down the line, search speed only. `allowNet:true` = skip net-clearance raising
- * (ATP goes around the post; deliberate faults go into it).
+ * Shot grammar. The ball flies honest physics, so a shot is a *physical
+ * envelope* fed to physics.solveArc: an apex HINT (the solver raises it as
+ * needed to clear the net), a landing depth, a spin vector, a net margin, and a
+ * speed cap (vMax). All shots — including serve/smash/ATP/Erne — are profiles
+ * here so tuning stays in one place. `direct:true` = contact is above the target
+ * (smash/Erne): aim straight down the line, search speed only. `allowNet:true` =
+ * skip net-clearance raising (ATP goes around the post; deliberate faults go
+ * into it).
  * ==========================================================================*/
 const PROFILES_V2 = {
   //         apexHint depth               spinX  spinY margin vMax  flags
@@ -54,7 +43,7 @@ const PROFILES_V2 = {
   feed:    { apex: 2.55, depthFrac: 0.55, spinX:  1.0, spinY: 0, margin: 0.20, vMax: 12 }
 };
 
-// Landing distance from the net (meters) for a v2 profile on this court.
+// Landing distance from the net (meters) for a profile on this court.
 function landingZV2(p, KITCHEN, HALF_L) {
   if (p.absZ === 'drop') return KITCHEN * 0.55;   // soft, dies in the kitchen
   if (p.absZ === 'dink') return KITCHEN + 0.25;   // just over the non-volley line
@@ -72,7 +61,7 @@ export function specV2(type, KITCHEN, HALF_L) {
     apex: p.apex,
     landZ: landingZV2(p, KITCHEN, HALF_L),
     spin: { x: p.spinX || 0, y: p.spinY || 0, z: 0 },
-    spinX: p.spinX || 0,   // aliases so a v2 envelope is drop-in for the v1 `sp` shape
+    spinX: p.spinX || 0,
     spinY: p.spinY || 0,
     margin: p.margin,
     vMax: p.vMax,
@@ -82,8 +71,8 @@ export function specV2(type, KITCHEN, HALF_L) {
   };
 }
 
-/* v2 counterpart of resolve(): intent + position + ball height -> {type, sp}
- * where sp is the physical envelope from specV2. */
+/* Resolve intent + position + ball height -> {type, sp} where sp is the
+ * physical envelope from specV2. */
 export function resolveV2(absZ, ballY, intent, kitchen, halfL) {
   var zone = zoneOf(absZ, kitchen, halfL);
   var type = classify(zone, intent, ballY > 0.95);
@@ -130,31 +119,11 @@ export function applyTiming(offsetNorm, side, fwd) {
   return { targetXSkew: targetXSkew, paceMul: paceMul, apexAdd: apexAdd };
 }
 
-// Resolve a shot's landing distance from the net (meters) for this court.
-function landingZ(type, KITCHEN, HALF_L) {
-  if (type === 'drop') return KITCHEN * 0.55;      // soft, dies in the kitchen
-  if (type === 'dink') return KITCHEN + 0.25;      // just over the non-volley line
-  var p = PROFILES[type] || PROFILES.drive;
-  return HALF_L * (p.depthFrac || 0.80);
-}
-
-/* params(type, KITCHEN, HALF_L) -> { apex, landZ, spinX, spinY, margin }.
- * KITCHEN/HALF_L default to regulation if the caller omits geometry (tests). */
-export function params(type, KITCHEN, HALF_L) {
-  if (KITCHEN == null) KITCHEN = 7 * FT;
-  if (HALF_L == null) HALF_L = 22 * FT;
-  var p = PROFILES[type] || PROFILES.drive;
-  return {
-    apex: p.apex, landZ: landingZ(type, KITCHEN, HALF_L),
-    spinX: p.spinX, spinY: p.spinY, margin: p.margin
-  };
-}
-
 // Depth AIMING: nudge a shot's landing distance from the net based on the held
 // directional input at contact. depthAim is -move.z, so +1 = pressing forward
 // (up on the pad, toward the net) -> land deeper toward the baseline; -1 =
 // pressing back -> pull it shorter toward the kitchen line. Pure placement; the
-// shot type (apex/spin) is unchanged. Clamped to stay legal (and launch() still
+// shot type (apex/spin) is unchanged. Clamped to stay legal (and solveArc still
 // raises the arc to clear the net). KITCHEN/HALF_L default to regulation.
 export function aimDepth(baseLandZ, depthAim, KITCHEN, HALF_L) {
   if (KITCHEN == null) KITCHEN = 7 * FT;
@@ -190,12 +159,6 @@ export function classify(zone, intent, ballHigh) {
   return (intent === 'touch') ? 'drop' : 'drive';
 }
 
-export function resolve(absZ, ballY, intent, kitchen, halfL) {
-  var zone = zoneOf(absZ, kitchen, halfL);
-  var type = classify(zone, intent, ballY > 0.95);
-  return { type: type, sp: params(type, kitchen, halfL) };
-}
-
 /* ============================================================
  * Stability Index helpers
  * ============================================================*/
@@ -209,14 +172,7 @@ export function stabilityQuality(stability) {
   return 'clean';
 }
 
-/* Scale a base apex by shot quality (v1: multiplicative). */
-export function apexForQuality(baseApex, quality) {
-  if (quality === 'popup') return baseApex * STABILITY.POPUP_APEX_MULT;
-  if (quality === 'float') return baseApex * STABILITY.FLOAT_APEX_MULT;
-  return baseApex;
-}
-
-/* v2 mishit loft: ADDITIVE and CAPPED. Design intent: a mishit drop/dink/drive
+/* Mishit loft: ADDITIVE and CAPPED. Design intent: a mishit drop/dink/drive
  * is a "slightly high" ball — a float hangs and bounces above the net
  * (speedup-attackable), a popup sits into the smash zone — but it is NOT a lob.
  * Lobs are deliberate shots only (explicit intent / situationalLob); the cap

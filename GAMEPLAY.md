@@ -47,9 +47,9 @@ ball = {
   spin:  {x, y, z},       // angular-ish magnitude (decay over time)
   live:  boolean,
   lastBounceSide: 0|1|-1, // +1 near, -1 far, 0 none
-  spline: null | {         // set during in-flight arc; null during roll-out
-    P0, P1, P2,            // Quadratic Bezier control points
-    duration,              // total flight time (s)
+  flight: null | {         // cached solver result; null during roll-out
+    landing, T, apexY,     // solved landing point, flight time, apex height
+    samples,               // pre-sampled flight points (for poach checks)
     elapsed                // time elapsed so far (s)
   }
 }
@@ -57,76 +57,24 @@ ball = {
 
 ---
 
-## Trajectory System — Hybrid Spline + Physics
+## Trajectory System — Honest Simulated Physics + Shot Solver
 
-Every paddle strike creates a **Quadratic Bezier** spline on the ball. While
-`ball.spline` is non-null the ball position is sampled from the curve each
-sub-step; `Physics.step()` is **not called** during flight. When `elapsed >=
-duration` (or `y <= BALL_R`) the ball lands, the bounce event fires, and the
-ball transitions back to `Physics.step()` for post-bounce roll-out.
+The ball **always integrates real physics** every substep (`Physics.stepV2`) —
+there is no scripted curve and no guaranteed landing point:
 
-### Three Control Points
-
-| Point | Position | Purpose |
-|---|---|---|
-| **P0** | Paddle contact point (snapped at hit time) | Start |
-| **P1** | `z = 0` (net plane), `y = max(netHeight + margin, apexY)`, `x = midpoint(P0.x, P2.x)` | Arc apex — **net clearance by construction** |
-| **P2** | Target court surface `(x, 0, z)` | Landing |
-
-`Physics.computeP1(P0, P2, apexY, margin)` builds P1. Net clearance is
-**guaranteed by geometry** — no iterative solver needed.
-
-### Flight Time
-
-`Physics.splineFlightTime(P0, P2, apexY)` uses the same up + down formula as
-the old ballistic solver (consistent timing feel):
-```
-T = vy/g + sqrt(2 * apex / g)   where vy = sqrt(2g*(apexY - P0.y))
-```
-
-### Post-Bounce Physics
-
-After the spline ends, `Physics.step()` takes over. It applies:
-- Gravity (`PHYS.GRAVITY = 13.5 m/s²`, arcade-tuned)
-- Air drag (`PHYS.AIR_DRAG = 0.045`)
-- Restitution on bounce (`PHYS.RESTITUTION = 0.66`)
-- Horizontal friction on bounce (`PHYS.FRICTION = 0.78`)
-- Magnus curve from spin (`PHYS.MAGNUS = 0.020`)
-- Spin decay (`PHYS.SPIN_DECAY = 1.5/s`)
-
-The old `Physics.launch()` / `clearsNet()` / `solveShot()` functions remain
-in `physics.js` for test continuity but are no longer called by the hit path.
-**Fault shots** (AI errors) still use `_executeHit()` → `solveShot()` so they
-reliably miss.
-
----
-
-## Trajectory System v2 — Honest Simulated Physics + Shot Solver
-
-**Status: the DEFAULT.** v2 replaces the choreographed Bezier arc (v1, above)
-with genuinely simulated flight. v1 remains launchable with **`?mech=v1`** (or
-`new Game({ mechanics: 'v1' })`; `MECH=v1` for `tools/play.mjs`) strictly for
-A/B comparison during user testing — **v1 will be deleted once testing
-completes** (see README → Gameplay mechanics). The bottom-right HUD badge
-(`#mechBadge`) always shows the active version in-game.
-
-### What changes
-
-Under v2 the ball **always integrates real physics** every substep
-(`Physics.stepV2`) — there is no spline and no guaranteed landing point:
-
-- **Gravity** `PHYS_V2.GRAVITY = 9.81` (real, not the arcade 13.5).
+- **Gravity** `PHYS_V2.GRAVITY = 9.81` (real).
 - **Quadratic air drag** `a = -DRAG_K·|v|·v` (`DRAG_K = 0.042`) → terminal
   velocity ≈ 15.3 m/s, matching a real pickleball (a very draggy ball).
 - **Magnus** `a = MAGNUS_K·(spin × v)` shapes the arc *in flight* — topspin
-  genuinely dips the ball, backspin floats it, sidespin curves it. (In v1 spin
-  was cosmetic during flight.)
+  genuinely dips the ball, backspin floats it, sidespin curves it.
 - **Spin-aware bounce**: topspin skids low & fast, backspin checks up (reverses
   at high spin), sidespin kicks laterally. Tuned by `BITE`, `SPIN_COUPLE`,
   `SIDE_KICK`, `ROLL_BLEND`, `RESTITUTION = 0.62`.
 
-All v2 physics constants live in `constants.js` `PHYS_V2`. `PHYS_V2.PACE` is the
-global speed-trim knob for the playability tune.
+All physics constants live in `constants.js` `PHYS_V2`. `PHYS_V2.PACE` is the
+global speed-trim knob for the playability tune. A hit caches its solved flight
+(`ball.flight`: landing, flight time, apex, samples) for AI prediction; the cache
+is dropped on bounce/net so post-bounce balls forward-integrate the roll-out.
 
 ### The shot solver (`Physics.solveArc`) — three trajectory families
 
@@ -143,8 +91,7 @@ three families:
   speedups read as pace instead of arcs.
 - **ARC** (default — drop, dink, lob, serve, feed): seed ballistically at the
   apex hint, secant on launch speed for range, raise the apex until the arc
-  clears the net (the proven v1 `launch()` loop — clearance guaranteed by
-  construction).
+  clears the net (clearance guaranteed by construction).
 - **DIRECT** (smash, Erne): aim down the depressed line to the target, search
   speed only.
 
@@ -153,8 +100,8 @@ deliberate faults) skips clearance raising.
 
 ### Shot grammar (`shots.js` `PROFILES_V2` / `specV2`)
 
-Every shot — including serve, smash, ATP, Erne and the practice feed, which v1
-hardcoded inside `game.js` — is a physical envelope here:
+Every shot — including serve, smash, ATP, Erne and the practice feed — is a
+physical envelope here:
 
 | Type | family | apex hint | spinX | vMax | Notes |
 |---|---|---|---|---|---|
@@ -180,11 +127,11 @@ speedup-attackable); popup = base + `POPUP_APEX_ADD_V2` (1.3 — descends throug
 smash height); both hard-capped at `MISHIT_APEX_MAX_V2` (3.4), well below the
 deliberate lob (4.6). A float/popup-quality drive/speedup also **drops out of
 the driven family** into the arc solver — the mishit balloons a little and
-becomes the punishable sitter. (v1 keeps its multiplicative `apexForQuality`.)
+becomes the punishable sitter.
 
 ### Timing = quality + direction (`TIMING_V2`, `Shots.applyTiming`)
 
-Human timing (v2 only) is anchored to **contact geometry** — where the ball sits
+Human timing is anchored to **contact geometry** — where the ball sits
 relative to the hitter's body at the strike — not to a press-clock. At contact,
 `Shots.timingOffsetFromContact((ball.z − hitter.z)·fwd)` grades the
 facing-normalized z-offset against the same ideal contact point practice mode
@@ -216,56 +163,61 @@ effects** — the lateral skew is zeroed for CPUs because directional variance i
 already owned by `LEVELS.err` (keeping both would double-count lateral error at
 the low tiers).
 
-### AI under v2
+### AI
 
 `AI.predict` returns a unified `{x, z, tLeft, peakY}` from the cached solver
 flight (`ball.flight`, exact and O(1)) — the AI reads the real landing, scatter
-included, exactly as it read the spline endpoint in v1. Post-bounce balls
-forward-integrate with the v2 forces. Strategies read
-`prediction.peakY`/`prediction.tLeft` instead of spline internals, and resolve
-shot envelopes against the active mechanics (`ball.mech === 'v2'` →
-`Shots.resolveV2`), so `PROFILES_V2` is the CPU tuning surface under v2 too. A
-**rally-length pressure** term (`common.rallyLengthMult`, v2-only) ramps the
+included. Post-bounce balls forward-integrate with the same forces. Strategies
+read `prediction.peakY`/`prediction.tLeft` instead of flight internals, and
+resolve shot envelopes with `Shots.resolveV2`, so `PROFILES_V2` is the CPU tuning
+surface too. A **rally-length pressure** term (`common.rallyLengthMult`) ramps the
 unforced-error rate in long exchanges so dink battles resolve in a realistic
 window instead of stalling.
 
 ### Metrics
 
 `game.metrics` (rally-length histogram, net errors, serve faults, point reasons)
-is always on; `tools/play.mjs` prints a summary per match for A/B tuning
-(`MECH=v1` vs `MECH=v2`, same difficulty/seed).
+is always on; `tools/play.mjs` prints a summary per match for tuning.
 
 ---
 
 ## Shot Types
 
-Defined in `shots.js` `PROFILES`. Each profile sets the **default** arc;
-Stability Index, power cap, and depth aim all modify the final spline.
+Defined in `shots.js` `PROFILES_V2`. Each profile sets a physical envelope (apex
+**hint**, depth, spin, margin, `vMax`, family flags) fed to `Physics.solveArc`;
+Stability Index, power cap, and depth aim modify it before the solve.
 
-| Type | Apex | Depth | SpinX | Use |
-|---|---|---|---|---|
-| `drive` | 1.3 m | 82% court | +4.0 (topspin) | Baseline power shot |
-| `drop` | 1.75 m | 55% kitchen | −2.0 (backspin) | Third-shot drop; lands in kitchen |
-| `dink` | 1.4 m | kitchen+0.25 m | −1.0 (backspin) | Soft kitchen exchange |
-| `lob` | 4.2 m | 85% court | −1.0 (backspin) | Overhead change-up |
-| `speedup` | 1.3 m | 50% court | +4.0 (topspin) | Attack a high floated ball |
+| Type | Family | Apex hint | Depth | SpinX | vMax | Use |
+|---|---|---|---|---|---|---|
+| `drive` | driven | 1.15 m | 80% court | +5.0 (topspin) | 19 | Baseline power shot |
+| `drop` | arc | 2.10 m | 55% kitchen | −3.0 (backspin) | 9 | Third-shot drop; lands in kitchen |
+| `dink` | arc | 1.35 m | kitchen+0.25 m | −1.5 (backspin) | 6.5 | Soft kitchen exchange |
+| `lob` | arc | 4.60 m | 86% court | −1.0 (backspin) | 14 | Overhead change-up (deliberate only) |
+| `speedup` | driven | 1.05 m | 55% court | +5.5 (topspin) | 17 | Attack a high floated ball |
+
+Driven shots (drive, speedup) ignore the apex hint when struck clean — they fly
+flat and hit DOWN from a high contact; the hint is only the mishit-arc fallback.
 
 ### Bounce Height Reference
 
-Bounce height ≈ `apex × RESTITUTION²` (= `apex × 0.44`). Net height is **0.86 m**.
+Bounce height ≈ `apex × RESTITUTION²` (= `apex × 0.38`, `PHYS_V2.RESTITUTION =
+0.62`). Net height is **0.86 m**. Meaningful for arc shots (drop/dink/lob);
+driven shots skim the tape rather than arcing to their apex hint.
 
 | Shot | Apex | Clean bounce | vs Net | Notes |
 |---|---|---|---|---|
-| drive | 1.3 m | ~0.57 m | below ✓ | Receiver must lift |
-| dink | 1.4 m | ~0.62 m | below ✓ | Receiver must lift |
-| drop (clean) | 1.75 m | ~0.77 m | below ✓ | Kitchen player forced to dink |
-| drop (float) | 2.89 m | ~1.27 m | above — attackable | Bad drop; kitchen player can speedup |
-| drop (popup) | 4.55 m | ~2.00 m | smash zone | Very bad drop; overhead smash |
-| lob | 4.2 m | ~1.85 m | above | Intentional high — meant to be chased |
+| dink | 1.35 m | ~0.52 m | below ✓ | Receiver must lift |
+| drop (clean) | 2.10 m | ~0.80 m | below ✓ | Kitchen player forced to dink |
+| drop (float) | 2.65 m | ~1.01 m | above — attackable | Bad drop; kitchen player can speedup |
+| drop (popup) | 3.40 m | ~1.30 m | smash zone | Very bad drop; overhead smash |
+| lob | 4.60 m | ~1.75 m | above | Intentional high — meant to be chased |
 
-Float and popup values come from the stability multipliers (`FLOAT_APEX_MULT 1.65`, `POPUP_APEX_MULT 2.6`) applied to the drop apex (1.75 m).
+Float and popup values come from the **additive, capped** mishit loft
+(`FLOAT_APEX_ADD_V2 0.55`, `POPUP_APEX_ADD_V2 1.3`, capped at
+`MISHIT_APEX_MAX_V2 3.4`) applied to the drop apex (2.10 m) — never a lob.
 
-Use this table when tuning `PROFILES.drop.apex`: lower the number to make drops die lower (harder to attack), raise it to make even clean drops sit up.
+Use this table when tuning `PROFILES_V2.drop.apex`: lower the number to make drops
+die lower (harder to attack), raise it to make even clean drops sit up.
 
 ---
 
@@ -276,15 +228,15 @@ Player zone + ball height + intent
         ↓
 Shots.classify() → shot type
         ↓
-Shots.params()   → {apex, landZ, spinX, spinY, margin}
+Shots.specV2()   → {apex, landZ, spin, margin, vMax, driven/direct/allowNet}
         ↓
-Stability Index  → apex modifier (apexForQuality)
+Stability Index  → apex modifier (apexForQualityV2)
         ↓
 Power cap        → intent override (maxIntent)
         ↓
 Depth aim        → landZ nudge (aimDepth)
         ↓
-Bezier build     → Physics.computeP1 → _executeSplineShot
+Solve            → Physics.solveArc → _executeShotV2
 ```
 
 ### Court Zones (`Shots.zoneOf(absZ)`)
@@ -434,11 +386,14 @@ stability  = distFactor × velFactor         → [0, 1]
 
 | Tier | Stability range | Arc effect |
 |---|---|---|
-| `clean` | `> FLOAT_THRESHOLD (0.45)` | Base apex; P2 at target's feet |
-| `float` | `POPUP_THRESHOLD..FLOAT_THRESHOLD` | Apex × `FLOAT_APEX_MULT (1.65)` — high, returnable |
-| `popup` | `≤ POPUP_THRESHOLD (0.18)` | Apex × `POPUP_APEX_MULT (2.6)` — very high, attackable |
+| `clean` | `> FLOAT_THRESHOLD (0.45)` | Base apex; lands at target's feet |
+| `float` | `POPUP_THRESHOLD..FLOAT_THRESHOLD` | Apex + `FLOAT_APEX_ADD_V2 (0.55)` — high, returnable |
+| `popup` | `≤ POPUP_THRESHOLD (0.18)` | Apex + `POPUP_APEX_ADD_V2 (1.3)` — very high, attackable |
 
-Apex is scaled by `Shots.apexForQuality(baseApex, quality)` before P1 is computed.
+Apex loft is **additive and capped** (`MISHIT_APEX_MAX_V2 3.4`, never a lob) via
+`Shots.apexForQualityV2(baseApex, quality)` before the shot is solved. A
+float/popup-quality drive/speedup also drops out of the driven family into the arc
+solver, so the mishit balloons into a punishable sitter.
 
 Practice mode uses the same Stability Index, but with wider grading thresholds
 so "clean" and "perfect" map to an arcade-usable sweet spot rather than exact
@@ -553,11 +508,9 @@ The AI (`chooseShot`) applies the same logic via the `opponents` parameter for
 ## Serve
 
 - Diagonal deep serve into the correct service box (cross-court), ~75% depth.
-- **v2 (default):** a solved arc from the `serve` envelope (`shots.js`
-  `PROFILES_V2.serve`): apex hint `2.30 m`, topspin `spinX = 2.5`, `vMax = 16`,
-  margin `0.30`. Runs through `Physics.solveArc` like every other v2 shot.
-- **v1 (legacy `?mech=v1`):** a spline hardcoded in `game.js` — `apex = 2.5 m`,
-  topspin `spinX = 2.0`, via `Physics.computeP1` + `splineFlightTime`.
+- A solved arc from the `serve` envelope (`shots.js` `PROFILES_V2.serve`): apex
+  hint `2.30 m`, topspin `spinX = 2.5`, `vMax = 16`, margin `0.30`. Runs through
+  `Physics.solveArc` like every other shot.
 - Rules enforce diagonal placement; landing in the wrong box = `serve-wrong-court` fault.
 
 ---
@@ -676,10 +629,10 @@ Lane-aware doubles positioning:
     | normal (0.70) | 0.92 | near kitchen |
     | hard (0.92) | 1.00 | kitchen line |
 - Responsible player chases the ball's predicted landing (`AI.predict`).
-- Pop-up detection: if `ball.spline.P1.y ≥ 2.0 m`, the CPU holds its advance position instead of retreating to the landing point — stays forward to smash overhead.
+- Pop-up detection: if the predicted apex (`prediction.peakY`) ≥ 2.0 m, the CPU holds its advance position instead of retreating to the landing point — stays forward to smash overhead.
 
-`AI.predict` fast-path: if `ball.spline` is set, returns `P2` directly (exact, O(1)).
-Otherwise falls back to ballistic integration.
+`AI.predict` fast-path: if `ball.flight` is cached, returns the solved landing directly (exact, O(1)).
+Otherwise falls back to forward integration.
 
 Singles positioning:
 - Each side has one player, so `_responsibleSlot()` always resolves to slot 0.
@@ -724,10 +677,10 @@ the contact-dispatch override above.
 | Difficulty | Behaviour |
 |---|---|
 | easy (4.0) | Never poaches |
-| normal (4.5) | Poaches if `P2.x` lands within `SPECIALTY.POACH_NORMAL_X_HALF (0.85 m)` of partner's x |
-| hard (5.0 / Pro) | Samples 12 points along the Bezier; poaches if any point is within `SPECIALTY.POACH_PRO_REACH (1.9 m)` of partner |
+| normal (4.5) | Poaches if the landing `x` is within `SPECIALTY.POACH_NORMAL_X_HALF (0.85 m)` of partner's x |
+| hard (5.0 / Pro) | Scans the cached flight `samples`; poaches if any point is within `SPECIALTY.POACH_PRO_REACH (1.9 m)` of partner |
 
-On a successful poach the ball.spline is replaced in-place with a new redirected spline toward open court on the hitter's side.
+On a successful poach the ball's flight is re-solved in-place (`_executeShotV2`) toward open court on the hitter's side.
 
 ---
 
@@ -739,9 +692,10 @@ Both triggered in `game._hit()` by position checks **before** normal shot logic.
 
 **Trigger:** `|player.x| > COURT.HALF_W + SPECIALTY.ATP_X_MARGIN (0.35 m)`
 
-Player has been pulled completely outside the sideline. The swing fires a **flat spline around the net post**:
-- P1 is placed **below net height** (y = 0.4 m) — bypasses the net-apex guarantee.
-- P2 targets deep mid-court on the same lateral side.
+Player has been pulled completely outside the sideline. The swing fires the `atp`
+envelope — a **flat shot around the net post**:
+- `allowNet` skips the solver's net-clearance raising, so the low arc goes around the post rather than over it.
+- Targets deep mid-court on the same lateral side.
 - `spinY` applies sidespin curving around the post.
 
 AI Pro (`shotIQ ≥ 0.92`) can also execute ATPs via `AI.chooseShot`.
@@ -765,7 +719,7 @@ Real pickleball's strategic rhythm is the first four shots. Each shot is charted
 
 | Shot # | Who hits | Real intent | How the code models it |
 |---|---|---|---|
-| 1 — Serve | Serving team | Deep diagonal; push receiver back | `isServe` path: v2 `serve` envelope (apex hint 2.30 m, `spinX 2.5`), targets 75% depth diagonally (v1: apex 2.5 m, `spinX 2.0`) |
+| 1 — Serve | Serving team | Deep diagonal; push receiver back | `isServe` path: `serve` envelope (apex hint 2.30 m, `spinX 2.5`), targets 75% depth diagonally |
 | 2 — Return | Receiving team | Deep; buy time to reach kitchen | `isReturn` (`shots === 2`): intent always forced to `'power'`; receiver's partner starts at kitchen in formation |
 | 3 — 3rd shot | Serving team | Drop into kitchen; bleed their kitchen advantage | `isThirdShot` (`shots === 3`): high drop probability (37–97% by DUPR); serving team CPUs hold baseline until after this shot |
 | 4 — 4th shot | Receiving team | Attack if drop is bad; dink if drop is good | No special branch — normal intent selection. Kitchen player reads bounce height: clean drop → forced dink; float/popup → speedup or smash |
@@ -783,8 +737,8 @@ in exactly two places:
 
 | File | What lives here |
 |---|---|
-| **`src/constants.js`** | Court geometry, physics (`PHYS`), hit timings (`HIT`), Stability Index (`STABILITY`), power cap (`POWER_CAP`), specialty triggers (`SPECIALTY`) |
-| **`src/shots.js`** | Shot profiles (`PROFILES`) — apex, depth, spin, margin per shot type |
+| **`src/constants.js`** | Court geometry, physics (`PHYS_V2`, `TIMING_V2`), hit timings (`HIT`), Stability Index (`STABILITY`), power cap (`POWER_CAP`), specialty triggers (`SPECIALTY`) |
+| **`src/shots.js`** | Shot profiles (`PROFILES_V2`) — apex hint, depth, spin, margin, `vMax`, family flags per shot type |
 
 Changing AI difficulty feel? Edit `LEVELS` in `ai.js`. Changing AI **play style**
 feel? Edit `PERSONAS` in `src/strategies/personas.js`. Both are the allowed
@@ -799,16 +753,16 @@ Use the Bounce Height Reference table (in Shot Types section) when adjusting dro
 ### Ball / Arc Feel
 
 ```
-Feel too floaty overall          → lower STABILITY.FLOAT_APEX_MULT (shots.js default 1.65)
+Feel too floaty overall          → lower STABILITY.FLOAT_APEX_ADD_V2 (constants.js default 0.55)
                                     or raise STABILITY.FLOAT_THRESHOLD (constants.js default 0.45)
 Too many pop-ups on good hits    → raise STABILITY.POPUP_THRESHOLD (default 0.18)
 Not enough pop-ups               → lower STABILITY.POPUP_THRESHOLD
-Clean drop still attackable      → lower PROFILES.drop.apex (current 1.75); use Bounce Height table
-Drop lands too short             → increase PROFILES.drop.absZ (or use aimDepth)
-Drives land too short/long       → adjust PROFILES.drive.depthFrac (default 0.82)
+Clean drop still attackable      → lower PROFILES_V2.drop.apex (current 2.10); use Bounce Height table
+Drop lands too short             → increase PROFILES_V2.drop.absZ (or use aimDepth)
+Drives land too short/long       → adjust PROFILES_V2.drive.depthFrac (default 0.80)
 Smash arc not steep enough       → lower POWER_CAP.NET_H + 0.06 offset in game._hit / ai.chooseShot
 Smash fires too early (easy)     → raise POWER_CAP.SMASH_H (constants.js default 1.5)
-Ball too bouncy overall          → lower PHYS.RESTITUTION (default 0.66)
+Ball too bouncy overall          → lower PHYS_V2.RESTITUTION (default 0.62)
 ```
 
 ### Power Cap / Intent
