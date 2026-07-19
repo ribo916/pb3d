@@ -159,11 +159,28 @@ const TOP_PICKS = [
   // far beyond how far the rest of the torso moves ("broken neck" look).
   // HitReact_Left is a much subtler, natural-looking recoil.
   { key: 'tp-hit-react', category: 'hit_react', label: 'Hit React', url: './local-clips/top-picks/hit_react/HitReact_Left__AuroraManny.FBX' },
+
+  // --- Power-hit knockback candidate, narrowed from a 20-clip review set ---
+  // For the planned "power body bag": a charged player whacks an opponent and
+  // knocks them back. This is the RECEIVING side and the only survivor of the
+  // review pass -- the other 19 (including all 10 power-SWING candidates) were
+  // rejected on look and deleted, so the delivering side is still unsolved; see
+  // the TODO in CONTEXT.md. Paragon's death clips work here because a knockback
+  // that reads at pickleball scale needs a full-body launch, not the small
+  // torso recoil the existing `hit_react` pick gives. Short (0.37s) and ends
+  // collapsed on the ground, so it will need truncating/blending into a
+  // recovery rather than playing through.
+  { key: 'tp-kb-death-front-minion', category: 'knockback', label: 'KB: Death Front A (Minion)', url: './local-clips/top-picks/knockback/Death_Front_A__minionsManny.FBX' },
 ];
 const TOP_PICKS_BY_KEY = new Map(TOP_PICKS.map((p) => [p.key, p]));
 const AVAILABLE_CLIPS = [
   { type: 'glb', key: 'idle_noise', label: 'Idle Noise' },
   { type: 'manny', key: 'tp-hit-react', label: 'Hit React' },
+  // Power-hit candidates -- browsable so a final pick can be made before any of
+  // the knockback/power-swing gameplay work starts. Nothing here is baked into
+  // pickleball-locomotion.glb or wired into the game yet.
+  ...TOP_PICKS.filter((p) => p.category === 'knockback')
+    .map((p) => ({ type: 'manny', key: p.key, label: p.label })),
 ];
 const GAME_CLIP_RAW_SOURCE = {
   idle: 'tp-idle',

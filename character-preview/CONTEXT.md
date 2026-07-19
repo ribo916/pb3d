@@ -1696,6 +1696,36 @@ the abstract.
 
 ## Open TODOs (tracked here — keep this list current)
 
+- [ ] **"Power body bag" — knockback clip found, power SWING still unsolved.**
+   For a planned mechanic where a player builds up charge and whacks an
+   opponent, knocking them back. 20 candidates were staged for review; the user
+   rejected 19 on look. Only the receiving side survived:
+   - `KB: Death Front A (Minion)` —
+     `knockback/Death_Front_A__minionsManny.FBX`, registered in `TOP_PICKS` +
+     `AVAILABLE_CLIPS` in `main.js`. Still a candidate, not locked — the user
+     expects to tweak it. It is short (0.37s) and ends collapsed on the ground,
+     so it needs truncating/blending into a recovery, not playing through.
+
+   **The delivering side has no candidate.** All 10 power-swing options were
+   rejected, across the full range tried: one-handed blade swings
+   (Greystone/FengMao/Serath A+B pairs), a big slow windup (Kwang), and heavy
+   two-handed overheads (Steel hammer, Terra chop, Wukong slam). Kwang and Steel
+   were briefly kept, then also cut. What that rules out, for the next attempt:
+   - Paragon melee attacks in general read wrong on these characters — this
+     matches "Bugs found and fixed" item 5, where a two-handed MOBA windup was
+     rejected as a grotesque hip/torso distortion. The A/B one-handed blade
+     swings were the closest thing to a paddle drive in the library and still
+     did not land, so more of the same is unlikely to help.
+   - Nearly all of them also carry heavy root motion (Steel lunges clear out of
+     the preview frame), which a stationary pickleball swing cannot use. (Some
+     apparent drift is the preview camera not following root motion, not the
+     clip — do not over-read that.)
+   - The user's stated fallback is reusing the existing `overhead` swing. That
+     may simply be the answer; consider authoring/tweaking a variant of the
+     existing swing clips before mining the Paragon library again.
+   - Nothing here is baked into `pickleball-locomotion.glb` or wired into game
+     code. Bake via `tools/bake-locomotion-clips.mjs` only after picks lock.
+
 - [x] **DONE (partial) — the debug visualization the user explicitly asked
    for (twice), finally built in item 12:** a "Show Skeleton
    Overlay" toggle button draws a `THREE.SkeletonHelper` directly on the
