@@ -24,8 +24,9 @@ import * as Scene from './scene.js';
 import { makePlayer } from './players.js';
 import { resolveSlotCharacter } from './characters.js';
 import { makeCamera, updateCamera } from './camera.js';
+import { makeRecorder, makePlayback, makeOrbitCam } from './replay.js';
 import { clamp, dist2D } from './utils.js';
-import { HIT, PHYS_V2, STABILITY, POWER_CAP, SPECIALTY, MOVEMENT, PRACTICE, TIMING_V2 } from './constants.js';
+import { HIT, PHYS_V2, STABILITY, POWER_CAP, SPECIALTY, MOVEMENT, PRACTICE, TIMING_V2, REPLAY } from './constants.js';
 import { normalizeMode } from './modes.js';
 
 const C = Physics.COURT;
@@ -151,6 +152,14 @@ export function Game(opts) {
   this.msgTimer = 0;
   this.serveDelay = 0;
   this.pointPause = 0;
+  // Instant replay: a rolling recorder of live frames + playback state.
+  this.recorder = makeRecorder(REPLAY.WINDOW_SEC);
+  this.replaying = false;
+  this._swingsThisFrame = [];
+  this.replayPlayback = null;
+  this.replayOrbit = null;
+  this.replayFreeCam = false;   // true = free-orbit; false = reuse camMode presets
+  this._replayStash = null;
   this._initThree();
   this._initWorld();
   this._bindResize();
@@ -252,6 +261,17 @@ Game.prototype._initWorld = function () {
     ];
   }
   if (this.partnerDiff && this.mode === 'doubles') this.players[1].ai = AI.makeAI(this.partnerDiff, palettes.nearMate.persona);
+  // Tap every player's swing trigger so the replay recorder captures swing
+  // events (who + type) — they're fire-and-forget and can't be re-derived from
+  // pos/vel. Wrapping here covers all call sites (serve, human, CPU, partner).
+  var self = this;
+  this.players.forEach(function (pl, i) {
+    var origSwing = pl.mesh.swing.bind(pl.mesh);
+    pl.mesh.swing = function (type) {
+      if (!self.replaying) self._swingsThisFrame.push({ player: i, type: type });
+      return origSwing(type);
+    };
+  });
   this.human = this.players[0].mesh; this.humanPos = this.players[0].pos; this.humanVel = this.players[0].vel;
 
   // "This is YOU" — a subtle ring on the ground under players[0].
@@ -683,6 +703,42 @@ Game.prototype.update = function (dt) {
     isMobile: this.isMobile
   });
   this._updateHUD();
+
+  // Feed the rolling replay buffer with this live frame, then clear the
+  // per-frame swing list (populated by the wrapped mesh.swing triggers above).
+  if (this.state !== STATE.MENU) this.recorder.record(this._captureFrame(), dt);
+  this._swingsThisFrame = [];
+};
+
+// Compact, mesh-relevant snapshot of the current live frame (plain numbers).
+Game.prototype._captureFrame = function () {
+  var b = this.ball;
+  var players = [];
+  for (var i = 0; i < this.players.length; i++) {
+    var p = this.players[i], m = p.move || {};
+    players.push({
+      pos: { x: p.pos.x, z: p.pos.z },
+      vel: { x: p.vel.x, z: p.vel.z },
+      move: { kind: m.kind || '', split: m.split || 0, plant: m.plant || 0, lunge: m.lunge || 0,
+              target: m.target ? { x: m.target.x, z: m.target.z } : null }
+    });
+  }
+  var m = this.match;
+  return {
+    ball: {
+      pos: { x: b.pos.x, y: b.pos.y, z: b.pos.z },
+      vel: { x: b.vel.x, y: b.vel.y, z: b.vel.z },
+      spin: { x: b.spin.x, y: b.spin.y, z: b.spin.z },
+      live: b.live
+    },
+    players: players,
+    hud: {
+      scores: m ? { near: m.scores.near, far: m.scores.far } : { near: 0, far: 0 },
+      server: m ? m.server : 'near',
+      serverNum: m ? m.serverNum : 0
+    },
+    swings: this._swingsThisFrame.length ? this._swingsThisFrame.slice() : null
+  };
 };
 
 Game.prototype._tickServe = function (dt) {
@@ -1726,8 +1782,132 @@ Game.prototype._cycleCamera = function () {
 Game.prototype._syncOverhead = function () {
   var overhead = this.world && this.world.overhead;
   if (!overhead) return;
-  var hidden = this.camMode === 2;
+  var hidden = this.camMode === 2 && !this.replayFreeCam;
   for (var i = 0; i < overhead.length; i++) overhead[i].visible = !hidden;
+};
+
+/* --------------------------- Instant replay --------------------------- */
+// Snap gameplay-only markers (they'd be misleading during a replay).
+Game.prototype._setReplayMarkers = function (visible) {
+  var els = [this.youMarker, this.youMarkerGlow, this.aimMarker, this.aimMarkerFill];
+  for (var i = 0; i < els.length; i++) if (els[i]) els[i].visible = visible;
+};
+
+// Enter DVR replay: freeze the rolling buffer, stash live state, start playing.
+Game.prototype.enterReplay = function () {
+  if (this.replaying) return false;
+  var window = this.recorder.snapshotWindow();
+  if (!window.frames.length) return false;          // nothing to replay yet
+  this._replayStash = { frame: this._captureFrame(), camMode: this.camMode };
+  this.replayPlayback = makePlayback(window, REPLAY.DEFAULT_SPEED);
+  this.replayOrbit = makeOrbitCam(REPLAY.ORBIT);
+  this.replayFreeCam = false;
+  this.replaying = true;
+  this._setReplayMarkers(false);
+  // Clear any mid-fade point banner / shot tag so it doesn't sit frozen on screen.
+  this.msgTimer = 0; this.shotTimer = 0;
+  this._updateHUD();
+  this.replayPlayback.seek(0);
+  this.replayPlayback.play();
+  return true;
+};
+
+// Leave replay: restore the exact live frame we froze and resume the match.
+Game.prototype.exitReplay = function () {
+  if (!this.replaying) return;
+  this.replaying = false;
+  var st = this._replayStash;
+  if (st) { this._applyFrame(st.frame); this.camMode = st.camMode; }
+  this.replayFreeCam = false;
+  this.replayPlayback = null;
+  this.replayOrbit = null;
+  this._replayStash = null;
+  this._setReplayMarkers(true);
+  this._syncOverhead();
+  this._syncMeshes(0);
+  updateCamera(this.camRig, this.ball, this.players[0].pos, this.camMode, 0, 1 / 60, { isMobile: this.isMobile });
+};
+
+// Write a recorded/sampled frame into the live ball + players (in place, so the
+// physics objects keep their identity for a clean resume).
+Game.prototype._applyFrame = function (frame) {
+  var b = this.ball;
+  b.pos.x = frame.ball.pos.x; b.pos.y = frame.ball.pos.y; b.pos.z = frame.ball.pos.z;
+  b.vel.x = frame.ball.vel.x; b.vel.y = frame.ball.vel.y; b.vel.z = frame.ball.vel.z;
+  b.spin.x = frame.ball.spin.x; b.spin.y = frame.ball.spin.y; b.spin.z = frame.ball.spin.z;
+  b.live = frame.ball.live;
+  for (var i = 0; i < this.players.length && i < frame.players.length; i++) {
+    var p = this.players[i], fp = frame.players[i];
+    p.pos.x = fp.pos.x; p.pos.z = fp.pos.z;
+    p.vel.x = fp.vel.x; p.vel.z = fp.vel.z;
+    if (p.move && fp.move) {
+      p.move.kind = fp.move.kind; p.move.split = fp.move.split;
+      p.move.plant = fp.move.plant; p.move.lunge = fp.move.lunge;
+    }
+  }
+};
+
+// Per-render-frame replay step (called from the main loop in place of update()).
+Game.prototype.updateReplay = function (dtRender) {
+  var pb = this.replayPlayback;
+  if (!pb) return;
+  pb.advance(dtRender);
+  var frame = pb.sample();
+  if (!frame) return;
+  this._applyFrame(frame);
+  var swings = pb.consumeSwings();
+  for (var i = 0; i < swings.length; i++) {
+    var pl = this.players[swings[i].player];
+    if (pl) pl.mesh.swing(swings[i].type);
+  }
+  // Hard freeze-frame while paused; live animation while playing.
+  this._syncMeshes(pb.isPlaying() ? dtRender : 0);
+  if (this.replayFreeCam) {
+    this.replayOrbit.applyTo(this.camera, frame.ball.pos.x, REPLAY.ORBIT.TARGET_Y, frame.ball.pos.z);
+  } else {
+    updateCamera(this.camRig, this.ball, this.players[0].pos, this.camMode, 0, dtRender, { isMobile: this.isMobile });
+  }
+};
+
+// ---- Replay control surface (driven by the DVR overlay in main.js) ----
+Game.prototype.replayToggle = function () { if (this.replayPlayback) this.replayPlayback.toggle(); };
+Game.prototype.replaySetSpeed = function (s) { if (this.replayPlayback) this.replayPlayback.setSpeed(s); };
+Game.prototype.replaySeek = function (t) { if (this.replayPlayback) this.replayPlayback.seek(t); };
+Game.prototype.replayStep = function (n) { if (this.replayPlayback) this.replayPlayback.stepFrames(n); };
+Game.prototype.replayOrbitDrag = function (dx, dy) { if (this.replayFreeCam && this.replayOrbit) this.replayOrbit.onDrag(dx, dy); };
+Game.prototype.replayOrbitZoom = function (delta) { if (this.replayFreeCam && this.replayOrbit) this.replayOrbit.onZoom(delta); };
+
+Game.prototype._replayCamLabel = function () {
+  return this.replayFreeCam ? 'FREE ORBIT' : ['BROADCAST', 'FOLLOW', 'TOP-DOWN'][this.camMode] || 'BROADCAST';
+};
+
+// Cycle Broadcast → Follow → Top-Down → Free-orbit → Broadcast …
+Game.prototype.replayCycleCamera = function () {
+  if (this.replayFreeCam) {
+    this.replayFreeCam = false;
+    this.camMode = 0;
+  } else if (this.camMode >= 2) {
+    this.replayFreeCam = true;
+    if (this.replayOrbit) this.replayOrbit.reset();
+  } else {
+    this.camMode = this.camMode + 1;
+  }
+  this._syncOverhead();
+  return this._replayCamLabel();
+};
+
+// Snapshot of playback state for the overlay to render each frame.
+Game.prototype.replayInfo = function () {
+  var pb = this.replayPlayback;
+  if (!pb) return null;
+  return {
+    playhead: pb.getPlayhead(),
+    duration: pb.getDuration(),
+    playing: pb.isPlaying(),
+    speed: pb.getSpeed(),
+    freeCam: this.replayFreeCam,
+    camLabel: this._replayCamLabel()
+  };
 };
 
 Game.prototype._message = function (text, time) {

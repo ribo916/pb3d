@@ -839,6 +839,43 @@
       .hud-text-btn span { max-width: 56px; }
     }
 
+    /* ---- Instant replay DVR bar ---- */
+    #replayBar { display: none; position: fixed; left: 0; right: 0;
+      bottom: env(safe-area-inset-bottom, 0px); z-index: 45; pointer-events: none;
+      justify-content: center; padding: 0 12px 14px; }
+    #replayBar.active { display: flex; }
+    .replay-inner { pointer-events: auto; width: min(720px, 96vw);
+      display: flex; flex-direction: column; gap: 10px;
+      background: rgba(6,16,28,0.80); backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 16px; padding: 12px 14px; color: rgba(255,255,255,0.9);
+      font-family: inherit; }
+    .replay-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .replay-badge { font-size: 11px; font-weight: 800; letter-spacing: 1.5px;
+      color: #ff5a5a; text-shadow: 0 0 8px rgba(255,60,60,0.5); }
+    .replay-speeds { display: flex; gap: 4px; margin-left: 4px; }
+    .replay-btn { pointer-events: auto; border: none; cursor: pointer; font-family: inherit;
+      color: rgba(255,255,255,0.85); background: rgba(255,255,255,0.10);
+      border-radius: 10px; padding: 8px 12px; font-size: 13px; font-weight: 700;
+      transition: background 0.15s, opacity 0.15s; }
+    .replay-btn:active { opacity: 0.6; }
+    .replay-btn:hover { background: rgba(255,255,255,0.18); }
+    .replay-speed { pointer-events: auto; border: none; cursor: pointer; font-family: inherit;
+      color: rgba(255,255,255,0.7); background: rgba(255,255,255,0.08);
+      border-radius: 8px; padding: 6px 9px; font-size: 12px; font-weight: 700; }
+    .replay-speed.active { color: #0a1420; background: rgba(255,255,255,0.92); }
+    .replay-cam { margin-left: auto; font-size: 11px; letter-spacing: 0.4px; }
+    .replay-exit { background: rgba(255,80,80,0.20); color: #ffb3b3; }
+    .replay-transport { display: flex; align-items: center; gap: 10px; }
+    .replay-play { min-width: 52px; font-size: 16px; }
+    .replay-scrub { flex: 1; height: 6px; cursor: pointer; accent-color: var(--accent, #6cf); }
+    .replay-time { font-size: 12px; font-variant-numeric: tabular-nums;
+      color: rgba(255,255,255,0.7); min-width: 92px; text-align: right; }
+    @media (max-width: 430px) {
+      .replay-cam { margin-left: 0; }
+      .replay-inner { padding: 10px; gap: 8px; }
+    }
+
     /* ---- Pause modal ---- */
     #pauseModal { display: none; position: fixed; inset: 0; z-index: 40;
       background: rgba(6,18,31,0.82); backdrop-filter: blur(10px);
@@ -1607,9 +1644,10 @@
 
     <!-- top-center: game controls as icons -->
     <div class="btns-tc">
-      <button id="camBtn"   class="hud-icon-btn" title="Camera">📷</button>
-      <button id="pauseBtn" class="hud-icon-btn" title="Pause">⏸</button>
-      <button id="infoBtn"  class="hud-icon-btn" title="Controls">?</button>
+      <button id="camBtn"    class="hud-icon-btn" title="Camera">📷</button>
+      <button id="replayBtn" class="hud-icon-btn" title="Instant Replay">🎬</button>
+      <button id="pauseBtn"  class="hud-icon-btn" title="Pause">⏸</button>
+      <button id="infoBtn"   class="hud-icon-btn" title="Controls">?</button>
     </div>
 
     <!-- top-right: audio controls -->
@@ -1625,6 +1663,25 @@
   </div>
 
   <div id="joy"><div id="joyKnob"></div></div>
+
+  <!-- Instant replay DVR bar -->
+  <div id="replayBar">
+    <div class="replay-inner">
+      <div class="replay-top">
+        <span class="replay-badge">● REPLAY</span>
+        <div id="replaySpeeds" class="replay-speeds"></div>
+        <button id="replayCamBtn" class="replay-btn replay-cam" title="Camera angle">🎥 FOLLOW</button>
+        <button id="replayExitBtn" class="replay-btn replay-exit" title="Exit replay">EXIT ✕</button>
+      </div>
+      <div class="replay-transport">
+        <button id="replayBackBtn" class="replay-btn" title="Step back">⏮</button>
+        <button id="replayPlayBtn" class="replay-btn replay-play" title="Play / Pause">▶</button>
+        <button id="replayFwdBtn" class="replay-btn" title="Step forward">⏭</button>
+        <input id="replayScrub" class="replay-scrub" type="range" min="0" max="1" step="0.001" value="0" aria-label="Replay timeline">
+        <span id="replayTime" class="replay-time">0.0s / 0.0s</span>
+      </div>
+    </div>
+  </div>
 
   <!-- Pause modal -->
   <div id="pauseModal">

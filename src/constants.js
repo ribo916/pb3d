@@ -103,6 +103,23 @@ export const CAMERA = {
   TOPDOWN: { POS: { x: 0, y: 10.4, z: 1.7 }, LOOK: { x: 0, y: 0.4, z: 0 }, FOV: 80 }
 };
 
+// Instant replay (DVR review of the last ~10s of live play).
+export const REPLAY = {
+  WINDOW_SEC: 10,            // rolling buffer length captured during live play
+  SPEEDS: [0.25, 0.5, 1, 2],
+  DEFAULT_SPEED: 1,
+  // Free-orbit camera: spherical offset around the sampled ball position.
+  ORBIT: {
+    RADIUS: 9.0, MIN_RADIUS: 3.5, MAX_RADIUS: 22.0,
+    ELEVATION: 0.55,                       // radians above the horizon (start pose)
+    MIN_ELEVATION: 0.12, MAX_ELEVATION: 1.45,
+    AZIMUTH: 0,                            // radians around Y (start pose, 0 = behind near baseline)
+    TARGET_Y: 1.0,
+    DRAG_SENS: 0.006,                     // radians per pixel dragged
+    ZOOM_SENS: 0.012                      // radius units per wheel delta
+  }
+};
+
 // Hit model timings
 export const HIT = {
   SWING_WINDOW: 0.30,   // seconds the human timing window stays open

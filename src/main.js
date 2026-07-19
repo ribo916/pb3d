@@ -22,6 +22,7 @@ let audio   = makeAudio();
 let last    = 0;
 let running = false;
 let paused  = false;
+let replaying = false;
 let starting = false;
 
 const MENU_META = {
@@ -146,7 +147,12 @@ function loop(now) {
   }
   const dt = last ? (now - last) / 1000 : 1 / 60;
   last = now;
-  game.update(dt);
+  if (replaying) {
+    game.updateReplay(Math.min(dt, 1 / 30));
+    updateReplayBar();
+  } else {
+    game.update(dt);
+  }
   game.render();
   requestAnimationFrame(loop);
 }
@@ -241,9 +247,65 @@ function resumeGame() {
   }
 }
 
+/* --------------------------- Instant replay --------------------------- */
+const REPLAY_SPEEDS = [0.25, 0.5, 1, 2];
+
+function enterReplayMode() {
+  if (!game || replaying || paused) return;
+  if (!game.enterReplay()) {                 // nothing buffered yet
+    game._message && game._message('Nothing to replay yet', 1.2);
+    return;
+  }
+  replaying = true;
+  $('replayBar').classList.add('active');
+  renderReplaySpeeds();
+  updateReplayBar();
+}
+
+function exitReplayMode() {
+  if (!replaying) return;
+  replaying = false;
+  $('replayBar').classList.remove('active');
+  if (game) game.exitReplay();
+  if (input) {   // drop any input queued while reviewing so it can't fire on resume
+    input.state.swingQueued = false;
+    input.state.serveQueued = false;
+    input.state.camCycleQueued = false;
+  }
+  last = 0;   // avoid a dt spike on the first resumed live frame
+}
+
+function renderReplaySpeeds() {
+  const cur = game && game.replayInfo() ? game.replayInfo().speed : 1;
+  $('replaySpeeds').innerHTML = REPLAY_SPEEDS.map(function (s) {
+    return '<button class="replay-speed' + (s === cur ? ' active' : '') +
+      '" data-speed="' + s + '">' + (s === 1 ? '1×' : s + '×') + '</button>';
+  }).join('');
+}
+
+function fmtTime(sec) {
+  const s = Math.max(0, sec);
+  return s.toFixed(1) + 's';
+}
+
+function updateReplayBar() {
+  if (!game) return;
+  const info = game.replayInfo();
+  if (!info) return;
+  const scrub = $('replayScrub');
+  if (document.activeElement !== scrub && !scrub._dragging) {
+    scrub.max = String(Math.max(0.001, info.duration));
+    scrub.value = String(info.playhead);
+  }
+  $('replayTime').textContent = fmtTime(info.playhead) + ' / ' + fmtTime(info.duration);
+  $('replayPlayBtn').textContent = info.playing ? '⏸' : '▶';
+  $('replayCamBtn').textContent = '🎥 ' + info.camLabel;
+}
+
 function quitToMenu() {
   running = false;
   paused = false;
+  if (replaying) exitReplayMode();
   closeMusicModal();
   $('pauseModal').classList.remove('active');
   $('hud').style.display = 'none';
@@ -381,8 +443,56 @@ window.__pb3dMenu = {
   bakePortrait: bakePortrait
 };
 
-$('pauseBtn').addEventListener('click', function (e) { e.preventDefault(); if (running && !paused) pauseGame(); });
-$('pauseBtn').addEventListener('touchstart', function (e) { e.preventDefault(); if (running && !paused) pauseGame(); }, { passive: false });
+$('pauseBtn').addEventListener('click', function (e) { e.preventDefault(); if (running && !paused && !replaying) pauseGame(); });
+$('pauseBtn').addEventListener('touchstart', function (e) { e.preventDefault(); if (running && !paused && !replaying) pauseGame(); }, { passive: false });
+
+/* --------- Instant replay: entry button + DVR overlay controls --------- */
+$('replayBtn').addEventListener('click', function (e) { e.preventDefault(); enterReplayMode(); });
+$('replayBtn').addEventListener('touchstart', function (e) { e.preventDefault(); enterReplayMode(); }, { passive: false });
+
+$('replayExitBtn').addEventListener('click', function (e) { e.preventDefault(); exitReplayMode(); });
+$('replayPlayBtn').addEventListener('click', function (e) { e.preventDefault(); if (game) { game.replayToggle(); updateReplayBar(); } });
+$('replayBackBtn').addEventListener('click', function (e) { e.preventDefault(); if (game) { game.replayStep(-1); updateReplayBar(); } });
+$('replayFwdBtn').addEventListener('click', function (e) { e.preventDefault(); if (game) { game.replayStep(1); updateReplayBar(); } });
+$('replayCamBtn').addEventListener('click', function (e) { e.preventDefault(); if (game) { game.replayCycleCamera(); updateReplayBar(); } });
+
+$('replaySpeeds').addEventListener('click', function (e) {
+  var btn = e.target.closest('[data-speed]');
+  if (!btn || !game) return;
+  game.replaySetSpeed(Number(btn.getAttribute('data-speed')));
+  renderReplaySpeeds();
+});
+
+(function wireScrub() {
+  var scrub = $('replayScrub');
+  scrub._dragging = false;
+  var onSeek = function () { if (game) { game.replaySeek(Number(scrub.value)); updateReplayBar(); } };
+  scrub.addEventListener('input', onSeek);
+  scrub.addEventListener('pointerdown', function () { scrub._dragging = true; });
+  scrub.addEventListener('pointerup', function () { scrub._dragging = false; });
+  scrub.addEventListener('change', function () { scrub._dragging = false; });
+})();
+
+// Free-orbit camera: drag to rotate, wheel/pinch to zoom (only bites in free mode).
+(function wireOrbit() {
+  var canvas = $('game');
+  var last = null;
+  canvas.addEventListener('pointerdown', function (e) {
+    if (!replaying) return;
+    last = { x: e.clientX, y: e.clientY };
+  });
+  window.addEventListener('pointermove', function (e) {
+    if (!replaying || !last) return;
+    if (game) game.replayOrbitDrag(e.clientX - last.x, e.clientY - last.y);
+    last = { x: e.clientX, y: e.clientY };
+  });
+  window.addEventListener('pointerup', function () { last = null; });
+  canvas.addEventListener('wheel', function (e) {
+    if (!replaying) return;
+    e.preventDefault();
+    if (game) game.replayOrbitZoom(e.deltaY);
+  }, { passive: false });
+})();
 
 $('resumeBtn').addEventListener('click', function (e) { e.preventDefault(); resumeGame(); });
 $('resumeBtn').addEventListener('touchstart', function (e) { e.preventDefault(); resumeGame(); }, { passive: false });
