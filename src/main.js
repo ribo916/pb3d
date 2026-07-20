@@ -11,6 +11,8 @@ import { preloadAssetPack, assetStatusSummary } from './assets.js';
 import { CHARACTERS, DEFAULT_ROSTER, getCharacter, resolveSlotCharacter } from './characters.js';
 import { makeCharacterPreview } from './characterPreview.js';
 import { normalizeMode } from './modes.js';
+import * as Power from './power.js';
+import * as AI from './ai.js';
 import { PERSONA_META, personaStats, STAT_LABELS } from './strategies/personas.js';
 import { resolveTraits } from './ai.js';
 
@@ -79,6 +81,19 @@ function positionLabel(position) {
 
 const IS_TOUCH_DEVICE = navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
 
+// TEST FLAG: ?fastsuper=1 (or ?fastsuper=25) makes the power meter fill almost
+// immediately so the super smash can be exercised without grinding out clean
+// contacts. 1 => default boost of 20x. Also settable live in the console:
+//   window.__game.superChargeMul = 20
+const FAST_SUPER = (function () {
+  var raw = new URLSearchParams(location.search).get('fastsuper');
+  if (raw === null) return 1;
+  var n = parseFloat(raw);
+  if (!isFinite(n) || n <= 0) return 20;      // ?fastsuper / ?fastsuper=1
+  return n <= 1 ? 20 : n;
+})();
+if (FAST_SUPER > 1) console.log('[pb3d] fastsuper ON — meter charge x' + FAST_SUPER);
+
 function checkedValue(name, fallback) {
   return (document.querySelector('input[name="' + name + '"]:checked') || {}).value || fallback;
 }
@@ -93,6 +108,8 @@ function readMenuConfig() {
     difficulty: checkedValue('difficulty', '4.0'),
     musicStart: checkedValue('musicStart', 'muted'),
     cameraMode: checkedValue('cameraMode', 'follow'),
+    superMode: checkedValue('superMode', 'on'),
+    superChargeMul: FAST_SUPER,
     roster: {
       nearYou: rosterPicks.nearYou,
       nearMate: rosterPicks.nearMate,
@@ -350,7 +367,10 @@ async function startMatch(difficulty, config) {
     dotNear: $('dotNear'), dotFar: $('dotFar'),
     callout: $('callout'), banner: $('banner'),
     shotTag: $('shotTag'), levelBadge: $('levelBadge'),
-    serveBtn: $('serveBtn'), camBtn: $('camBtn')
+    serveBtn: $('serveBtn'), camBtn: $('camBtn'),
+    powerMeter: $('powerMeter'), powerLabel: $('powerLabel'),
+    powerFill: $('powerFill'), powerPips: $('powerPips'),
+    superBtn: $('superBtn'), superBtnWrap: document.querySelector('.btns-br')
   };
 
   game = new Game({
@@ -363,13 +383,17 @@ async function startMatch(difficulty, config) {
     courtPalette: config.courtPalette,
     timeOfDay: config.timeOfDay,
     cameraMode: config.cameraMode,
+    superMode: config.superMode,
+    superChargeMul: config.superChargeMul,
     roster: config.roster,
     assets: assetPack
   });
   input = makeInput($('game'), $('joy'), $('joyKnob'));
   game.setInput(input);
 
-  const hud = makeHUD(hudRefs, function () { input.state.serveQueued = true; });
+  const hud = makeHUD(hudRefs,
+    function () { input.state.serveQueued = true; },
+    function () { input.state.superQueued = true; });
   game.hud = hud;
 
   $('camBtn').addEventListener('click', function (e) { e.preventDefault(); input.state.camCycleQueued = true; });
@@ -380,6 +404,8 @@ async function startMatch(difficulty, config) {
   game.start();
 
   window.__game = game;
+  window.__pb3dPower = Power;
+  window.__pb3dAI = AI;
   window.__input = input;
 
   running = true;
@@ -388,7 +414,7 @@ async function startMatch(difficulty, config) {
   requestAnimationFrame(loop);
 }
 
-document.querySelectorAll('input[name="mode"], input[name="venue"], input[name="palette"], input[name="tod"], input[name="difficulty"], input[name="cameraMode"]').forEach(function (el) {
+document.querySelectorAll('input[name="mode"], input[name="venue"], input[name="palette"], input[name="tod"], input[name="difficulty"], input[name="cameraMode"], input[name="superMode"]').forEach(function (el) {
   el.addEventListener('change', syncMenuSummary);
 });
 document.querySelectorAll('input[name="musicStart"]').forEach(function (el) {

@@ -16,6 +16,9 @@
 
 import * as THREE from 'three';
 import { cloneModelScene } from './assets.js';
+import { SUPER } from './constants.js';
+
+var STUN_PITCH = SUPER.STUN_PITCH;
 
 function pivot() { return new THREE.Object3D(); }
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
@@ -408,6 +411,19 @@ function installAuthoredModel(api, opts) {
   api.update = function (dt, st) {
     baseUpdate.call(this, dt, st);
     if (this.authored && this.authored.mixer) {
+      // A stunned player must NOT be driven by locomotion. This branch normally
+      // force-restores a loop every frame, which would stomp the knockback pose
+      // within one frame — so freeze the mixer and hold the last pose instead.
+      if (this.isStunned && this.isStunned()) {
+        this.authored.mixer.update(0);
+        if (this.authored.active) {
+          this.authored.active.fadeOut(0.08);
+          this.authored.active = null;
+          this.authored.activeName = '';
+        }
+        syncAuthoredArms(this);
+        return;
+      }
       this.authored.mixer.update(dt);
       if (!this.isSwinging()) {
         if (this.authored.active) {
@@ -454,6 +470,11 @@ export function makePrimitivePlayer(opts) {
   var tall = clampHeightScale(opts.heightScale);
 
   var root3 = new THREE.Group();
+  // Yaw-then-pitch: facing (Y) is applied BEFORE the knockback pitch (X), so a
+  // blasted player always topples about their own left-right axis rather than a
+  // world axis. With the default 'XYZ' order they fall forward or sideways
+  // depending on which way they were facing.
+  root3.rotation.order = 'YXZ';
   root3.scale.y = tall;
   root3.position.y = -0.285 * (1 - tall);
   var pelvis = pivot(); pelvis.position.y = 0.62; root3.add(pelvis);
@@ -718,6 +739,31 @@ export function makePrimitivePlayer(opts) {
 
   api.swing = function (type) { this._swingType = type || 'fh'; this._swing = this._swingDur; };
   api.isSwinging = function () { return this._swing > 0; };
+  // Knockback pose driven by the stun phase (see src/power.js). Rotating
+  // `object` also carries the authored Mixamo mesh, which is a child of it —
+  // so this reads correctly with or without the GLB.
+  api.setStun = function (phase) {
+    this._stunPhase = phase || 'none';
+    var stunned = this._stunPhase !== 'none';
+    // Pitch BACKWARD onto the back. The root's Euler order is 'YXZ' (set at
+    // construction) so yaw is applied first and this X rotation then acts about
+    // the player's own left-right axis — otherwise which way they topple would
+    // depend on which way they happen to be facing, and they'd fall forward
+    // half the time.
+    //
+    // MEASURED for this rig (pivot at the feet, facing yaw applied first):
+    // -1.35 lays the body out behind the player; +1.35 topples them forward
+    // onto their face. The original "falls forward" bug was not this sign — it
+    // was the default 'XYZ' Euler order, which made the pitch axis depend on
+    // which way the player happened to be facing.
+    var target = (this._stunPhase === 'blown' || this._stunPhase === 'down') ? -STUN_PITCH : 0;
+    if (!stunned) target = 0;
+    var cur = this.object.rotation.x || 0;
+    // Snappy going down, slower standing back up.
+    var rate = (this._stunPhase === 'blown') ? 0.34 : 0.14;
+    this.object.rotation.x = cur + (target - cur) * rate;
+  };
+  api.isStunned = function () { return !!this._stunPhase && this._stunPhase !== 'none'; };
   // true during the brief contact window around contactT of the swing
   api.atContact = function () {
     var p = 1 - Math.max(0, this._swing) / this._swingDur;

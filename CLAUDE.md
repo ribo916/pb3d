@@ -48,9 +48,43 @@ in the right place. The single most important feel is **swing + ball contact** �
 change those numbers deliberately and re-test.
 
 ### Keep the pure modules pure
-`constants`, `physics`, `shots`, `rules`, `ai`, `utils` must not import `three` or
-touch `document`/`window`. `node test/logic.test.mjs` depends on that. New
+`constants`, `physics`, `shots`, `rules`, `ai`, `utils`, `power`, `movement`,
+`replay` must not import `three` or touch `document`/`window`. `node test/logic.test.mjs` depends on that. New
 pure-logic code goes in the same pattern so it stays node-testable.
+
+### Super smash — measure, don't reason
+The power meter / super smash (GAMEPLAY.md → "Power Meter & Super Smash") is the
+part of this codebase where intuition has been wrong most often. Four separate
+"obviously correct" choices turned out to be unshippable, and each was only caught
+by measuring:
+
+- Contacts grade `clean` only ~25-30% of the time, so the meter's income is far
+  smaller than it feels. A between-point decay made the bar *mathematically*
+  unreachable.
+- Contact height is median **0.49m** — a height gate at smash height (1.5) meant
+  the super literally never fired in a whole match.
+- `direct` (the smash family) **cannot clear the net** from a realistic low
+  contact; `supersmash` must stay `driven`.
+- Aiming at a player instead of a court spot doubled Pro rally length via a
+  feedback loop, which is why there's a once-per-team-per-rally cap.
+
+So: **use `?fastsuper=1` and a probe, not a guess.** Add balance counters to
+`game.metrics` and read them; `supersFired`/`supersBlasted`/`supersMissed`
+already exist. Always check DUPR **4.0 and 5.0** — difficulty changes the
+stability sweet spot, which changes how fast meters fill.
+
+### Don't regress the deferred-contact pattern
+Two systems deliberately *arm* an intent at hit time and *resolve* it later, per
+substep, when the ball actually arrives: the super's blast (`_checkBlastContact`)
+and poaching (`_checkPoachContact`). Poaching used to execute immediately and
+teleported the ball 4-5.5m across the court in a single frame. If you need a new
+"someone intercepts this" behavior, follow the same arm-then-resolve shape.
+
+### Replay drops fields you don't declare
+`makePlayback.sample()` in `replay.js` rebuilds each frame by interpolation
+instead of passing it through. Anything you add to `Game._captureFrame()` must
+also be listed there or it silently reads as `undefined` — no error. This already
+cost the super smash its glow and knockdown in instant replay once.
 
 ### Don't regress the net solver
 `physics.solveArc()` searches for a launch velocity that carries the ball to the

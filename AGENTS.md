@@ -95,12 +95,13 @@ assets/           optional GLB/textures/environments copied into dist/assets
 src/
   constants.js    court geometry + ALL tuning (physics/shots/AI/camera/hit) — single source of truth
   physics.js      ball integration, net-aware launch() solver, clearsNet()    (pure)
-  shots.js        5 shot types + intent/zone classification (THE shot tuning) (pure)
+  shots.js        5 selectable shot types + state-triggered specials (smash/erne/atp/supersmash/blastpop) (pure)
   rules.js        side-out scoring + rally state machine                       (pure)
   ai.js           opponent predict/chooseMovement/chooseShot, difficulty LEVELS (trait vector) (pure)
   strategies/     mode strategies (doubles/singles/common) + personas.js (play styles) (pure)
   practice.js     practice-mode target generation + timing/contact feedback    (pure)
-  movement.js     local-velocity + visual-move (run/shuffle/backpedal) classify (pure)
+  movement.js     local-velocity + visual-move (run/shuffle/backpedal/stun) classify (pure)
+  power.js        super-smash meter economy + knockdown stun timeline          (pure)
   utils.js        clamp/dist2D/lerp                                            (pure)
   input.js        desktop (WASD/mouse/keys) + dual-thumb touch controls
   audio.js        Web Audio SFX + HTMLAudioElement music player + persisted music state
@@ -111,7 +112,8 @@ src/
   characters.js   12-character Mixamo chooser data + slot/team identity + AI play style (pure)
   characterPreview.js live 3D preview used by the chooser modal                (Three)
   game.js         orchestrator: STATE machine, hit model, movement, aim marker, HUD wiring
-  hud.js          DOM HUD (score, serve dots, callout, banner, shot tag, SERVE button)
+  hud.js          DOM HUD (score, serve dots, callout, banner, shot tag, SERVE + SUPER buttons, power meter/pips)
+  replay.js       instant-replay ring buffer + interpolating playback          (pure)
   modes.js        shared mode normalization (`doubles` / `singles` / `practice`)
   main.js         bootstrap: difficulty picker -> Game -> requestAnimationFrame loop
 music/
@@ -154,8 +156,16 @@ bounce. `stepV2` advances one substep + discrete events (`bounce` / `floor-out`
 drag-free parabola or stop snapping the ball to the contact point — either
 reintroduces net clips.)
 
+**`power.js`** — the super-smash economy and the knockdown timeline, kept pure so
+both are node-testable. Charging (`chargeFor`/`addCharge`, clean contacts only),
+every unleash gate in one place (`canUnleash`), spending/carry, and the
+`blown -> down -> up -> none` stun machine (`applyBlast`/`tickStun`/
+`stunBlocksInput`/`stunSlideSpeed`). Tuning lives in `constants.js SUPER`. Nothing
+here knows about rendering — `game.js` reads this state and drives the visuals.
+See GAMEPLAY.md → "Power Meter & Super Smash".
+
 **`shots.js`** — THE shot tuning surface. Shot types (`drive`, `drop`, `dink`,
-`lob`, `speedup`, plus `serve`/`smash`/`erne`/`atp`/`feed`) as `PROFILES_V2`
+`lob`, `speedup`, plus `serve`/`smash`/`erne`/`atp`/`feed`/`supersmash`/`blastpop`) as `PROFILES_V2`
 (apex hint, depth, spin, net margin, `vMax`, driven/direct/allowNet flags) fed to
 `physics.solveArc`. `classify(zone, intent, ballHigh)` maps a swing *intent*
 (`power`/`touch`/`lob`) + court zone + ball height to a concrete shot;
@@ -232,13 +242,41 @@ final art, live in [`GRAPHICS.md`](GRAPHICS.md).
 - Spin is flipped by `-fwd` at hit time so Magnus curves correctly for each side.
 - Practice mode is intentionally **not** rules-driven match play; keep its
   machine-feed/session logic separate from `rules.js`.
+- **Poaching is DEFERRED, never instant.** `_checkPoach` only *arms* a poach;
+  `_checkPoachContact` executes it when the ball actually reaches the poacher.
+  Executing at hit time teleported the ball 4-5.5m across the court in one frame
+  ("the ball just appears and nobody hit it") and skipped the whole intervening
+  flight. Don't re-inline it.
+- **The super smash is aimed at a PLAYER, not a court spot.** `_pickSuperVictim`
+  chooses the target before the shot is solved and the same player goes into
+  `this.blast`, so intent and outcome can't disagree.
+- **The blast bypasses `lastHitCooldown` on purpose.** `_checkBlastContact` runs
+  per substep before `_checkContacts` and ignores the cooldown — a super covers
+  ~3.6m inside the 0.12s cooldown, so the receiver would otherwise be skipped
+  entirely and it would be a silent free winner.
+- **A blasted player is gated in five places** (`_updateHuman`, `_moveCPU`,
+  `_checkContacts` incl. the human-poach promotion, `_checkPoach`, and the
+  authored `api.update` in `players.js`). Miss any one and they keep playing
+  while lying on the floor.
+- **`_responsibleSlot` prefers the un-stunned partner in doubles only.** Without
+  it every blasted rally dies instantly because the ball keeps being assigned to
+  the player on the ground.
+- **Anything added to `Game._captureFrame` must also be added to
+  `makePlayback.sample()`** in `replay.js` — sample() *rebuilds* frames by
+  interpolation rather than passing them through, so a missing field is silently
+  dropped with no error. This already bit once: the super's glow and the
+  knockdown both vanished in instant replay.
+- New characters in `characters.js` need an explicit `voice: 'boy'|'girl'`.
+  **Never infer it from the name** — Leo and Max are girls, and several other
+  roster names are deliberately unisex.
 
 ---
 
 ## Conventions
 
 - **Tuning lives in `constants.js` and `shots.js` only.** PRs that hardcode physics
-  or shot numbers elsewhere should be rejected.
+  or shot numbers elsewhere should be rejected. (Super-smash tuning is
+  `constants.js SUPER` + the `supersmash`/`blastpop` rows in `shots.js`.)
 - Keep the pure modules pure (no `import * as THREE`, no `document`/`window`) so
   `node test/logic.test.mjs` keeps working.
 - Match the existing code style in a file you touch; don't reformat wholesale.
@@ -337,3 +375,40 @@ The important implementation contract:
   score/state transitions to the terminal and reports page errors at the end. Use it
   to watch mechanics live; use `SPEED=1` to verify anything the fast-forward makes
   look off. It does not cover human input paths.
+- `game.metrics` carries super-smash balance counters — `supersFired`,
+  `supersBlasted`, `supersMissed` — and `tools/play.mjs` prints them. A low
+  blasted/fired ratio means supers are sailing past nobody.
+
+### Testing the super smash quickly
+
+The meter normally needs ~4 clean contacts, which makes the super tedious to
+exercise by hand. Load the page with **`?fastsuper=1`** to charge it almost
+immediately (any contact charges, at 20x); `?fastsuper=N` sets an explicit
+multiplier. It can also be changed live:
+
+    window.__game.superChargeMul = 20
+
+The flag only affects charge **rate** — every other gate (height, kitchen, rally
+phase, `MIN_SHOTS`, the once-per-team-per-rally cap) still applies, so what you
+test is the real feature.
+
+### Balance numbers worth knowing before you retune
+
+These were all measured, and each one overturned an assumption that looked
+obvious on paper. Re-measure before trusting intuition here.
+
+| Quantity | Measured | Why it matters |
+|---|---|---|
+| Contacts grading `clean` | ~25-30% | The meter's income. ~0.2 clean contacts per player per point. |
+| Contact **height** | median 0.49m, p99 0.84m | Only ~1 in 99 clears net height. Height gates barely fire — see `SUPER.SMASH_H`. |
+| Mean rally, DUPR 4.0 | 4.6 shots | Supers barely move it (4.8 with them on). |
+| Mean rally, DUPR 5.0 | 15.7 shots | Pro rallies are long *before* supers. |
+| Super connect rate | ~0.90 | Since supers aim at a player rather than a court spot. |
+| Supers per rally | capped at 1/team | Uncapped this doubled Pro rallies to 36.6 shots. |
+
+**Difficulty interacts strongly.** Pro's larger stability sweet spot
+(`STABILITY.SWEET_SPOT.hard`) makes contacts cleaner, which fills meters faster,
+which is why `AI_UNLEASH_P` is tuned against DUPR 5.0 rather than the default.
+Always run `tools/play.mjs` (or an equivalent probe) at **both** 4.0 and 5.0, and
+in **both** modes — singles and doubles have different pass criteria (see
+GAMEPLAY.md → "Singles is deliberately brutal").

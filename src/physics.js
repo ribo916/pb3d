@@ -153,7 +153,10 @@ export function simulateFlight(p0, v0, spin, opts) {
   var s = spin ? { x: spin.x, y: spin.y, z: spin.z } : { x: 0, y: 0, z: 0 };
   var apexY = p.y;
   var netCrossY = null, clearedNet = null;
-  var raw = [{ x: p.x, y: p.y, z: p.z }];
+  // Each sample carries its flight time `t` so consumers can reason about when
+  // the ball reaches a point, not just where. AI.checkPoach needs this to reject
+  // interceptions that are geometrically close but temporally unreachable.
+  var raw = [{ x: p.x, y: p.y, z: p.z, t: 0 }];
   var T = 0;
   var steps = Math.ceil(maxT / dt);
   for (var n = 0; n < steps; n++) {
@@ -172,7 +175,7 @@ export function simulateFlight(p0, v0, spin, opts) {
       netCrossY = prevy + (p.y - prevy) * f;
       clearedNet = (Math.abs(ncx) > COURT.POST_X) || (netCrossY >= netHeightAt(ncx));
     }
-    raw.push({ x: p.x, y: p.y, z: p.z });
+    raw.push({ x: p.x, y: p.y, z: p.z, t: T });
     if (p.y <= COURT.BALL_R && vel.y < 0) {
       p.y = COURT.BALL_R;
       break;

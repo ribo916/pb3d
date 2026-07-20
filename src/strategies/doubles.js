@@ -3,7 +3,7 @@
 import { COURT } from '../physics.js';
 import * as Shots from '../shots.js';
 import * as Rules from '../rules.js';
-import { SPECIALTY, POWER_CAP, MOVEMENT } from '../constants.js';
+import { SPECIALTY, POWER_CAP, MOVEMENT, SUPER } from '../constants.js';
 import { clamp } from '../utils.js';
 import { deeperOpponent, clampX, randomCornerX, rand,
          situationalLob, scorePressure, ballDifficultyMult, rallyLengthMult } from './common.js';
@@ -130,6 +130,29 @@ export function chooseShot(ai, ball, match, isServe, ctx) {
     var zone = Shots.zoneOf(absZ, C.KITCHEN, C.HALF_L);
     var ballHigh = ball.pos.y > 0.95;
     var intent;
+
+    // Super smash — spend a full meter. Gated exactly like the human path
+    // (height + rally phase + shot count); AI_UNLEASH_P keeps a ready AI from
+    // firing the instant it can, so it visibly waits for a good look.
+    if (ctx.superReady && ball.pos.y >= SUPER.SMASH_H &&
+        match && match.rally && match.rally.shots >= SUPER.MIN_SHOTS &&
+        match.rally.phase === 'open' &&
+        !(SUPER.NO_KITCHEN && hitterPos && Math.abs(hitterPos.z) < C.KITCHEN) &&
+        Math.random() < aggr * cfg.superBias * SUPER.AI_UNLEASH_P) {
+      var supDepth = C.HALF_L * 0.66;
+      var supAimX = rand(-C.HALF_W * 0.72, C.HALF_W * 0.72);
+      if (opponents) {
+        var sup = deeperOpponent(opponents);
+        var supSign = (sup.pos.x >= 0) ? -1 : 1;
+        supAimX = clampX(sup.pos.x + supSign * 0.6, 0.88);
+      }
+      return {
+        target: { x: supAimX, z: supDepth },
+        apex: POWER_CAP.NET_H + 0.06,
+        spin: { x: 9.0, y: 0, z: 0 },
+        type: 'supersmash', margin: 0.04, isSmash: true, isSuper: true
+      };
+    }
 
     if (ball.pos.y >= cfg.smashMin && Math.random() < aggr * cfg.speedupBias) {
       var smashDepth = C.HALF_L * 0.75;

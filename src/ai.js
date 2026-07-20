@@ -118,12 +118,18 @@ export function checkPoach(ai, path, partnerPos) {
     return Math.abs(landing.x - partnerPos.x) < SPECIALTY.POACH_NORMAL_X_HALF;
   }
 
-  // hard (Pro): scan trajectory points for a close approach.
+  // hard (Pro): scan trajectory points for a close approach that the partner can
+  // ACTUALLY get to. The reach test alone is purely geometric — without the
+  // time check a partner "poaches" balls travelling far too fast to intercept.
   var reach = SPECIALTY.POACH_PRO_REACH;
   var pts = path.samples || [];
   for (var k = 0; k < pts.length; k++) {
     var dx = pts[k].x - partnerPos.x, dz = pts[k].z - partnerPos.z;
-    if (Math.sqrt(dx * dx + dz * dz) < reach) return true;
+    var dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist >= reach) continue;
+    // How far the partner could travel before the ball arrives at this point.
+    var t = (pts[k].t != null) ? pts[k].t : 0;
+    if (dist <= ai.cfg.speed * (t + ai.cfg.react)) return true;
   }
   return false;
 }

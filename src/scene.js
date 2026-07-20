@@ -805,6 +805,40 @@ function addBall(scene, handles, p, shadowOpacity) {
   trail.frustumCulled = false;
   scene.add(trail);
   handles.trail = trail;
+  // Cached so a super smash can tint the trail hot and restore the venue color.
+  handles.trailBaseColor = trail.material.color.getHex();
+
+  // --- super-smash speed ribbon ---
+  // A THREE.Line can never be thicker than 1px (linewidth is ignored on
+  // effectively every WebGL platform), so a genuinely HEAVY streak needs real
+  // geometry. This is a camera-facing triangle strip built from the same trail
+  // points, tapered to a point at the tail and vertex-faded along its length.
+  // Additive + vertexColors so it blows out bright without any bloom pass
+  // (mobile runs at medium quality, where bloom is off).
+  // Hidden except during a super, so normal play is untouched.
+  var ribbonSegs = trailLen;
+  var ribbonGeo = new THREE.BufferGeometry();
+  ribbonGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(ribbonSegs * 2 * 3), 3));
+  ribbonGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(ribbonSegs * 2 * 3), 3));
+  var idx = [];
+  for (var ri = 0; ri < ribbonSegs - 1; ri++) {
+    var a = ri * 2, b = ri * 2 + 1, c = (ri + 1) * 2, d = (ri + 1) * 2 + 1;
+    idx.push(a, b, c, b, d, c);
+  }
+  ribbonGeo.setIndex(idx);
+  var ribbon = new THREE.Mesh(ribbonGeo, new THREE.MeshBasicMaterial({
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.9,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending
+  }));
+  ribbon.frustumCulled = false;
+  ribbon.visible = false;
+  scene.add(ribbon);
+  handles.superRibbon = ribbon;
+  handles.superRibbonSegs = ribbonSegs;
   handles.trailLen = trailLen;
   handles.trailBuf = [];
 }

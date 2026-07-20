@@ -194,8 +194,19 @@ Stability Index, power cap, and depth aim modify it before the solve.
 | `dink` | arc | 1.35 m | kitchen+0.25 m | −1.5 (backspin) | 6.5 | Soft kitchen exchange |
 | `lob` | arc | 4.60 m | 86% court | −1.0 (backspin) | 14 | Overhead change-up (deliberate only) |
 | `speedup` | driven | 1.05 m | 55% court | +5.5 (topspin) | 17 | Attack a high floated ball |
+| `supersmash` | driven | 1.05 m | 70% court | +9.0 (topspin) | 30 | Power-meter spend; aimed at a player |
+| `blastpop` | arc | 3.60 m | 30% court | −0.5 | 8 | The forced return from a blasted player |
 
-Driven shots (drive, speedup) ignore the apex hint when struck clean — they fly
+The five rows above `supersmash` are the *selectable* types (`Shots.TYPES`).
+`serve`/`smash`/`erne`/`atp`/`feed`/`supersmash`/`blastpop` are **state-triggered**
+— never returned by `classify()`, only fired by explicit branches.
+
+⚠️ `supersmash` is **driven, not direct**, unlike `smash`. `direct` pins the launch
+along the contact→target line, which only works from a genuine overhead: measured
+net crossings from a 0.5–1.0 m contact were 0.27–0.57 m, i.e. straight into a
+0.86 m net. See "Power Meter & Super Smash".
+
+Driven shots (drive, speedup, supersmash) ignore the apex hint when struck clean — they fly
 flat and hit DOWN from a high contact; the hint is only the mishit-arc fallback.
 
 ### Bounce Height Reference
@@ -570,8 +581,8 @@ per-opponent differentiator, assigned per character in `src/characters.js`
 | Style | Behavior | Trait shift |
 |---|---|---|
 | **BALANCED** | Identity — reproduces the baseline AI; no glaring weakness | none |
-| **BANGER** | Aggressive attacker: drives the 3rd, speeds up, rarely lobs | +aggression, −shotIQ, +speedupBias, −dropBias, low lob |
-| **DEFENSIVE** | Counter-puncher: dinks/drops/resets, situational lobs, steady | −aggression, +shotIQ, +speed, +dropBias/dinkBias/lobBias, −err |
+| **BANGER** | Aggressive attacker: drives the 3rd, speeds up, rarely lobs | +aggression, −shotIQ, +speedupBias, −dropBias, low lob, **superBias 1.5** |
+| **DEFENSIVE** | Counter-puncher: dinks/drops/resets, situational lobs, steady | −aggression, +shotIQ, +speed, +dropBias/dinkBias/lobBias, −err, **superBias 0.6** |
 
 `AI.makeAI(level, persona)` merges the two via `personas.mergeTraits`. Strategy
 formulas read the **gap** `aggBias = aggression − shotIQ` (0 for balanced), so
@@ -600,16 +611,17 @@ is too low to attack, scaled by shotIQ + the style's `lobBias`.
 2. **Serve** → diagonal deep
 3. **Pro Erne** (`shotIQ ≥ 0.92` + position check) → see Specialty Shots
 4. **Pro ATP** (`shotIQ ≥ 0.92` + position check) → see Specialty Shots
-5. **Overhead smash** — `ball.y ≥ smashMin` (style-tuned, ~1.2–1.45 m) AND `Math.random() < aggression × speedupBias` → steep arc (apex 0.92 m), `isSmash: true`
-6. **Return of serve**
+5. **Super smash** (before the normal smash) — meter armed AND `ball.y ≥ SUPER.SMASH_H` AND `rally.shots ≥ SUPER.MIN_SHOTS` AND phase `open` AND hitter outside the kitchen AND the team hasn't already used one this rally, gated by `Math.random() < aggression × superBias × SUPER.AI_UNLEASH_P` → `type: 'supersmash'`, `isSuper: true`. Present in **both** `strategies/doubles.js` and `strategies/singles.js` — editing only one means the AI silently never supers in the other mode.
+6. **Overhead smash** — `ball.y ≥ smashMin` (style-tuned, ~1.2–1.45 m) AND `Math.random() < aggression × speedupBias` → steep arc (apex 0.92 m), `isSmash: true`
+7. **Return of serve**
    - doubles: always deep power, usually at the deeper opponent's feet
    - singles: always deep power, but biased cross-court / behind recovery instead of at the body
-7. **Third shot** (`rally.shots === 3`, serving team's first open-play hit)
+8. **Third shot** (`rally.shots === 3`, serving team's first open-play hit)
    - doubles: `dropChance = clamp(max(0, shotIQ − 0.1) × 1.25 − aggBias × 0.8) × dropBias` (balanced ≈ 37/75/97 % by tier; banger drives it, defensive drops it)
    - singles: same shape, scaled by `SINGLES.THIRD_SHOT_DROP_SCALE` so baseline exchanges feature more drives and passes
-8. **Power cap** — if `ball.y ≤ NET_H`, intent forced to `'touch'`
-9. **Style-scaled intent** (zone + ball height + `shotIQ`/`aggression`): kitchen speedup, dink, or drive; transition/deep drop vs drive; situational lob when opponents are jammed at the kitchen
-10. **Shot type** via `Shots.resolve`
+9. **Power cap** — if `ball.y ≤ NET_H`, intent forced to `'touch'`
+10. **Style-scaled intent** (zone + ball height + `shotIQ`/`aggression`): kitchen speedup, dink, or drive; transition/deep drop vs drive; situational lob when opponents are jammed at the kitchen
+11. **Shot type** via `Shots.resolve`
 11. **Target**
    - doubles: deeper-opponent feet for drive/speedup/drop; otherwise corner/body/wide
    - singles: passing-first open-court placement. Drives and speedups aim away from defender position; when the defender is stretched wide, the strategy punishes the opposite half instead of continuing through them. Body balls are a low-frequency variation only.
@@ -678,9 +690,35 @@ the contact-dispatch override above.
 |---|---|
 | easy (4.0) | Never poaches |
 | normal (4.5) | Poaches if the landing `x` is within `SPECIALTY.POACH_NORMAL_X_HALF (0.85 m)` of partner's x |
-| hard (5.0 / Pro) | Scans the cached flight `samples`; poaches if any point is within `SPECIALTY.POACH_PRO_REACH (1.9 m)` of partner |
+| hard (5.0 / Pro) | Scans the cached flight `samples`; poaches if any point is within `SPECIALTY.POACH_PRO_REACH (1.9 m)` of partner **and** the partner can physically get there in time |
 
-On a successful poach the ball's flight is re-solved in-place (`_executeShotV2`) toward open court on the hitter's side.
+The Pro check is both spatial **and temporal**: each flight sample carries a `t`
+(added to `physics.simulateFlight`), and a sample is only poachable when
+`dist <= ai.cfg.speed * (t + ai.cfg.react)`. Without the time term the check was
+purely geometric and a partner would "poach" balls travelling far too fast to
+intercept — wrong at any speed, and blatant against a super smash.
+
+### Poaching is DEFERRED, never instant
+
+`_checkPoach()` only **arms** a poach (`game.pendingPoach`);
+`_checkPoachContact()` executes it when the ball actually reaches the poacher,
+checked per physics substep so a fast ball can't step past the window.
+
+> ⚠️ This used to redirect immediately, at the instant the *original* player
+> struck — teleporting the ball to the partner's position and relaunching from
+> there. Measured jumps of **4–5.5 m in a single frame**, frequently across the
+> net. That is what produced "the ball just appears and you never see anyone hit
+> it". It also skipped the entire intervening flight, so the opponent got no
+> chance to react to a ball that had visibly never travelled. Only Pro poaches
+> (easy/family return early), which is why it looked intermittent.
+>
+> **Do not re-inline it.** If a poach must depend on something known only at hit
+> time, store it on `pendingPoach` and let the contact check consume it. The
+> super smash's blast uses the same arm-then-resolve shape.
+
+On execution the ball is already AT the poacher, so `_executeShotV2` snaps to the
+live contact point exactly as it does for every other shot — no teleport — and
+redirects toward open court on the hitter's side.
 
 ---
 
@@ -713,6 +751,170 @@ AI Pro can also execute Ernes via `AI.chooseShot`.
 
 ---
 
+## Power Meter & Super Smash
+
+A per-player meter that fills on **clean contacts only** and is spent as one huge
+flat drive that knocks the receiver off their feet and forces a weak pop-up.
+Pure economy + stun logic lives in `src/power.js` (node-testable); all tuning is
+in `constants.js SUPER`.
+
+### Charging
+`_chargeMeter()` banks `Power.chargeFor(quality, stability)` on every paddle
+contact, but only a `clean` grade pays. `_cpuHit` deliberately charges off the
+**true** stability, not the forced-`clean` value it uses for smashes, or bangers
+would bank meter for every stretched overhead.
+
+**Measured, and it drove the tuning:** only ~25-30% of contacts grade clean, i.e.
+~0.2 clean contacts per player per point (~4 per player per 11-point game). The
+meter is sized so ~4 clean contacts fills it — roughly one super per player per
+game. An earlier `POINT_CARRY: 0.6` decay was removed because with income that
+sparse it capped the meter at 2.5x per-point income, mathematically **below 1.0**:
+the bar could never fill no matter how long you played.
+
+### Unleashing — `Power.canUnleash()`
+All gates in one testable place: armed, ball at/above `SUPER.SMASH_H`, `rally.shots
+>= MIN_SHOTS`, phase `open`, and **not from inside the kitchen**.
+
+A refused super **does not spend**. The branch simply doesn't fire and the swing
+falls through to the normal path — you may lose the point, but you keep the meter.
+
+Two measured corrections shaped these gates:
+- **Height is a weak lever.** Real contact heights are far lower than they feel:
+  median **0.49m**, p99 **0.84m**, and only ~1 in 99 contacts clears net height.
+  Gating at `POWER_CAP.SMASH_H` (1.5) made the super literally unfireable across
+  whole matches. `SUPER.SMASH_H` is therefore only a floor (0.50) meaning "not
+  scraped off your shoelaces". *(The same data implies the AI's normal smash
+  branch, gated on `smashMin` 1.2-1.45, is near-dead code — worth revisiting.)*
+- **The kitchen ban is the real protection.** `SUPER.NO_KITCHEN` refuses supers
+  from inside the non-volley zone entirely, not merely on a volley. That is what
+  protects the dink battle and the 4-shot pattern, and unlike a height threshold
+  it is a condition the player can deliberately satisfy by backing up.
+
+### The shot — `supersmash` is DRIVEN, not direct
+The obvious choice (`direct`, like `smash`) pins the launch along the
+contact→target line, which only works from a genuine overhead. Measured net
+crossings from a 0.5-1.0m contact were **0.27-0.57m** — straight into a 0.86m net.
+Driven crosses the tape at `netH + margin`, so it clears from any height, and
+launch speed scales with contact height: **~11 m/s off the shoelaces, ~31 m/s off
+a high ball**. A higher ball earns a faster super. The super's identity is the
+blast, not one fixed velocity.
+
+### The super is aimed AT A PLAYER
+`_pickSuperVictim()` chooses the target BEFORE the shot is solved, and
+`_executeSuper()` then aims at that player's position — a body bag should
+actually be aimed at a body. Lateral input chooses WHICH opponent rather than a
+patch of court; with the stick near neutral it targets whoever is closest to the
+net (least time to react, most dramatic). The same player is written straight
+into `this.blast`, so intent and outcome cannot disagree.
+
+The target is clamped inside the court (someone stretched wide or standing behind
+the baseline can't turn the super into an out-of-bounds fault) and kept at least
+0.35m beyond the kitchen line (a target that short makes the driven solve steep
+and slow, which reads as a dud rather than a rocket).
+
+This raised the connect rate to **~0.90** with the landing within **~1m** of the
+victim. The earlier design aimed at a court spot and inferred the victim from the
+landing, which meant the "body bag" frequently sailed past nobody.
+
+**Cap: one super per TEAM per rally** (`SUPER.MAX_PER_RALLY`). Without it there
+is a feedback loop — a blasted rally runs long, long rallies bank more clean
+contacts, more charge means more supers, which makes rallies longer still.
+Measured at DUPR 5.0 it doubled the mean rally from 15.7 to 36.6 shots; the cap
+brings it to 24.4. At DUPR 4.0 the effect is negligible either way (4.8 vs 4.6),
+so this is a Pro-tier concern.
+
+### The blast — a scripted intercept
+`_checkBlastContact()` runs per **substep** in `_tickRally`, before `_checkContacts`
+and **ignoring `lastHitCooldown`**. That bypass is the entire point: the cooldown
+is 0.12s, a super covers ~3.6m in that time and kitchen-to-kitchen is only ~4.3m,
+so a super struck near the net arrives *before* the receiver is even eligible to be
+checked — they would be silently skipped and it would be a free winner.
+
+Being scripted is also what lets the victim "contact the ball while being blown
+back": no reach gate to fail, no swing to time, no cooldown to wait out. Paddle
+contact and knockback fire in the same instant.
+
+The victim is **exempt from the kitchen-volley rule** (faulting someone for being
+hit by the opponent's shot while standing in the kitchen would be perverse);
+`MIN_SHOTS >= 3` already guarantees the two-bounce lock is open. They return a
+`blastpop`: weak, high, short. Measured hang **~1.53s** against **0.86s** of stun,
+leaving a doubles partner ~0.65s to cover.
+
+**If the receiver is out of position the blast simply never fires** — the ball
+bounces twice and it's a normal `no-return` point. That is what keeps "not a
+guaranteed put-away" honest in both directions (tracked as `metrics.supersMissed`).
+
+### Stun — five gates
+`blown (0.26s) -> down (0.30s) -> up (0.30s)`, ~0.86s total, identical in singles
+and doubles. A stunned player is gated in **five** places, all required:
+`_updateHuman`, `_moveCPU`, `_checkContacts` (incl. the human poach promotion),
+`_checkPoach`, and the authored `api.update` in `players.js` — that last one
+force-restores a locomotion loop every frame and would otherwise stomp the
+knockback pose within a single frame.
+
+`_responsibleSlot` prefers the **un-stunned partner in doubles only**. Without it
+the ball keeps being assigned to the player on the ground and every blasted rally
+dies instantly.
+
+### Singles is deliberately brutal
+Everything above is mode-agnostic; the only difference is that the partner
+preference has no partner to find. The singles victim pops the ball up and must
+chase their own pop-up from the floor, which is *near*-guaranteed to end the point.
+That is intended. **Do not tune it away** — a shift toward `no-return` in singles
+is expected, unlike in doubles where it is the alarm that the super became a free
+winner. Frequency is the dial (`MIN_SHOTS`, `CHARGE_CLEAN`, `SMASH_H`), never the
+stun, because weakening the stun would break doubles to fix a singles complaint.
+
+Note singles rallies average only ~2.9 shots, so `MIN_SHOTS: 3` opens in a minority
+of rallies and supers are naturally rarer there. 3 is the floor — lowering it would
+put the scripted blast inside the two-bounce lock.
+
+### Every `SUPER` constant
+
+| Key | Default | What it does |
+|---|---|---|
+| `CHARGE_CLEAN` | 0.25 | Meter gained per clean contact (~4 to fill) |
+| `CHARGE_QUALITY_BONUS` | 0.6 | Extra fraction scaled by stability above the clean threshold |
+| `FULL` / `COST` | 1.0 / 1.0 | Full bar, and a full spend — no partial supers |
+| `POINT_CARRY` | 1.0 | Meter kept across a point. **< 1 caps the bar below full** — see the warning above |
+| `MIN_SHOTS` | 3 | Rally-shot floor. Also keeps the blast outside the two-bounce lock |
+| `MAX_PER_RALLY` | 1 | Supers per **team** per rally; bounds the long-rally feedback loop |
+| `SMASH_H` | 0.50 | Minimum ball height. Only a floor — contact height is median 0.49 m |
+| `NO_KITCHEN` | true | Refuse supers from inside the NVZ entirely. This protects the dink battle |
+| `BLAST_REACH_MUL` | 1.6 | × `HIT.REACH` — the victim is knocked *into* the ball |
+| `BLAST_REACH_Y` | 2.4 | Max ball height for the blast to connect |
+| `BLAST_BACK` | 1.35 | Metres the victim slides backward |
+| `STUN.BLOWN/DOWN/UP` | 0.26 / 0.30 / 0.30 | Knockdown phases, ~0.86 s total. Same in singles and doubles |
+| `STUN_PITCH` | 1.35 | Radians the body pitches back. Sign matters; root needs `rotation.order 'YXZ'` |
+| `STUN_LIFT` | 0.26 | Root lift so a flat body clears the court. **Must stay positive** — the pivot is at the feet |
+| `TIME_SCALE` | 0.34 | Sim speed during a super (the "super freeze") |
+| `TIME_RAMP_IN` / `TIME_RAMP_OUT` | 0.06 / 0.30 | Seconds to ease into / out of slow-mo |
+| `TIME_HOLD_AFTER` | 0.55 | Slow-mo held after the blast connects |
+| `SHAKE_DELIVER` / `SHAKE_BLAST` | 0.30 / 0.38 | Camera shake — the two largest in the game (normal hit is 0.08) |
+| `BALL_SCALE` | 1.35 | How much the ball swells while hot |
+| `BALL_EMISSIVE_INT` | 2.4 | Hot-ball emissive intensity |
+| `TRAIL_OPACITY` | 0.95 | 1px `THREE.Line` trail opacity while hot |
+| `TRAIL_WIDTH` | 0.34 | Ribbon half-width (m) at the head; tapers to 0 at the tail |
+| `VOICE_BASE` | boy 128 / girl 208 | Grunt base pitch (Hz) per `characters.js` `voice` |
+| `AI_UNLEASH_P` | 0.45 | Chance a ready AI takes a qualifying look |
+| `AI_WAIT_H` | 1.9 | A charged AI defers contact for a *higher* ball than usual |
+
+### Time dilation ("super freeze")
+Measured: a super flies in ~0.53s and the blast lands ~0.18s after contact, so
+the whole beat was over in under a second and read as "the ball just vanished".
+`_superTimeScale()` slows the **sim dt** to `SUPER.TIME_SCALE` (0.34) while a
+super is live, holding through the knockdown then easing out — ~1.7s of slowed
+wall time per super. Because the scaling is applied to dt *before* anything
+downstream runs, the replay recorder captures the slowed stream and instant
+replay reproduces it faithfully. Verified inert outside a super: the time scale
+holds at exactly 1.0 across 6000 frames of normal play.
+
+### Presentation
+Glow/grow/pulse on the ball, an additive **tapered ribbon** for the speed trail,
+a shockwave ring + dust puff at the victim's feet, the two biggest camera shakes
+in the game, and a 3-layer procedural boom + gendered grunt + ground thud.
+See GRAPHICS.md for why none of it depends on bloom.
+
 ## The 4-Shot Pattern
 
 Real pickleball's strategic rhythm is the first four shots. Each shot is charted below against how the code models it.
@@ -737,8 +939,8 @@ in exactly two places:
 
 | File | What lives here |
 |---|---|
-| **`src/constants.js`** | Court geometry, physics (`PHYS_V2`, `TIMING_V2`), hit timings (`HIT`), Stability Index (`STABILITY`), power cap (`POWER_CAP`), specialty triggers (`SPECIALTY`) |
-| **`src/shots.js`** | Shot profiles (`PROFILES_V2`) — apex hint, depth, spin, margin, `vMax`, family flags per shot type |
+| **`src/constants.js`** | Court geometry, physics (`PHYS_V2`, `TIMING_V2`), hit timings (`HIT`), Stability Index (`STABILITY`), power cap (`POWER_CAP`), specialty triggers (`SPECIALTY`), power meter + knockdown (`SUPER`) |
+| **`src/shots.js`** | Shot profiles (`PROFILES_V2`) — apex hint, depth, spin, margin, `vMax`, family flags per shot type (incl. `supersmash` / `blastpop`) |
 
 Changing AI difficulty feel? Edit `LEVELS` in `ai.js`. Changing AI **play style**
 feel? Edit `PERSONAS` in `src/strategies/personas.js`. Both are the allowed
@@ -764,6 +966,39 @@ Smash arc not steep enough       → lower POWER_CAP.NET_H + 0.06 offset in game
 Smash fires too early (easy)     → raise POWER_CAP.SMASH_H (constants.js default 1.5)
 Ball too bouncy overall          → lower PHYS_V2.RESTITUTION (default 0.62)
 ```
+
+### Super Smash
+
+Read the measured numbers in AGENTS.md -> "Balance numbers worth knowing" before
+turning any of these — several are counter-intuitive.
+
+```
+Meter fills too fast/slow        → SUPER.CHARGE_CLEAN (0.25 ≈ 4 clean contacts to fill)
+Meter never fills at all         → check SUPER.POINT_CARRY. Any value < 1 caps the bar at
+                                    carry/(1-carry) × per-point income, and with ~0.2 clean
+                                    contacts per player per point that ceiling is BELOW full
+Supers happen too often          → raise SUPER.MIN_SHOTS, or lower SUPER.AI_UNLEASH_P (AI only)
+Supers never fire                → SUPER.SMASH_H is the usual culprit. Contact height is
+                                    median 0.49m, so any threshold near net height (0.86)
+                                    almost never qualifies
+Supers fired from the kitchen    → SUPER.NO_KITCHEN. This, not height, protects the dink battle
+Rallies balloon after a super    → SUPER.MAX_PER_RALLY (uncapped, this doubled Pro rallies)
+Super feels weak / slow          → it is DRIVEN, so speed scales with contact height
+                                    (~11 m/s low, ~31 m/s off a high ball). Do NOT switch it
+                                    to `direct` — direct cannot clear the net from a low contact
+Super sails out                  → raise vMax, never the target depth; the driven solver keeps
+                                    the landing honest
+Blast never connects             → SUPER.BLAST_REACH_MUL / BLAST_REACH_Y; compare
+                                    metrics.supersBlasted against supersFired
+Super is a guaranteed winner     → lengthen blastpop hang (apex/vMax) or shorten SUPER.STUN.
+                                    Tune the PAIR, never one alone. Expected in singles
+Victim recovers too fast/slow    → SUPER.STUN.{BLOWN,DOWN,UP} (total ~0.86s)
+Beat is too quick to see         → SUPER.TIME_SCALE / TIME_HOLD_AFTER (the "super freeze")
+Body falls through the court     → SUPER.STUN_LIFT must stay POSITIVE (the pivot is at the feet)
+Body falls the wrong way         → SUPER.STUN_PITCH sign; root needs rotation.order 'YXZ'
+Grunt pitch wrong for a character→ characters.js `voice` + SUPER.VOICE_BASE
+```
+
 
 ### Power Cap / Intent
 

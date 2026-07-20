@@ -49,6 +49,7 @@ you face the red opponent one-on-one.
 | Power swing (drive / speedup) | `Space` or left-click |
 | Touch swing (drop / dink) | `V` or right-click |
 | Lob | `B` or middle-click / Shift+click |
+| **SUPER SMASH** | `R` (only with a full meter) |
 | Serve | `Enter` / `Space` (or the on-screen SERVE button) |
 
 **Touch (mobile)**
@@ -58,12 +59,42 @@ you face the red opponent one-on-one.
   picks the shot — **flick up = drive (power)**, **flick down = lob**, a short/soft
   swipe = drop / dink.
 - A **SERVE** button appears when it's your serve.
+- A **💥 button** appears bottom-right once your super meter is full.
 
 **The feel:** a swing opens a ~0.3-second timing window; your hit fires the instant
 the ball enters your strike zone during that window (press with no ball nearby and
 you just whiff). The direction you're holding at contact steers the shot —
 left/right = cross-court vs down-the-line, forward/back = deeper/shorter. A white
 ring on the opponents' court previews where your held direction will place the ball.
+
+---
+
+## Super Smash
+
+Land **clean** contacts and your power meter fills (the bar under your player).
+When it reads **SUPER READY**, hit `R` — or the 💥 button on mobile — to unload a
+screaming flat drive aimed straight at an opponent.
+
+It **body-bags them**: the ball glows white-hot behind a heavy speed trail, time
+briefly slows so you can actually watch it land, and the player you hit is blown
+off their feet onto their back. They still get a paddle on it while being knocked
+down, so it is **not an automatic winner** — they pop the ball up weakly, and in
+doubles their partner has time to cover. What it really buys you is the ~0.9
+seconds they spend on the floor getting up, which usually costs them the *next*
+ball.
+
+Rules of engagement:
+- Only when the meter is **full** — roughly four clean hits.
+- **Not from inside the kitchen.** It's an attacking shot from the transition zone
+  or the baseline, never a dink-battle weapon. Back up first.
+- Not on the serve or return (the rally must be past its third shot).
+- **Once per team per rally.**
+- A blocked attempt costs you nothing — the meter stays full for the next chance.
+
+Aim decides *who* gets hit: steer left or right to pick your victim, or leave the
+stick centred to target whoever is closest to the net. Everyone has a meter,
+including the AI — so you will get body-bagged too. Turn the whole thing off under
+**Advanced → Super** on the setup screen.
 
 ---
 
@@ -107,9 +138,10 @@ src/
   audio.js        Web Audio SFX + HTMLAudioElement music player + persisted music state
   constants.js    court geometry + ALL tuning (physics/shots/AI/camera/hit)  ← single source of truth
   physics.js      ball integration, net-aware launch() solver, clearsNet()    (pure, no Three)
-  shots.js        5 shot types + intent/zone classification                   (pure)  ← THE shot tuning
+  shots.js        5 selectable types + state-triggered specials               (pure)  ← THE shot tuning
   rules.js        side-out scoring + rally state machine                       (pure)
   ai.js           opponent predict / movement / shot selection (4 levels)     (pure)
+  power.js        super-smash meter economy + knockdown stun timeline          (pure)
   utils.js        clamp / dist2D / lerp                                        (pure)
   input.js        desktop (WASD/mouse/keys) + dual-thumb touch controls
   scene.js        court, net, lighting, ball + trail, fence, trees            (Three)
@@ -118,7 +150,8 @@ src/
   characterPreview.js live 3D preview for the character chooser               (Three)
   camera.js       broadcast camera + follow/shake                             (Three)
   game.js         orchestrator: state machine, hit model, movement, aim marker
-  hud.js          DOM HUD (score, serve dots, callout, banner, shot tag)
+  hud.js          DOM HUD (score, serve dots, callout, banner, shot tag, power meter)
+  replay.js       instant-replay recorder + interpolating playback             (pure)
   main.js         bootstrap: difficulty picker -> Game -> requestAnimationFrame loop
 music/
   active/         drop genre folders with playable audio files here

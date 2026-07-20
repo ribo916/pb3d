@@ -31,14 +31,16 @@ export const PERSONAS = {
   // the 3rd, speeds up in the kitchen, rarely lobs.
   banger: {
     dAggr: +0.20, dShotIQ: -0.05, errMul: 1.15,
-    speedupBias: 1.35, dropBias: 0.55, dinkBias: 0.8, lobBias: 0.3, smashMin: 1.2
+    speedupBias: 1.35, dropBias: 0.55, dinkBias: 0.8, lobBias: 0.3, smashMin: 1.2,
+    superBias: 1.5
   },
 
   // Defensive counter-puncher: patient and steady, low risk. Drops/dinks/resets,
   // lobs situationally, gets balls back and waits for the opponent to miss.
   defensive: {
     dAggr: -0.20, dShotIQ: +0.05, speedMul: 1.05, errMul: 0.9, missMul: 0.85,
-    speedupBias: 0.7, dropBias: 1.35, dinkBias: 1.25, lobBias: 1.45, smashMin: 1.45
+    speedupBias: 0.7, dropBias: 1.35, dinkBias: 1.25, lobBias: 1.45, smashMin: 1.45,
+    superBias: 0.6
   }
 };
 
@@ -62,6 +64,7 @@ export function mergeTraits(base, persona) {
   cfg.dinkBias = persona.dinkBias || 1;
   cfg.lobBias = persona.lobBias || 1;
   cfg.smashMin = persona.smashMin || DEFAULT_SMASH_MIN;
+  cfg.superBias = persona.superBias || 1;   // how eagerly this style unloads a full meter
   return cfg;
 }
 

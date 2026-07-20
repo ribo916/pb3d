@@ -12,7 +12,10 @@ import * as SinglesStrategy from '../src/strategies/singles.js';
 import * as DoublesStrategy from '../src/strategies/doubles.js';
 import { normalizeMode } from '../src/modes.js';
 import { buildMusicCatalog, sanitizeMusicState } from '../src/audio.js';
-import { STABILITY, POWER_CAP, SPECIALTY, MOVEMENT, HIT, PRACTICE } from '../src/constants.js';
+import * as Power from '../src/power.js';
+import { makePlayback } from '../src/replay.js';
+import { CHARACTERS, getCharacter } from '../src/characters.js';
+import { STABILITY, POWER_CAP, SPECIALTY, MOVEMENT, HIT, PRACTICE, SUPER } from '../src/constants.js';
 import { PERSONAS, mergeTraits, normalizePersona, PERSONA_META, personaStats, STAT_LABELS } from '../src/strategies/personas.js';
 import { scorePressure, situationalLob, ballDifficultyMult, aggBias, rallyLengthMult } from '../src/strategies/common.js';
 import { resolveTraits } from '../src/ai.js';
@@ -405,6 +408,261 @@ test('swingSide picks fh/bh from ball position relative to hitter, mirrored by t
   assert.equal(Shots.swingSide(2.0, 2.02, 1), 'fh', 'near dead-center → defaults forehand');
 });
 
+/* -------------------- super smash shot envelope ------------------------ */
+test('supersmash is a DRIVEN shot (direct cannot clear the net from low contact)', () => {
+  const sm = Shots.specV2('smash', C.KITCHEN, C.HALF_L);
+  const su = Shots.specV2('supersmash', C.KITCHEN, C.HALF_L);
+  assert.equal(su.driven, true, 'must be the driven (flat) family');
+  assert.equal(su.direct, false, 'direct would fire into the net from a low contact');
+  assert.ok(su.vMax > sm.vMax, 'higher speed ceiling than a normal smash');
+  assert.ok(su.spinX > sm.spinX, 'more topspin so it skids off the bounce');
+});
+
+// The bug this guards: real contact heights median ~0.49m. A `direct` super
+// from there crosses the net plane at ~0.3m — straight into a 0.86m net.
+test('supersmash clears the net from realistic (low) contact heights', () => {
+  const spec = Shots.specV2('supersmash', C.KITCHEN, C.HALF_L);
+  for (const y of [0.45, 0.6, 0.9, 1.4, 2.2]) {
+    const sol = Physics.solveArc(Physics.vec(0, y, 3.0), { x: 0, z: -spec.landZ }, spec);
+    const sim = Physics.simulateFlight(Physics.vec(0, y, 3.0), sol.v0, spec.spin);
+    assert.ok(sim.clearedNet, `contact ${y}m must clear the net, crossed at ${sim.netCrossY}`);
+    assert.ok(Math.abs(sim.landing.z) < C.HALF_L,
+      `contact ${y}m must land inbounds, landed ${sim.landing.z}`);
+  }
+});
+
+test('supersmash speed scales with contact height', () => {
+  const spec = Shots.specV2('supersmash', C.KITCHEN, C.HALF_L);
+  const speedAt = (y) => {
+    const sol = Physics.solveArc(Physics.vec(0, y, 3.0), { x: 0, z: -spec.landZ }, spec);
+    return Math.hypot(sol.v0.x, sol.v0.y, sol.v0.z);
+  };
+  assert.ok(speedAt(2.2) > speedAt(1.2), 'a higher ball earns a faster super');
+  assert.ok(speedAt(1.2) > speedAt(0.5), 'and lower contact is slower');
+});
+
+test('supersmash is NOT selectable via classify (state-triggered only)', () => {
+  assert.ok(!Shots.TYPES.includes('supersmash'), 'not in the selectable list');
+  assert.ok(!Shots.TYPES.includes('blastpop'), 'not in the selectable list');
+});
+
+// This is the property the whole feature rests on: for the DIRECT family the
+// speed cap binds before the ball reaches the aimed depth, so vMax translates
+// into launch speed ~1:1 AND the ball always lands short of target — it can
+// never sail out, no matter how hard it is hit.
+test('direct-family launch speed tracks vMax and never sails long', () => {
+  const p0 = Physics.vec(0, 2.2, 3.0);
+  const target = { x: 0, z: -C.HALF_L * 0.66 };
+  for (const vMax of [22, 30, 40]) {
+    const spec = Shots.specV2('smash', C.KITCHEN, C.HALF_L);
+    spec.vMax = vMax;
+    const sol = Physics.solveArc(p0, target, spec);
+    const speed = Math.hypot(sol.v0.x, sol.v0.y, sol.v0.z);
+    assert.ok(Math.abs(speed - vMax) < 0.5,
+      `vMax ${vMax}: launch speed ${speed.toFixed(2)} should bind at the cap`);
+    assert.ok(Math.abs(sol.landing.z) < C.HALF_L,
+      `vMax ${vMax}: landed at z=${sol.landing.z.toFixed(2)}, must stay inbounds`);
+    // Lands SHORT of the aimed target, never beyond it.
+    assert.ok(Math.abs(sol.landing.z) <= Math.abs(target.z) + 0.01,
+      `vMax ${vMax}: must not overshoot the aimed depth`);
+  }
+});
+
+test('blastpop is a weak, high, short return that hangs long enough to chase', () => {
+  const spec = Shots.specV2('blastpop', C.KITCHEN, C.HALF_L);
+  const smash = Shots.specV2('smash', C.KITCHEN, C.HALF_L);
+  assert.ok(spec.vMax < smash.vMax * 0.5, 'much slower than an attacking shot');
+  assert.ok(spec.apex > 3.0, 'sits up high');
+  assert.ok(spec.landZ < C.HALF_L * 0.45, 'lands short — a sitter');
+
+  // Hang time must exceed the stun so a doubles partner can actually cover.
+  const p0 = Physics.vec(0, 0.9, 3.0);
+  const sol = Physics.solveArc(p0, { x: 0, z: -spec.landZ }, spec);
+  assert.ok(sol.T > Power.stunTotal(),
+    `blastpop hangs ${sol.T.toFixed(2)}s but stun lasts ${Power.stunTotal().toFixed(2)}s ` +
+    '— the pop-up must outlast the stun or the super is a guaranteed winner');
+});
+
+/* -------------------- power meter / super smash ------------------------ */
+test('chargeFor: only clean contacts charge the meter', () => {
+  assert.equal(Power.chargeFor('float', 0.9), 0, 'a float gives nothing');
+  assert.equal(Power.chargeFor('popup', 0.9), 0, 'a popup gives nothing');
+  assert.ok(Power.chargeFor('clean', 1.0) > 0, 'a clean contact charges');
+});
+
+test('chargeFor: a better clean contact charges faster, but is bounded', () => {
+  const low = Power.chargeFor('clean', STABILITY.FLOAT_THRESHOLD);
+  const high = Power.chargeFor('clean', 1.0);
+  assert.ok(high > low, 'higher stability charges more');
+  assert.ok(Math.abs(low - SUPER.CHARGE_CLEAN) < 1e-9, 'floor is the base rate');
+  assert.ok(high <= SUPER.CHARGE_CLEAN * (1 + SUPER.CHARGE_QUALITY_BONUS) + 1e-9,
+    'bonus is capped');
+});
+
+test('addCharge clamps at FULL and arms exactly at FULL', () => {
+  const m = Power.makeMeter();
+  Power.addCharge(m, SUPER.FULL - 0.01);
+  assert.equal(m.armed, false, 'not armed just below full');
+  Power.addCharge(m, 0.01);
+  assert.equal(m.armed, true, 'armed at full');
+  Power.addCharge(m, 5);
+  assert.equal(m.charge, SUPER.FULL, 'charge clamps at FULL');
+});
+
+test('canUnleash enforces every gate', () => {
+  const armed = Power.addCharge(Power.makeMeter(), SUPER.FULL);
+  const ok = { shots: SUPER.MIN_SHOTS, phase: 'open', volley: false, inKitchen: false };
+  const high = SUPER.SMASH_H + 0.2;
+  assert.equal(Power.canUnleash(armed, high, ok), true, 'baseline: allowed');
+
+  assert.equal(Power.canUnleash(Power.makeMeter(), high, ok), false, 'not armed');
+  assert.equal(Power.canUnleash(armed, SUPER.SMASH_H - 0.01, ok), false, 'ball too low');
+  assert.equal(Power.canUnleash(armed, high, { ...ok, shots: SUPER.MIN_SHOTS - 1 }), false,
+    'too early in the rally');
+  assert.equal(Power.canUnleash(armed, high, { ...ok, phase: 'serve' }), false,
+    'not in the open phase');
+  assert.equal(Power.canUnleash(armed, high, { ...ok, volley: true, inKitchen: true }), false,
+    'kitchen volley is refused, not exempted');
+  assert.equal(Power.canUnleash(armed, high, { ...ok, volley: true, inKitchen: false }), true,
+    'a volley outside the kitchen is fine');
+});
+
+test('a blocked super leaves the meter unspent', () => {
+  const m = Power.addCharge(Power.makeMeter(), SUPER.FULL);
+  const blocked = { shots: SUPER.MIN_SHOTS, phase: 'open', volley: true, inKitchen: true };
+  assert.equal(Power.canUnleash(m, SUPER.SMASH_H + 0.2, blocked), false);
+  assert.equal(m.charge, SUPER.FULL, 'charge untouched');
+  assert.equal(m.armed, true, 'still armed for the next chance');
+});
+
+test('spend clears armed and drains the meter', () => {
+  const m = Power.addCharge(Power.makeMeter(), SUPER.FULL);
+  Power.spend(m);
+  assert.equal(m.armed, false);
+  assert.ok(Math.abs(m.charge - (SUPER.FULL - SUPER.COST)) < 1e-9);
+});
+
+test('carryPoint applies the configured between-point carry', () => {
+  const m = Power.addCharge(Power.makeMeter(), SUPER.FULL);
+  Power.carryPoint(m);
+  assert.ok(Math.abs(m.charge - SUPER.FULL * SUPER.POINT_CARRY) < 1e-9,
+    'charge scaled by POINT_CARRY');
+  // Armed state must stay consistent with the charge after carrying.
+  assert.equal(m.armed, m.charge >= SUPER.FULL,
+    'armed iff still full after the carry');
+});
+
+// The meter is only meaningful if it can actually FILL at the real clean-contact
+// rate. Measured in AI-vs-AI doubles: ~0.2 clean contacts per player per point,
+// ~20 points per game. Guard against a future tuning change silently making the
+// bar unreachable (which a 0.6 POINT_CARRY did during development).
+test('meter is reachable at the measured clean-contact rate', () => {
+  const CLEAN_PER_POINT = 0.2;   // measured
+  const POINTS_PER_GAME = 20;    // 11 win-by-2
+  const m = Power.makeMeter();
+  for (let pt = 0; pt < POINTS_PER_GAME; pt++) {
+    // Fractional contacts accumulate as an expected value.
+    Power.addCharge(m, Power.chargeFor('clean', 0.8) * CLEAN_PER_POINT);
+    Power.carryPoint(m);
+  }
+  assert.ok(m.armed,
+    `meter must be reachable within a game; reached ${m.charge.toFixed(2)} of ${SUPER.FULL}`);
+});
+
+test('tickStun sequences blown -> down -> up -> none with exact total', () => {
+  const s = Power.applyBlast(Power.makeStun(), { x: 0, z: 1 });
+  assert.equal(s.phase, 'blown');
+  const seen = [];
+  let elapsed = 0;
+  const dt = 1 / 120;
+  for (let i = 0; i < 1000 && s.phase !== 'none'; i++) {
+    if (seen[seen.length - 1] !== s.phase) seen.push(s.phase);
+    Power.tickStun(s, dt);
+    elapsed += dt;
+  }
+  assert.deepEqual(seen, ['blown', 'down', 'up'], 'phases in order');
+  assert.equal(s.phase, 'none', 'recovers');
+  assert.ok(Math.abs(elapsed - Power.stunTotal()) < 0.02,
+    'total stun matches summed phase durations');
+});
+
+test('tickStun carries overflow so a coarse dt does not lose time', () => {
+  const s = Power.applyBlast(Power.makeStun(), { x: 0, z: 1 });
+  // One huge step should skip straight through to recovery, not stall a phase.
+  Power.tickStun(s, Power.stunTotal() + 0.5);
+  assert.equal(s.phase, 'none');
+});
+
+test('stun blocks input for its whole duration and slides only while blown', () => {
+  const s = Power.applyBlast(Power.makeStun(), { x: 0, z: 1 });
+  assert.equal(Power.stunBlocksInput(s), true, 'blocked while blown');
+  assert.ok(Power.stunSlideSpeed(s) > 0, 'slides while blown');
+  Power.tickStun(s, SUPER.STUN.BLOWN + 0.001);
+  assert.equal(s.phase, 'down');
+  assert.equal(Power.stunSlideSpeed(s), 0, 'no slide once down');
+  assert.equal(Power.stunBlocksInput(s), true, 'still blocked while down');
+  Power.tickStun(s, SUPER.STUN.DOWN + SUPER.STUN.UP + 0.01);
+  assert.equal(Power.stunBlocksInput(s), false, 'free once recovered');
+});
+
+test('blastDirection points attacker -> victim and is unit length', () => {
+  const d = Power.blastDirection(0, -3, 0, 3);
+  assert.ok(Math.abs(d.z - 1) < 1e-9 && Math.abs(d.x) < 1e-9, 'straight down +z');
+  const d2 = Power.blastDirection(0, 0, 3, 4);
+  assert.ok(Math.abs(Math.hypot(d2.x, d2.z) - 1) < 1e-9, 'unit length');
+  const d3 = Power.blastDirection(1, 1, 1, 1);
+  assert.ok(Math.abs(Math.hypot(d3.x, d3.z) - 1) < 1e-9, 'degenerate case still unit');
+});
+
+test('classifyVisual: stun overrides everything including high speed', () => {
+  const fast = { side: 0, forward: -5 };
+  assert.equal(Movement.classifyVisual(fast, 5.0, false, 'stun'), 'stun',
+    'stun wins over run/backpedal');
+  assert.equal(Movement.classifyVisual(fast, 5.0, false, 'lunge'), 'lunge',
+    'other overrides still work');
+});
+
+test('character roster: every character has an explicit boy/girl voice', () => {
+  assert.equal(CHARACTERS.length, 12, 'roster size');
+  for (const c of CHARACTERS) {
+    assert.ok(c.voice === 'boy' || c.voice === 'girl',
+      `${c.label} (${c.id}) must have an explicit voice, got ${JSON.stringify(c.voice)}`);
+    assert.ok(SUPER.VOICE_BASE[c.voice] > 0, `${c.voice} needs a base pitch`);
+  }
+  // Canaries: these two are exactly the cases name-based inference gets wrong.
+  assert.equal(getCharacter('ch03').voice, 'girl', 'Leo is a girl');
+  assert.equal(getCharacter('ch09').voice, 'girl', 'Max is a girl');
+});
+
+/* ------------------------- replay passthrough --------------------------- */
+// makePlayback.sample() REBUILDS the frame by interpolation rather than passing
+// it through, so any field added to Game._captureFrame that isn't listed there
+// is silently dropped and reads as undefined downstream. That bug shipped once:
+// the super-smash glow and the knockdown pose were captured correctly but never
+// survived into replay, so the highlight of the match replayed as a plain ball
+// and a standing victim. This guards the discrete fields.
+test('replay sample() carries discrete ball + player state, not just positions', () => {
+  const mkFrame = (hot, phase) => ({
+    ball: { pos: { x: 0, y: 1, z: 0 }, vel: { x: 0, y: 0, z: -5 },
+            spin: { x: 0, y: 0, z: 0 }, live: true, superHot: hot },
+    players: [{ pos: { x: 0, z: 3 }, vel: { x: 0, z: 0 }, move: { kind: 'ready' },
+                power: 0.75, armed: true, stun: { phase, t: 0.1, dur: 0.3, dirX: 0, dirZ: 1 } }],
+    hud: { scores: { near: 0, far: 0 }, server: 'near', serverNum: 2 }
+  });
+  const win = { frames: [{ t: 0, frame: mkFrame(true, 'blown') },
+                         { t: 0.5, frame: mkFrame(true, 'blown') }], duration: 0.5 };
+  const pb = makePlayback(win, 1);
+  pb.seek(0.25);
+  const f = pb.sample();
+  assert.equal(f.ball.superHot, true, 'ball superHot must survive sampling');
+  assert.equal(f.players[0].power, 0.75, 'meter charge must survive sampling');
+  assert.equal(f.players[0].armed, true, 'armed flag must survive sampling');
+  assert.ok(f.players[0].stun, 'stun state must survive sampling');
+  assert.equal(f.players[0].stun.phase, 'blown', 'stun phase must survive sampling');
+  // Positions are still interpolated as before.
+  assert.ok(f.ball.pos && typeof f.ball.pos.x === 'number', 'positions still interpolate');
+});
+
 /* ----------------------- AI poach helpers ------------------------------ */
 test('checkPoach returns false for easy difficulty', () => {
   const ai = AI.makeAI('easy');
@@ -412,16 +670,43 @@ test('checkPoach returns false for easy difficulty', () => {
   assert.equal(AI.checkPoach(ai, path, { x: 0, z: 2 }), false);
 });
 
+// NOTE: these two previously passed a v1 {P0,P1,P2} bezier path, which
+// checkPoach stopped reading when v2 landed — they were exercising a dead code
+// path and asserting the wrong thing. Rewritten against the real v2 API.
 test('checkPoach returns true for Pro when partner is directly in path', () => {
   const ai = AI.makeAI('hard');
-  const path = { P0: Physics.vec(0, 0.8, -4), P1: Physics.vec(0, 2.0, 0), P2: Physics.vec(0, 0, 4) };
-  assert.equal(AI.checkPoach(ai, path, { x: 0, z: 2 }), true);
+  const samples = [{ x: 0, z: -4, t: 0 }, { x: 0, z: 0, t: 0.3 }, { x: 0, z: 2, t: 0.5 }];
+  assert.equal(AI.checkPoach(ai, { samples, landing: { x: 0, z: 4 } }, { x: 0, z: 2 }), true);
 });
 
 test('checkPoach returns false for Pro when partner is far from path', () => {
   const ai = AI.makeAI('hard');
-  const path = { P0: Physics.vec(0, 0.8, -4), P1: Physics.vec(0, 2.0, 0), P2: Physics.vec(0, 0, 4) };
-  assert.equal(AI.checkPoach(ai, path, { x: C.HALF_W, z: 2 }), false);
+  const samples = [{ x: 0, z: -4, t: 0 }, { x: 0, z: 0, t: 0.3 }, { x: 0, z: 2, t: 0.5 }];
+  assert.equal(AI.checkPoach(ai, { samples, landing: { x: 0, z: 4 } }, { x: C.HALF_W, z: 2 }), false);
+});
+
+test('checkPoach rejects a ball that is close but arrives too fast to reach', () => {
+  const ai = AI.makeAI('hard');
+  const partner = { x: 0, z: 2 };
+  // 1.8m away — inside the 1.9m Pro reach sphere, so the old purely geometric
+  // check accepted it regardless of pace.
+  const near = (t) => ({ samples: [{ x: 1.8, z: 2, t }], landing: { x: 1.8, z: 2 } });
+  // Arriving in 0.02s: unreachable (needs 1.8m of travel in ~0.11s).
+  assert.equal(AI.checkPoach(ai, near(0.02), partner), false);
+  // Same geometry, but a floating ball that takes 1s to get there: reachable.
+  assert.equal(AI.checkPoach(ai, near(1.0), partner), true);
+});
+
+test('simulateFlight samples carry monotonically increasing flight time', () => {
+  const r = Physics.simulateFlight(
+    Physics.vec(0, 1.0, 4), Physics.vec(0, 3.0, -9), Physics.vec(0, 0, 0));
+  assert.ok(r.samples.length > 2, 'expected multiple samples');
+  assert.equal(r.samples[0].t, 0, 'first sample is at t=0');
+  for (let i = 1; i < r.samples.length; i++) {
+    assert.ok(r.samples[i].t > r.samples[i - 1].t, 'sample time must increase');
+  }
+  assert.ok(Math.abs(r.samples[r.samples.length - 1].t - r.T) < 0.05,
+    'last sample time should match total flight time');
 });
 
 test('checkPoach (v2) accepts flight samples for the Pro physical check', () => {

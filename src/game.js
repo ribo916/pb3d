@@ -20,13 +20,14 @@ import * as Practice from './practice.js';
 import * as SinglesStrategy from './strategies/singles.js';
 import * as DoublesStrategy from './strategies/doubles.js';
 import * as Movement from './movement.js';
+import * as Power from './power.js';
 import * as Scene from './scene.js';
 import { makePlayer } from './players.js';
 import { resolveSlotCharacter } from './characters.js';
 import { makeCamera, updateCamera } from './camera.js';
 import { makeRecorder, makePlayback, makeOrbitCam } from './replay.js';
 import { clamp, dist2D } from './utils.js';
-import { HIT, PHYS_V2, STABILITY, POWER_CAP, SPECIALTY, MOVEMENT, PRACTICE, TIMING_V2, REPLAY } from './constants.js';
+import { HIT, PHYS_V2, STABILITY, POWER_CAP, SPECIALTY, MOVEMENT, PRACTICE, TIMING_V2, REPLAY, SUPER } from './constants.js';
 import { normalizeMode } from './modes.js';
 
 const C = Physics.COURT;
@@ -141,8 +142,28 @@ export function Game(opts) {
   this.roster = opts.roster || {};
   this.onMatchOver = opts.onMatchOver || null;
   this.isMobile = !!opts.isMobile;
+  // 'on' | 'off' — lets a match run classic rules with no power meter.
+  this.superMode = (opts.superMode === 'off') ? 'off' : 'on';
+  // TEST/DEBUG: multiplier on meter charge, and (when > 1) charge on EVERY
+  // contact rather than clean ones only, so the super can be exercised without
+  // grinding out clean hits. Set via the ?fastsuper=N URL param, or live from
+  // the console: window.__game.superChargeMul = 20
+  this.superChargeMul = opts.superChargeMul || 1;
+  // Set while a super smash is in flight and a victim is marked for the blast.
+  this.blast = null;
+  // Supers spent per team in the CURRENT rally (see SUPER.MAX_PER_RALLY).
+  this._rallySupers = { near: 0, far: 0 };
+  // Armed-but-not-yet-executed poach; resolved when the ball reaches the poacher.
+  this.pendingPoach = null;
+  // Super-smash time dilation state (see _superTimeScale).
+  this._timeScale = 1;
+  this._superSlowHold = 0;
   // Lightweight always-on match metrics for A/B tuning (see tools/play.mjs).
-  this.metrics = { pointsByReason: {}, rallyShots: [], netErrors: 0, serveFaults: 0 };
+  this.metrics = { pointsByReason: {}, rallyShots: [], netErrors: 0, serveFaults: 0,
+                   // Super-smash balance counters (read by tools/play.mjs):
+                   // supersFired vs supersBlasted is the "did it connect" rate;
+                   // a low ratio means supers are sailing past unreturnable.
+                   supersFired: 0, supersBlasted: 0, supersMissed: 0 };
   this.state = STATE.MENU;
   this.excitement = 0;
   this.cameraShake = 0;
@@ -240,7 +261,12 @@ Game.prototype._initWorld = function () {
       pos: { x: 0, z: 0 }, vel: { x: 0, z: 0 },
       move: { kind: 'ready', target: { x: 0, z: 0 }, split: 0, plant: 0, lunge: 0 },
       ai: isHuman ? null : AI.makeAI(self.difficulty, colors && colors.persona),
-      aiSwingTimer: 0, aiReactTarget: 0
+      aiSwingTimer: 0, aiReactTarget: 0,
+      // Power meter + knockback state (see src/power.js).
+      power: Power.makeMeter(), stun: Power.makeStun(),
+      voice: (colors && colors.voice) || 'girl',
+      characterId: (colors && colors.id) || '',
+      jersey: (colors && colors.jersey) || 0x7ce7ff
     };
   }
   if (this.mode === 'practice') {
@@ -340,6 +366,39 @@ Game.prototype._initWorld = function () {
     this.scene.add(bounceFx);
     this.bounceFx = { mesh: bounceFx, age: 0, dur: 0.24 };
 
+    // Blast shockwave at the victim's feet when a super connects. Additive so it
+    // reads without bloom (mobile defaults to medium quality, bloom off).
+    var blastFxMat = new THREE.MeshBasicMaterial({
+      color: 0xffb02e,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    });
+    var blastFx = new THREE.Mesh(new THREE.RingGeometry(0.30, 0.52, 40), blastFxMat);
+    blastFx.rotation.x = -Math.PI / 2;
+    blastFx.visible = false;
+    blastFx.frustumCulled = false;
+    blastFx.renderOrder = 5;
+    this.scene.add(blastFx);
+    this.blastFx = { mesh: blastFx, age: 0, dur: 0.42 };
+
+    // Dust puff kicked up as the body lands — pairs with the ground-thud SFX.
+    var dustFxMat = new THREE.SpriteMaterial({
+      map: makeHitFxTexture(),
+      color: 0xd8c9a8,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    });
+    var dustFx = new THREE.Sprite(dustFxMat);
+    dustFx.visible = false;
+    dustFx.frustumCulled = false;
+    dustFx.renderOrder = 6;
+    this.scene.add(dustFx);
+    this.dustFx = { mesh: dustFx, age: 0, dur: 0.5 };
+
     var netFxMat = new THREE.SpriteMaterial({
       map: makeNetFxTexture(),
       color: 0xffffff,
@@ -406,11 +465,21 @@ Game.prototype._laneSign = function (p) {
 Game.prototype._responsibleSlot = function (team, atX) {
   if (this.mode === 'singles') return 0;
   var sgn = ((atX !== undefined ? atX : this.ball.pos.x) >= 0) ? 1 : -1;
+  var pick = 0;
   for (var slot = 0; slot < 2; slot++) {
     var side = (slot === Rules.rightSlot(this.match, team)) ? 'R' : 'L';
-    if (Rules.sideX(team, side) === sgn) return slot;
+    if (Rules.sideX(team, side) === sgn) { pick = slot; break; }
   }
-  return 0;
+  // Doubles only: if the lane owner is face-down from a super, their partner
+  // covers. Without this the ball keeps being assigned to the player on the
+  // ground and every blasted rally dies instantly. Singles has no partner —
+  // which is exactly why a singles super is near-lethal.
+  var owner = this._player(team, pick);
+  if (owner && Power.stunBlocksInput(owner.stun)) {
+    var mate = this._player(team, pick === 0 ? 1 : 0);
+    if (mate && !Power.stunBlocksInput(mate.stun)) return pick === 0 ? 1 : 0;
+  }
+  return pick;
 };
 
 // Starting serve formation.
@@ -469,7 +538,14 @@ Game.prototype.start = function () {
 // Drop any swing/serve input queued during the previous rally so a stale press
 // can't auto-fire the next serve. A fresh press is required each time.
 Game.prototype._clearServeInput = function () {
-  if (this.input) { this.input.state.serveQueued = false; this.input.state.swingQueued = false; }
+  if (this.input) {
+    this.input.state.serveQueued = false;
+    this.input.state.swingQueued = false;
+    // Also drop the queued shot TYPE. Without this a lob (or a super) queued at
+    // the end of one rally survives into the next and fires on the first swing.
+    this.input.state.swingShot = null;
+    this.input.state.superQueued = false;
+  }
 };
 
 Game.prototype._startPractice = function () {
@@ -610,6 +686,16 @@ Game.prototype._endPoint = function (result) {
   this.pointPause = 1.5;
   this.ball.live = false;
   this.excitement = 1.0;
+  // Meters decay but do not reset between points: a full reset makes the bar
+  // unreachable (a median rally is only 2-4 clean contacts per player), while
+  // full persistence turns it into a stale bank.
+  this.blast = null;
+  this.pendingPoach = null;
+  this._rallySupers = { near: 0, far: 0 };
+  for (var pi = 0; pi < this.players.length; pi++) {
+    Power.carryPoint(this.players[pi].power);
+    this.players[pi].stun = Power.makeStun();
+  }
   // Metrics for A/B tuning (tools/play.mjs reads game.metrics).
   var m = this.metrics;
   if (m) {
@@ -655,12 +741,52 @@ Game.prototype._nextServe = function () {
 };
 
 /* ----------------------------- per-frame ------------------------------ */
+/* Sim time scale. Slows the whole simulation while a super smash is live so the
+ * beat is actually watchable — see SUPER.TIME_SCALE for why this exists.
+ * Returns the scaled dt; everything downstream (physics, AI, animation AND the
+ * replay recorder) sees the slowed stream, so replay reproduces it exactly. */
+Game.prototype._superTimeScale = function (dt) {
+  var want = 1;
+  if (this.superMode !== 'off') {
+    if (this.ball.superHot && this.ball.live && this.state === STATE.RALLY) {
+      want = SUPER.TIME_SCALE;
+      this._superSlowHold = SUPER.TIME_HOLD_AFTER;
+    } else if (this._superSlowHold > 0) {
+      // Keep it slow through the knockdown, then ease out.
+      this._superSlowHold = Math.max(0, this._superSlowHold - dt);
+      want = SUPER.TIME_SCALE;
+    }
+  } else {
+    this._superSlowHold = 0;
+  }
+  var cur = (this._timeScale == null) ? 1 : this._timeScale;
+  // Ease down fast (the hit should bite immediately), ease back out gently.
+  var ramp = (want < cur) ? SUPER.TIME_RAMP_IN : SUPER.TIME_RAMP_OUT;
+  var step = ramp > 0 ? (dt / ramp) : 1;
+  this._timeScale = cur + clamp(want - cur, -step, step);
+  if (Math.abs(this._timeScale - 1) < 0.01 && want === 1) this._timeScale = 1;
+  return dt * this._timeScale;
+};
+
 Game.prototype.update = function (dt) {
   dt = Math.min(dt, 1 / 30);
+  dt = this._superTimeScale(dt);
   this.excitement = Math.max(0, this.excitement - dt * 0.7);
   this.cameraShake = Math.max(0, this.cameraShake - dt * 0.8);
   this.msgTimer = Math.max(0, this.msgTimer - dt);
   this.shotTimer = Math.max(0, (this.shotTimer || 0) - dt);
+
+  // Advance every knockback timeline before anything reads p.stun this frame.
+  // The body-hits-ground thud fires on the blown->down edge, so it lands when
+  // the body actually meets the floor rather than at the moment of contact.
+  for (var si = 0; si < this.players.length; si++) {
+    var sp = this.players[si];
+    var wasBlown = sp.stun.phase === 'blown';
+    Power.tickStun(sp.stun, dt);
+    if (wasBlown && sp.stun.phase === 'down' && this.audio && this.audio.sfx.bodyThud) {
+      this.audio.sfx.bodyThud();
+    }
+  }
 
   var inp = this.input ? this.input.poll() : null;
   if (this.swingWindow > 0) this.swingWindow -= dt;
@@ -720,7 +846,13 @@ Game.prototype._captureFrame = function () {
       pos: { x: p.pos.x, z: p.pos.z },
       vel: { x: p.vel.x, z: p.vel.z },
       move: { kind: m.kind || '', split: m.split || 0, plant: m.plant || 0, lunge: m.lunge || 0,
-              target: m.target ? { x: m.target.x, z: m.target.z } : null }
+              target: m.target ? { x: m.target.x, z: m.target.z } : null },
+      // Meter + knockback, so the highlight of the match doesn't replay as a
+      // normal ball and a standing victim.
+      power: p.power ? p.power.charge : 0,
+      armed: p.power ? p.power.armed : false,
+      stun: p.stun ? { phase: p.stun.phase, t: p.stun.t, dur: p.stun.dur,
+                       dirX: p.stun.dirX, dirZ: p.stun.dirZ } : null
     });
   }
   var m = this.match;
@@ -729,7 +861,10 @@ Game.prototype._captureFrame = function () {
       pos: { x: b.pos.x, y: b.pos.y, z: b.pos.z },
       vel: { x: b.vel.x, y: b.vel.y, z: b.vel.z },
       spin: { x: b.spin.x, y: b.spin.y, z: b.spin.z },
-      live: b.live
+      live: b.live,
+      // Without this the highlight of the match replays as an ordinary fast
+      // ball — no glow, no ribbon, no trail heat.
+      superHot: !!b.superHot
     },
     players: players,
     hud: {
@@ -775,6 +910,17 @@ Game.prototype._tickRally = function (dt) {
     var evs2 = Physics.stepV2(this.ball, h);
     for (var j = 0; j < evs2.length; j++) { this._clearFlightOn(evs2[j]); this._handleBallEvent(evs2[j]); }
     if (this.state !== STATE.RALLY) return;
+    // Checked per SUBSTEP, not per frame: a super travels ~0.5m per frame, so a
+    // frame-rate check could step straight past the victim.
+    if (this.blast) {
+      this._checkBlastContact();
+      if (this.state !== STATE.RALLY) return;
+    }
+    if (this.pendingPoach) {
+      this._checkPoachContact();
+      if (this.state !== STATE.RALLY) return;
+    }
+    if (this.ball.superHot) this._sampleTrail();
   }
   this._checkContacts(dt);
   if (Math.abs(this.ball.pos.z) > C.HALF_L + 8 || Math.abs(this.ball.pos.x) > 12) {
@@ -816,7 +962,17 @@ Game.prototype._tickPractice = function (dt) {
 // v2: drop the cached flight prediction once the ball bounces/nets, so the AI
 // stops trusting a stale landing point and forward-integrates the roll-out.
 Game.prototype._clearFlightOn = function (e) {
-  if (e && (e.type === 'bounce' || e.type === 'floor-out' || e.type === 'net')) this.ball.flight = null;
+  if (e && (e.type === 'bounce' || e.type === 'floor-out' || e.type === 'net')) {
+    this.ball.flight = null;
+    // The super's heat and its pending blast both end the moment the ball
+    // touches anything — if it bounced, the victim never got blasted. That is
+    // the honest "couldn't reach it" outcome, counted for balance tracking.
+    if (this.blast && this.metrics) this.metrics.supersMissed++;
+    this.ball.superHot = false;
+    this.blast = null;
+    // A poach that never materialised (the ball bounced first) is simply off.
+    this.pendingPoach = null;
+  }
 };
 
 Game.prototype._handleBallEvent = function (e) {
@@ -884,6 +1040,18 @@ Game.prototype._stepToward = function (pos, vel, tx, tz, spd, dt) {
 /* ------------------------- player movement ---------------------------- */
 Game.prototype._updateHuman = function (dt, inp) {
   var spd = HIT.HUMAN_SPEED;
+  // Blasted: no input at all. Slide backward under the knockback, then lie
+  // there. humanPos IS players[0].pos (aliased), so writing it here is enough.
+  var me = this.players[0];
+  if (me && Power.stunBlocksInput(me.stun)) {
+    var slide = Power.stunSlideSpeed(me.stun);
+    this.humanVel.x = me.stun.dirX * slide;
+    this.humanVel.z = me.stun.dirZ * slide;
+    this.humanPos.x = clamp(this.humanPos.x + this.humanVel.x * dt, -C.HALF_W - 1.5, C.HALF_W + 1.5);
+    this.humanPos.z = clamp(this.humanPos.z + this.humanVel.z * dt, 0.3, C.HALF_L + 2.0);
+    me.move.kind = 'stun';
+    return;
+  }
   var mx = inp ? inp.move.x : 0, mz = inp ? inp.move.z : 0;
   if (inp && inp.joystickReleased) {
     this.humanVel.x = 0; this.humanVel.z = 0;
@@ -922,6 +1090,19 @@ Game.prototype._updateCPUs = function (dt) {
 
 // Lane-aware doubles movement.
 Game.prototype._moveCPU = function (p, dt) {
+  // Blasted: skip AI entirely so no stale plan accumulates in ai.target, and
+  // slide backward under the knockback.
+  if (Power.stunBlocksInput(p.stun)) {
+    var sl = Power.stunSlideSpeed(p.stun);
+    p.vel.x = p.stun.dirX * sl;
+    p.vel.z = p.stun.dirZ * sl;
+    p.pos.x = clamp(p.pos.x + p.vel.x * dt, -C.HALF_W - 1.5, C.HALF_W + 1.5);
+    var lim = (p.team === 'near') ? 1 : -1;
+    p.pos.z = clamp(p.pos.z + p.vel.z * dt,
+      lim > 0 ? 0.3 : -(C.HALF_L + 2.0), lim > 0 ? (C.HALF_L + 2.0) : -0.3);
+    p.move.kind = 'stun';
+    return;
+  }
   var team = p.team, fwd = (team === 'near') ? 1 : -1;
   var rally = this.match.rally;
   var lane = this._laneSign(p);                    // ±1: this player's side of center
@@ -980,11 +1161,15 @@ Game.prototype._checkContacts = function (dt) {
   if (!p) return;
   // Human poach: the human may take a ball assigned to their partner by
   // stepping in front and timing a swing while within reach.
+  // A stunned human can't poach — they're on the ground.
   var human = this.players[0];
-  if (human.team === team && human !== p &&
+  if (human.team === team && human !== p && !Power.stunBlocksInput(human.stun) &&
       this.swingWindow > 0 && !this.swingUsed && this._reachOK(human.pos)) {
     p = human;
   }
+  // A blasted player has no agency at all. This is the gate that makes the
+  // recovery pause actually cost the next ball instead of being decoration.
+  if (Power.stunBlocksInput(p.stun)) return;
   if (!this._reachOK(p.pos)) return;
 
   if (p.isHuman) {
@@ -1003,10 +1188,14 @@ Game.prototype._checkContacts = function (dt) {
     // This lets the CPU attack overhead instead of scooping it at ankle level.
     // Use the ACTIVE mechanics' gravity: under v2 (9.81) a rising ball peaks
     // ~27% higher than the v1 constant (13.5) predicts.
-    if (this.ball.vel.y > 0 && this.ball.pos.y < POWER_CAP.SMASH_H) {
+    // A charged AI holds out for a HIGHER ball than normal, so it visibly sets
+    // up its overhead instead of spending the meter on a marginal one.
+    var waitH = (this.superMode !== 'off' && p.power && p.power.armed)
+      ? SUPER.AI_WAIT_H : POWER_CAP.SMASH_H;
+    if (this.ball.vel.y > 0 && this.ball.pos.y < waitH) {
       var gAct = PHYS_V2.GRAVITY;
       var peakY = this.ball.pos.y + (this.ball.vel.y * this.ball.vel.y) / (2 * gAct);
-      if (peakY >= POWER_CAP.SMASH_H) {
+      if (peakY >= waitH) {
         p.aiSwingTimer = 0;
         return;
       }
@@ -1087,6 +1276,25 @@ Game.prototype._computeStability = function (p) {
   return distFactor * velFactor;
 };
 
+// Bank power-meter charge for a paddle contact. Only CLEAN contacts pay, so the
+// meter rewards timing rather than rally length. The economy itself lives in
+// src/power.js so it stays node-testable.
+Game.prototype._chargeMeter = function (p, quality, stabilityIdx) {
+  if (!p || !p.power || this.superMode === 'off') return;
+  var before = p.power.armed;
+  var mul = this.superChargeMul || 1;
+  // With the test flag on, ANY contact charges — otherwise you still have to
+  // land clean hits to see the feature, which defeats the point of the flag.
+  var q = (mul > 1) ? 'clean' : quality;
+  var idx = (mul > 1 && stabilityIdx == null) ? 1 : stabilityIdx;
+  Power.addCharge(p.power, Power.chargeFor(q, idx) * mul);
+  // Announce the moment a human's bar fills — it's the cue to look for a high ball.
+  if (!before && p.power.armed && p.isHuman) {
+    this._message('SUPER READY', 1.2);
+    if (this.audio && this.audio.sfx.superReady) this.audio.sfx.superReady();
+  }
+};
+
 // v2 timing-quality for the human, anchored to CONTACT GEOMETRY: where the ball
 // sits relative to the body at the strike (facing-normalized z-offset, negative
 // = in front), graded against the same ideal contact practice mode coaches
@@ -1165,6 +1373,8 @@ Game.prototype._executeShotV2 = function (targetX, targetZ, apex, margin, spinVe
   this.ball.pos = Physics.clone(p0); // snap to contact point
   this.ball.vel = { x: sol.v0.x, y: sol.v0.y, z: sol.v0.z };
   this.ball.spin = spinVec;
+  // Any new contact cools the ball; _executeSuper re-lights it right after.
+  this.ball.superHot = (opts.type === 'supersmash');
   this.ball.live = true;
   this.ball.flight = { landing: sol.landing, T: sol.T, apexY: sol.apexY, samples: sol.samples, elapsed: 0 };
   // Arc-shape metrics: mean apex + launch speed per shot type (the tuning
@@ -1231,6 +1441,27 @@ Game.prototype._hit = function (p) {
   this._triggerHitEffect();
   if (rallyOver(res)) { this._endPoint(res); return; }
 
+  // Super smash — the power-meter spend. Checked BEFORE the ATP/Erne branches so
+  // an explicit super is never silently converted into a specialty shot because
+  // the player drifted wide, and AFTER the rally-over check so the meter is
+  // never spent on a swing that already ended the point.
+  //
+  // A blocked super (too low, too early, kitchen volley) does NOT fire and does
+  // NOT spend — the swing falls through to the normal path below and faults or
+  // plays on exactly as it would have. You lose the point but keep the meter.
+  if (this.swingShot === 'super' && this.superMode !== 'off' &&
+      Power.canUnleash(p.power, this.ball.pos.y, {
+        shots: rally ? rally.shots : 0,
+        phase: rally ? rally.phase : '',
+        volley: volley,
+        inKitchen: inKitchen,
+        teamUsed: this._rallySupers[p.team] || 0
+      })) {
+    Power.spend(p.power);
+    this._executeSuper(p, fwd, this._aimTarget(p));
+    return;
+  }
+
   // ATP — flat around-the-post arc, only at Pro level.
   if (this.difficulty === 'hard' && this._isAtpPosition(p)) {
     var atpSign = pos.x > 0 ? 1 : -1;
@@ -1255,6 +1486,7 @@ Game.prototype._hit = function (p) {
   // Stability index → shot quality → apex modifier.
   var stabilityIdx = this._computeStability(p);
   var quality = Shots.stabilityQuality(stabilityIdx);
+  this._chargeMeter(p, quality, stabilityIdx);
 
   // Power cap: ball height limits the allowed intent.
   // Read the aimed target from directional input.
@@ -1317,6 +1549,159 @@ Game.prototype._hit = function (p) {
   this._checkPoach(p.team);
 };
 
+/* Launch a super smash and mark the receiver for the blast.
+ * Shared by the human (_hit) and CPU (_cpuHit) paths so both deliver an
+ * identical shot. `at` is the resolved aim target from _aimTarget/AI. */
+Game.prototype._executeSuper = function (p, fwd, at) {
+  var pos = p.pos;
+  var blend = clamp((at && at.aim) || 0, -1, 1);
+
+  // A super smash is aimed AT A PLAYER, not at a patch of court — that is the
+  // whole point of a body bag. Pick the victim first, then solve the shot at
+  // them; the blast marker uses the same player, so intent and outcome can't
+  // disagree. Lateral input chooses WHICH opponent rather than a court spot.
+  var victim = this._pickSuperVictim(p, blend);
+  var spec = Shots.specV2('supersmash', C.KITCHEN, C.HALF_L);
+  var targetX, targetZ;
+  if (victim) {
+    // Clamp into the court so aiming at someone stretched wide or standing
+    // behind the baseline can't turn the super into an out-of-bounds fault.
+    targetX = clamp(victim.pos.x, -C.HALF_W * 0.94, C.HALF_W * 0.94);
+    // Keep it off the kitchen line too: a target that short makes the driven
+    // solve steep and slow, which reads as a dud rather than a rocket.
+    var vz = clamp(Math.abs(victim.pos.z), C.KITCHEN + 0.35, C.HALF_L * 0.94);
+    targetZ = -fwd * vz;
+  } else {
+    targetX = blend * C.HALF_W * 0.92;
+    targetZ = -fwd * spec.landZ;
+  }
+  var spin = Physics.vec(9.0 * -fwd, blend * 1.5, 0);
+
+  p.mesh.swing('smash');
+  this._flashShot('SUPER SMASH');
+  this.cameraShake = Math.max(this.cameraShake, SUPER.SHAKE_DELIVER);
+  this._triggerHitEffect(1.8);
+  this.excitement = 1.0;
+  if (this.audio && this.audio.sfx.superHit) this.audio.sfx.superHit();
+
+  var tm = this._humanTiming(p, Shots.swingSide(pos.x, this.ball.pos.x, fwd), fwd);
+  this._executeShotV2(targetX + tm.targetXSkew, targetZ,
+    POWER_CAP.NET_H + 0.06, 0.04, spin,
+    { type: 'supersmash', paceMul: tm.paceMul, apexAdd: 0 });
+
+  // The blast resolves in _checkBlastContact once the ball reaches them.
+  // (_executeShotV2 already marked the ball hot.)
+  if (this.metrics) this.metrics.supersFired++;
+  this._rallySupers[p.team] = (this._rallySupers[p.team] || 0) + 1;
+  // Reset the trail so the ribbon starts at the paddle instead of stretching
+  // back over wherever the ball came from.
+  if (this.world && this.world.trailBuf) this.world.trailBuf.length = 0;
+  this.blast = victim
+    ? { team: victim.team, victim: victim, attacker: p }
+    : null;
+};
+
+/* Choose who eats the super.
+ *
+ * Lateral aim picks the side in doubles; with the stick near neutral we target
+ * whoever is closest to the net, since they have the least time to react and
+ * make the most dramatic target. */
+Game.prototype._pickSuperVictim = function (attacker, aimBlend) {
+  // NOTE: _opponentsFor() returns {a, b}, NOT an array — use _teamPlayers.
+  var foes = this._teamPlayers(attacker.team === 'near' ? 'far' : 'near');
+  if (!foes || !foes.length) return null;
+  var live = [];
+  for (var i = 0; i < foes.length; i++) {
+    if (!Power.stunBlocksInput(foes[i].stun)) live.push(foes[i]);
+  }
+  if (!live.length) live = foes;          // everyone down: still aim at someone
+  if (live.length === 1) return live[0];
+
+  if (Math.abs(aimBlend) > 0.2) {
+    var wantSign = aimBlend > 0 ? 1 : -1;
+    var aimed = null;
+    for (var j = 0; j < live.length; j++) {
+      var s = live[j].pos.x >= 0 ? 1 : -1;
+      if (s === wantSign) {
+        if (!aimed || Math.abs(live[j].pos.x) > Math.abs(aimed.pos.x)) aimed = live[j];
+      }
+    }
+    if (aimed) return aimed;
+  }
+  // Neutral aim: the most exposed opponent — the one closest to the net.
+  var best = live[0];
+  for (var k = 1; k < live.length; k++) {
+    if (Math.abs(live[k].pos.z) < Math.abs(best.pos.z)) best = live[k];
+  }
+  return best;
+};
+
+/* The scripted intercept: a super smash body-bags the marked receiver.
+ *
+ * WHY THIS IS SCRIPTED AND NOT A STABILITY PENALTY:
+ * _checkContacts is gated on `lastHitCooldown > 0` (0.12s). A super covers ~3.6m
+ * in that window and kitchen-to-kitchen is only ~4.3m, so a super struck near the
+ * net arrives BEFORE the receiver is even eligible to be checked — they would be
+ * silently skipped and it would be a free winner. Bypassing the cooldown here is
+ * the whole point, and it is also what lets the victim contact the ball "while
+ * being blown back": there is no reach gate to fail, no swing to time, and no
+ * cooldown to wait out. Paddle contact and knockback fire in the same instant. */
+Game.prototype._checkBlastContact = function () {
+  var b = this.blast;
+  if (!b || !b.victim || !this.ball.live) return;
+  var rally = this.match.rally;
+  if (!rally || !rally.live) return;
+  // Only once the ball has actually crossed to the receiving side.
+  var onTheirSide = (b.team === 'near') ? (this.ball.pos.z > 0) : (this.ball.pos.z < 0);
+  if (!onTheirSide) return;
+
+  var v = b.victim;
+  var dx = this.ball.pos.x - v.pos.x, dz = this.ball.pos.z - v.pos.z;
+  // Wider than HIT.REACH: the victim is being knocked INTO the ball, not
+  // reaching for it.
+  if (dist2D(dx, dz) > HIT.REACH * SUPER.BLAST_REACH_MUL) return;
+  if (this.ball.pos.y > SUPER.BLAST_REACH_Y || this.ball.pos.y <= 0) return;
+
+  this.blast = null;
+  this.ball.superHot = false;
+  if (this.metrics) this.metrics.supersBlasted++;
+
+  var fwd = (v.team === 'near') ? 1 : -1;
+  var volley = rally.bouncesSinceHit < 1;
+  // The victim is EXEMPT from the kitchen-volley rule. Faulting someone for
+  // being hit by the opponent's shot while standing in the kitchen would be
+  // perverse; SUPER.MIN_SHOTS already guarantees the two-bounce lock is open.
+  var res = Rules.onPaddleHit(this.match, v.team, { volley: volley, inKitchen: false });
+
+  // They DO get a paddle on it — that is the design.
+  v.mesh.swing(Shots.swingSide(v.pos.x, this.ball.pos.x, fwd));
+  this._triggerBlastEffect(v);
+  this.cameraShake = Math.max(this.cameraShake, SUPER.SHAKE_BLAST);
+  this.excitement = 1.0;
+  if (this.audio && this.audio.sfx.blastGrunt) {
+    this.audio.sfx.blastGrunt(v.voice, this._voiceDetune(v));
+  }
+
+  Power.applyBlast(v.stun, Power.blastDirection(
+    b.attacker ? b.attacker.pos.x : this.ball.pos.x,
+    b.attacker ? b.attacker.pos.z : -this.ball.pos.z,
+    v.pos.x, v.pos.z));
+
+  if (rallyOver(res)) { this._endPoint(res); return; }
+
+  // The forced return: a weak, high, short sitter back over the net. Not a
+  // guaranteed put-away — its hang time is tuned to outlast the stun so a
+  // doubles partner can cover. In singles there is nobody to cover, which is
+  // deliberate.
+  var popSpec = Shots.specV2('blastpop', C.KITCHEN, C.HALF_L);
+  var popX = clamp(v.pos.x * 0.5, -C.HALF_W * 0.6, C.HALF_W * 0.6);
+  var popZ = -fwd * popSpec.landZ;
+  this._flashShot('BLASTED!');
+  this._executeShotV2(popX, popZ, popSpec.apex, popSpec.margin,
+    Physics.vec(popSpec.spinX * -fwd, 0, 0), { type: 'blastpop' });
+  this._checkPoach(v.team);
+};
+
 // CPU paddle strike. Shot chosen by AI using the shot solver + stability.
 Game.prototype._cpuHit = function (p) {
   var pos = p.pos, fwd = (p.team === 'near') ? 1 : -1;
@@ -1345,8 +1730,20 @@ Game.prototype._cpuHit = function (p) {
     hitterPos: pos,
     hitterTeam: p.team,
     servingTeam: this.match.server,
-    contactQuality: stabilityIdx
+    contactQuality: stabilityIdx,
+    superReady: this.superMode !== 'off' && !!(p.power && p.power.armed) &&
+      (this._rallySupers[p.team] || 0) < SUPER.MAX_PER_RALLY
   });
+  // Super smash: spend the meter and route through the shared executor so the
+  // AI delivers an identical shot to the human's (including the blast marker).
+  if (shot.isSuper && p.power && p.power.armed) {
+    Power.spend(p.power);
+    this._executeSuper(p, fwd, {
+      aim: clamp(shot.target.x / (C.HALF_W * 0.92), -1, 1)
+    });
+    return;
+  }
+
   if (shot.isSmash || shot.type === 'erne') visualSwingType = 'smash';
   p.mesh.swing(visualSwingType);
   if (this.audio) this.audio.sfx.paddle();
@@ -1369,6 +1766,10 @@ Game.prototype._cpuHit = function (p) {
   // degradation so a sprinting CPU doesn't turn a smash into a lob.
   // (stabilityIdx computed above and reused as the shot-selection contactQuality.)
   var quality = shot.isSmash ? 'clean' : Shots.stabilityQuality(stabilityIdx);
+  // Charge off the TRUE contact quality, not the forced-clean smash value above,
+  // or bangers would bank meter for every overhead regardless of how stretched
+  // they were.
+  this._chargeMeter(p, Shots.stabilityQuality(stabilityIdx), stabilityIdx);
   var apex = this._apexForQuality(shot.apex, quality);
 
   var spinVec = Physics.vec(shot.spin.x * -fwd, shot.spin.y, shot.spin.z);
@@ -1386,6 +1787,18 @@ Game.prototype._cpuHit = function (p) {
 // Poach check — called after a shot is fired toward `hitterTeam`'s opponents.
 // Checks if the net-partner on the receiving team can intercept. If so, deflects
 // the ball mid-flight toward open court on the hitter's side.
+/* Decide whether the receiving team's partner will poach — but do NOT execute it
+ * yet. Only arm it.
+ *
+ * This used to redirect the ball immediately, at the instant the ORIGINAL player
+ * struck: it teleported the ball to the partner's position and relaunched from
+ * there. Measured jumps of 4-5.5m in a single frame, often across the net, which
+ * is what produced "the ball just appears and you never see anyone hit it". It
+ * also skipped the entire intervening flight, so the opponent got no chance to
+ * react to a ball that had visibly never travelled.
+ *
+ * Now it marks intent and _checkPoachContact() resolves it when the ball
+ * actually reaches the poacher — same deferral pattern as _checkBlastContact. */
 Game.prototype._checkPoach = function (hitterTeam) {
   if (this.mode === 'singles' || this.mode === 'practice') return;
   if (!this.ball.flight) return;
@@ -1397,33 +1810,64 @@ Game.prototype._checkPoach = function (hitterTeam) {
   var partnerSlot = 1 - responsibleSlot;
   var partner = this._player(receivingTeam, partnerSlot);
   if (!partner || !partner.ai) return; // human partner: no auto-poach
+  if (Power.stunBlocksInput(partner.stun)) return; // face-down: can't poach
 
   if (!AI.checkPoach(partner.ai, path, partner.pos)) return;
 
-  // Poach: swing the partner and redirect the ball toward open court.
-  partner.mesh.swing('fh');
+  this.pendingPoach = { team: receivingTeam, poacher: partner, hitterTeam: hitterTeam,
+                        landingX: landingX };
+};
+
+/* Resolve an armed poach once the ball is genuinely within the poacher's reach.
+ * Runs per substep so a fast ball can't step past the intercept window. */
+Game.prototype._checkPoachContact = function () {
+  var pp = this.pendingPoach;
+  if (!pp || !this.ball.live) return;
+  var rally = this.match.rally;
+  if (!rally || !rally.live) { this.pendingPoach = null; return; }
+
+  // Only once the ball has crossed to the poacher's side.
+  var onTheirSide = (pp.team === 'near') ? (this.ball.pos.z > 0) : (this.ball.pos.z < 0);
+  if (!onTheirSide) return;
+
+  var q = pp.poacher;
+  if (Power.stunBlocksInput(q.stun)) { this.pendingPoach = null; return; }
+  var dx = this.ball.pos.x - q.pos.x, dz = this.ball.pos.z - q.pos.z;
+  if (dist2D(dx, dz) > SPECIALTY.POACH_PRO_REACH) return;
+  if (this.ball.pos.y > HIT.REACH_Y_MAX || this.ball.pos.y <= 0) return;
+
+  this.pendingPoach = null;
+
+  var volley = rally.bouncesSinceHit < 1;
+  var inKitchen = Math.abs(q.pos.z) < C.KITCHEN;
+  var res = Rules.onPaddleHit(this.match, q.team, { volley: volley, inKitchen: inKitchen });
+
+  q.mesh.swing(Shots.swingSide(q.pos.x, this.ball.pos.x, (q.team === 'near') ? 1 : -1));
   if (this.audio) this.audio.sfx.paddle();
+  this._triggerHitEffect();
+  this.cameraShake = Math.max(this.cameraShake, 0.08);
+  if (rallyOver(res)) { this._endPoint(res); return; }
 
-  // New landing target: away from where the hitter aimed, on the hitter's side.
-  var openX = -landingX * 0.7 + (Math.random() - 0.5) * 0.6;
-  var openZ = (hitterTeam === 'near' ? 1 : -1) * (C.HALF_L * 0.72);
-  var contact = Physics.vec(partner.pos.x, 1.1, partner.pos.z);
-
-  // Re-solve an honest redirected shot from the partner's contact point.
-  this.ball.pos = Physics.clone(contact);
+  // Redirect toward open court, away from where the original hitter aimed.
+  // The ball is already AT the poacher — no teleport; _executeShotV2 snaps to
+  // the live contact point as it does for every other shot.
+  var openX = -pp.landingX * 0.7 + (Math.random() - 0.5) * 0.6;
+  var openZ = (pp.hitterTeam === 'near' ? 1 : -1) * (C.HALF_L * 0.72);
   this.ball.spin = Physics.vec(0, 0, 0);
   this._executeShotV2(openX, openZ, 1.4, 0.18, this.ball.spin, { type: 'drive' });
-  this._triggerHitEffect();
 };
 
 /* ----------------------------- rendering ------------------------------ */
-Game.prototype._triggerHitEffect = function () {
+// `mag` scales the burst (default 1). A super smash passes ~1.8 so the impact
+// reads bigger than a normal contact without needing a separate effect.
+Game.prototype._triggerHitEffect = function (mag) {
   if (!this.hitFx) return;
+  mag = mag || 1;
   var mesh = this.hitFx.mesh;
   mesh.position.set(this.ball.pos.x, Math.max(C.BALL_R * 2.0, this.ball.pos.y), this.ball.pos.z);
-  mesh.scale.set(0.62, 0.62, 1);
+  mesh.scale.set(0.62 * mag, 0.62 * mag, 1);
   mesh.visible = true;
-  mesh.material.opacity = 0.44;
+  mesh.material.opacity = Math.min(1, 0.44 * mag);
   this.hitFx.age = this.hitFx.dur;
 };
 
@@ -1469,6 +1913,51 @@ Game.prototype._updateBounceEffect = function (dt) {
   if (fx.age <= 0) fx.mesh.visible = false;
 };
 
+// Shockwave + dust at the blasted player's feet.
+Game.prototype._triggerBlastEffect = function (victim) {
+  if (this.blastFx) {
+    this.blastFx.mesh.position.set(victim.pos.x, 0.05, victim.pos.z);
+    this.blastFx.mesh.scale.set(1, 1, 1);
+    this.blastFx.mesh.visible = true;
+    this.blastFx.mesh.material.opacity = 0.85;
+    this.blastFx.age = this.blastFx.dur;
+  }
+  if (this.dustFx) {
+    this.dustFx.mesh.position.set(victim.pos.x, 0.35, victim.pos.z);
+    this.dustFx.mesh.scale.set(0.9, 0.9, 1);
+    this.dustFx.mesh.visible = true;
+    this.dustFx.mesh.material.opacity = 0.5;
+    this.dustFx.age = this.dustFx.dur;
+  }
+};
+
+Game.prototype._updateBlastEffect = function (dt) {
+  var fx = this.blastFx;
+  if (fx) {
+    if (fx.age <= 0) { fx.mesh.visible = false; fx.mesh.material.opacity = 0; }
+    else {
+      fx.age = Math.max(0, fx.age - dt);
+      var t = 1 - fx.age / fx.dur;
+      var size = 1 + t * 5.0;                 // expands to ~3m
+      fx.mesh.scale.set(size, size, 1);
+      fx.mesh.material.opacity = (1 - t) * 0.85;
+      if (fx.age <= 0) fx.mesh.visible = false;
+    }
+  }
+  var du = this.dustFx;
+  if (du) {
+    if (du.age <= 0) { du.mesh.visible = false; du.mesh.material.opacity = 0; }
+    else {
+      du.age = Math.max(0, du.age - dt);
+      var dt2 = 1 - du.age / du.dur;
+      du.mesh.scale.set(0.9 + dt2 * 1.6, 0.9 + dt2 * 1.6, 1);
+      du.mesh.position.y = 0.35 + dt2 * 0.5;  // drifts upward
+      du.mesh.material.opacity = (1 - dt2) * 0.5;
+      if (du.age <= 0) du.mesh.visible = false;
+    }
+  }
+};
+
 Game.prototype._triggerNetEffect = function () {
   if (!this.netFx) return;
   var mesh = this.netFx.mesh;
@@ -1512,7 +2001,7 @@ Game.prototype._syncMeshes = function (dt) {
   var b = this.ball, bm = this.world.ballMesh;
   bm.position.set(b.pos.x, b.pos.y, b.pos.z);
   bm.rotation.x += (b.vel.z) * dt * 2; bm.rotation.z -= (b.vel.x) * dt * 2;
-  this._updatePracticeBallCue();
+  this._updateBallAppearance(dt);
   // Ghost marker (drawn on top) so the ball is never lost behind your own player.
   if (this.world.ballGhost) this.world.ballGhost.position.set(b.pos.x, b.pos.y, b.pos.z);
   // contact shadow blob
@@ -1523,9 +2012,11 @@ Game.prototype._syncMeshes = function (dt) {
   blob.material.opacity = clamp(0.35 - b.pos.y * 0.03, 0.06, 0.35);
   // trail
   this._updateTrail();
+  this._updateSuperTrail();
   this._updateHitEffect(dt);
   this._updateBounceEffect(dt);
   this._updateNetEffect(dt);
+  this._updateBlastEffect(dt);
   if (this.pointReaction) this.pointReaction.age = Math.max(0, this.pointReaction.age - dt);
 
   // players — each faces the OPPONENT's side and only yaws toward the ball.
@@ -1538,9 +2029,15 @@ Game.prototype._syncMeshes = function (dt) {
     var facing = base + yaw;
     var local = Movement.localVelocity(pl.vel, facing);
     var move = pl.move || {};
-    var visualOverride = move.lunge > 0 ? 'lunge' : (move.plant > 0 ? 'plant' : (move.split > 0 ? 'split' : ''));
+    // 'stun' outranks everything — a blasted player is sliding fast, which
+    // would otherwise classify as a run.
+    var stunned = Power.stunBlocksInput(pl.stun);
+    var visualOverride = stunned ? 'stun'
+      : (move.lunge > 0 ? 'lunge' : (move.plant > 0 ? 'plant' : (move.split > 0 ? 'split' : '')));
     var visualMove = Movement.classifyVisual(local, v, this.state === STATE.SERVE || this.state === STATE.RALLY, visualOverride);
-    pl.mesh.object.position.set(pl.pos.x, this._reactionOffset(pl.team), pl.pos.z);
+    if (pl.mesh.setStun) pl.mesh.setStun(pl.stun.phase);
+    pl.mesh.object.position.set(pl.pos.x,
+      this._reactionOffset(pl.team) + this._stunOffsetY(pl), pl.pos.z);
     pl.mesh.update(dt, {
       speed: v,
       facing: facing,
@@ -1607,24 +2104,153 @@ Game.prototype._syncMeshes = function (dt) {
   }
 };
 
+/* Push one trail sample. Normally called once per rendered frame, but a super
+ * moves ~0.5m per frame — fast enough that a per-frame trail renders as a
+ * visibly polygonal chain — so _tickRally also calls this each SUBSTEP while
+ * the ball is hot, giving 4x the resolution exactly when it matters. */
+Game.prototype._sampleTrail = function () {
+  var buf = this.world && this.world.trailBuf;
+  if (!buf) return;
+  buf.push([this.ball.pos.x, this.ball.pos.y, this.ball.pos.z]);
+  while (buf.length > this.world.trailLen) buf.shift();
+};
+
+/* Stable per-character pitch offset (±6%) derived from the character id, so the
+ * five boys (and the seven girls) don't all sound like one cloned voice. */
+Game.prototype._voiceDetune = function (p) {
+  var key = (p && p.characterId) || (p && p.team + p.slot) || '';
+  var h = 0;
+  for (var i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) & 0xffff;
+  return ((h % 1000) / 1000 - 0.5) * 0.12;
+};
+
+/* Build the camera-facing speed ribbon from the trail buffer.
+ * Width tapers from the head to zero at the tail and the color fades white-hot
+ * -> deep orange, which is what reads as SPEED; a constant-width ribbon just
+ * looks like a tube. Only visible while the ball is hot. */
+Game.prototype._updateSuperTrail = function () {
+  var rb = this.world && this.world.superRibbon;
+  if (!rb) return;
+  if (!this.ball.superHot || !this.ball.live) { rb.visible = false; return; }
+
+  var buf = this.world.trailBuf, segs = this.world.superRibbonSegs;
+  if (!buf || buf.length < 2) { rb.visible = false; return; }
+
+  var pos = rb.geometry.attributes.position;
+  var col = rb.geometry.attributes.color;
+  var camPos = this.camera.position;
+  var head = buf.length - 1;
+
+  for (var i = 0; i < segs; i++) {
+    // i = 0 at the tail, segs-1 at the head (the ball).
+    var srcIdx = head - (segs - 1 - i);
+    var p = buf[srcIdx < 0 ? 0 : srcIdx];
+    var pn = buf[Math.min(head, (srcIdx < 0 ? 0 : srcIdx) + 1)] || p;
+    // Segment direction, then a perpendicular that faces the camera.
+    var dx = pn[0] - p[0], dy = pn[1] - p[1], dz = pn[2] - p[2];
+    var vx = p[0] - camPos.x, vy = p[1] - camPos.y, vz = p[2] - camPos.z;
+    var nx = dy * vz - dz * vy, ny = dz * vx - dx * vz, nz = dx * vy - dy * vx;
+    var nl = Math.hypot(nx, ny, nz) || 1;
+    var t = i / (segs - 1);                       // 0 tail -> 1 head
+    // Width in absolute metres, not ball radii: BALL_R*1.6 is ~6cm, which is
+    // a couple of pixels at broadcast distance and reads as nothing.
+    var w = SUPER.TRAIL_WIDTH * t * t;            // taper, biased toward the head
+    nx = nx / nl * w; ny = ny / nl * w; nz = nz / nl * w;
+
+    pos.setXYZ(i * 2, p[0] - nx, p[1] - ny, p[2] - nz);
+    pos.setXYZ(i * 2 + 1, p[0] + nx, p[1] + ny, p[2] + nz);
+    // White-hot at the head, deep orange fading out at the tail.
+    var r = 0.35 + 0.65 * t, g = 0.12 + 0.60 * t * t, b = 0.02 + 0.55 * t * t * t;
+    col.setXYZ(i * 2, r, g, b);
+    col.setXYZ(i * 2 + 1, r, g, b);
+  }
+  pos.needsUpdate = true;
+  col.needsUpdate = true;
+  rb.visible = true;
+};
+
+/* Vertical lift for a blasted body.
+ *
+ * Driven by the MESH'S ACTUAL PITCH, not by the stun phase. The pitch eases out
+ * slowly when a player gets up, while the phase flips to 'none' instantly — so
+ * keying the lift off the phase left a window where the body was still ~66%
+ * flat with zero lift and sank straight through the court. That was the
+ * "falls under the ground" bug.
+ *
+ * The model pivot is at the FEET, so this must never go negative; pitching about
+ * the feet already lays the body out at ground level and only a small lift is
+ * needed to keep the torso off the surface. */
+Game.prototype._stunOffsetY = function (p) {
+  if (!p.mesh || !p.mesh.object) return 0;
+  var pitch = Math.abs(p.mesh.object.rotation.x || 0);
+  if (pitch < 0.01) return 0;
+  return SUPER.STUN_LIFT * Math.min(1, pitch / SUPER.STUN_PITCH);
+};
+
 Game.prototype._updateTrail = function () {
   var buf = this.world.trailBuf, max = this.world.trailLen;
-  buf.push([this.ball.pos.x, this.ball.pos.y, this.ball.pos.z]);
-  while (buf.length > max) buf.shift();
+  // A hot ball is already being sampled per-substep by _tickRally.
+  if (!this.ball.superHot) {
+    buf.push([this.ball.pos.x, this.ball.pos.y, this.ball.pos.z]);
+    while (buf.length > max) buf.shift();
+  }
   var attr = this.world.trail.geometry.attributes.position;
   for (var i = 0; i < max; i++) {
     var p = buf[i] || buf[buf.length - 1] || [0, 0, 0];
     attr.setXYZ(i, p[0], p[1], p[2]);
   }
   attr.needsUpdate = true;
-  this.world.trail.material.opacity = this.ball.live ? 0.35 : 0;
+  // A super smash drives the trail hot and near-opaque. NOTE: this is a
+  // THREE.Line, and `linewidth` is ignored on essentially every WebGL platform
+  // (it always renders 1px) — so brightness and color are the only levers here.
+  // The heavy tapered streak is a separate additive ribbon; see _updateSuperTrail.
+  var mat = this.world.trail.material;
+  if (!this.ball.live) {
+    mat.opacity = 0;
+  } else if (this.ball.superHot) {
+    mat.opacity = SUPER.TRAIL_OPACITY;
+    mat.color.setHex(0xffb02e);
+  } else {
+    mat.opacity = 0.35;
+    mat.color.setHex(this.world.trailBaseColor != null ? this.world.trailBaseColor : 0xffffff);
+  }
 };
 
-Game.prototype._updatePracticeBallCue = function () {
+/* Single writer for the ball's material/scale/glow.
+ *
+ * The practice coaching cue and the super-smash heat both want this material
+ * every frame, so they are resolved to ONE tier here and written once — two
+ * independent writers would fight and flicker. Super always wins.
+ *
+ * Everything reads via emissive + the additive glow shell + scale, never bloom:
+ * renderQuality() disables bloom on medium and MOBILE DEFAULTS TO MEDIUM, so a
+ * bloom-driven effect would be invisible on phones. */
+Game.prototype._updateBallAppearance = function (dt) {
   var mesh = this.world && this.world.ballMesh;
   if (!mesh || !mesh.material) return;
   var glow = mesh.children && mesh.children[0] && mesh.children[0].material ? mesh.children[0].material : null;
   var ghost = this.world.ballGhost && this.world.ballGhost.material ? this.world.ballGhost.material : null;
+
+  // --- super smash: hot, swelling, pulsing ---
+  if (this.ball.superHot && this.ball.live) {
+    this._superGlowT = (this._superGlowT || 0) + (dt || 0);
+    // Ease the swell in rather than snapping, so the ball visibly grows as it
+    // leaves the paddle.
+    this._superScale = this._superScale == null ? 1 : this._superScale;
+    this._superScale += (SUPER.BALL_SCALE - this._superScale) * Math.min(1, (dt || 0) * 14);
+    // A dead-steady glow reads as a texture; a pulsing one reads as charged.
+    var pulse = 0.12 * Math.sin(this._superGlowT * 14 * Math.PI * 2 / 6.28);
+    mesh.material.color.setHex(0xfff1c4);
+    mesh.material.emissive.setHex(0xff7a10);
+    mesh.material.emissiveIntensity = SUPER.BALL_EMISSIVE_INT;
+    mesh.scale.setScalar(this._superScale);
+    if (glow) { glow.color.setHex(0xffc06a); glow.opacity = 0.62 + pulse; }
+    if (ghost) { ghost.color.setHex(0xffd9a0); ghost.opacity = 0.95; }
+    return;
+  }
+  this._superGlowT = 0;
+  this._superScale = 1;
+
   var cue = 'none';
   if (this.mode === 'practice' && this.practice && this.state === STATE.RALLY && this.ball.live) {
     var p = this.players[0];
@@ -1836,6 +2462,7 @@ Game.prototype._applyFrame = function (frame) {
   b.vel.x = frame.ball.vel.x; b.vel.y = frame.ball.vel.y; b.vel.z = frame.ball.vel.z;
   b.spin.x = frame.ball.spin.x; b.spin.y = frame.ball.spin.y; b.spin.z = frame.ball.spin.z;
   b.live = frame.ball.live;
+  b.superHot = !!frame.ball.superHot;
   for (var i = 0; i < this.players.length && i < frame.players.length; i++) {
     var p = this.players[i], fp = frame.players[i];
     p.pos.x = fp.pos.x; p.pos.z = fp.pos.z;
@@ -1843,6 +2470,11 @@ Game.prototype._applyFrame = function (frame) {
     if (p.move && fp.move) {
       p.move.kind = fp.move.kind; p.move.split = fp.move.split;
       p.move.plant = fp.move.plant; p.move.lunge = fp.move.lunge;
+    }
+    if (p.power) { p.power.charge = fp.power || 0; p.power.armed = !!fp.armed; }
+    if (p.stun && fp.stun) {
+      p.stun.phase = fp.stun.phase; p.stun.t = fp.stun.t; p.stun.dur = fp.stun.dur;
+      p.stun.dirX = fp.stun.dirX; p.stun.dirZ = fp.stun.dirZ;
     }
   }
 };
@@ -1935,8 +2567,26 @@ Game.prototype._updateHUD = function () {
     shotName: this.shotTimer > 0 ? this._shotName : null,
     shotOpacity: Math.min(0.85, this.shotTimer * 1.6),
     level: this.levelMeta,
-    isHumanServe: this.isHumanServe()
+    isHumanServe: this.isHumanServe(),
+    power: this._powerHUD()
   });
+};
+
+// Meter readout for the HUD. players[0] is always the human, and the HUD relies
+// on that ordering: index 0 drives the big bar, the rest become pips.
+Game.prototype._powerHUD = function () {
+  if (this.superMode === 'off') return [];
+  var out = [];
+  for (var i = 0; i < this.players.length; i++) {
+    var p = this.players[i];
+    if (!p.power) continue;
+    out.push({
+      charge: p.power.charge,
+      armed: p.power.armed,
+      color: '#' + (p.jersey || 0x7ce7ff).toString(16).padStart(6, '0')
+    });
+  }
+  return out;
 };
 
 Game.prototype._scorePracticeRep = function (result) {

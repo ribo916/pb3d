@@ -169,6 +169,87 @@ export const POWER_CAP = {
   SMASH_H: 1.5           // ball at/above this height enables overhead smash intent
 };
 
+// Power meter + super smash. The meter fills on CLEAN contacts only and is spent
+// as one huge overhead that blasts the receiver back and forces a weak pop-up.
+// Height-gated like the normal smash, so a full meter is a licence to attack,
+// not a free winner. See GAMEPLAY.md for the full mechanic.
+// TUNING NOTE: clean contacts are a SPARSE resource. Measured over AI-vs-AI
+// doubles, only ~25% of paddle contacts grade 'clean', which works out to ~0.2
+// clean contacts per player per point — roughly 4 per player per 11-point game.
+// The meter is sized against that: ~4 clean contacts fills it, so a player
+// unloads about once a game. Charging every contact instead would fill it in a
+// single rally; decaying it between points made it mathematically unreachable
+// (a 0.6 carry caps the meter at 2.5x the per-point income, i.e. well under 1).
+export const SUPER = {
+  CHARGE_CLEAN: 0.25,        // meter gained per clean contact (~4 to fill)
+  CHARGE_QUALITY_BONUS: 0.6, // extra fraction scaled by stability above 'clean'
+  FULL: 1.0,
+  COST: 1.0,                 // full spend; no partial supers
+  POINT_CARRY: 1.0,          // meter retained across a point (0 = reset, 1 = persist)
+  MIN_SHOTS: 3,              // rally.shots floor — protects the 4-shot pattern
+  // At most one super per TEAM per rally. Without this there is a feedback
+  // loop: a blasted rally runs long -> long rallies bank more clean contacts ->
+  // more supers -> longer rallies. Measured at DUPR 5.0 it doubled the mean
+  // rally from 15.7 to 36.6 shots, collapsing the game's rhythm.
+  MAX_PER_RALLY: 1,
+  // Minimum ball height to unleash.
+  //
+  // MEASURED, and this overturned the original design: contact heights in real
+  // rallies are far lower than they intuitively seem — median 0.49m, p99 0.84m,
+  // and only ~1 in 99 contacts clears net height. Gating at POWER_CAP.SMASH_H
+  // (1.5) or even at 0.86 made the super literally unfireable across whole
+  // matches. (The same measurement implies the AI's normal smash branch, gated
+  // on smashMin 1.2-1.45, is near-dead code too.)
+  //
+  // So height is NOT the right lever for protecting the kitchen battle — it
+  // can only be a floor meaning "not scraped off your shoelaces". 0.50 sits
+  // just above the median contact, so roughly half of contacts qualify.
+  SMASH_H: 0.50,
+  // What actually protects the 4-shot pattern: you may not unleash from inside
+  // the kitchen AT ALL (not merely on a volley). A super is an attacking shot
+  // from the transition zone or the baseline — never a dink-battle weapon.
+  // This is thematically right for pickleball and, unlike the height gate, it
+  // is a condition players can deliberately satisfy.
+  NO_KITCHEN: true,
+  BLAST_REACH_MUL: 1.6,      // x HIT.REACH — victim is knocked INTO the ball
+  BLAST_REACH_Y: 2.4,
+  BLAST_BACK: 1.35,          // meters the victim slides backward
+  STUN_PITCH: 1.35,          // radians the body pitches back when laid out
+  STUN_LIFT: 0.26,           // meters the root rises so a flat body clears the court
+  // Stun phases (s). Same in singles and doubles — no softening. Total ~0.86s,
+  // tuned AGAINST the blastpop hang time so a doubles partner can cover.
+  STUN: { BLOWN: 0.26, DOWN: 0.30, UP: 0.30 },
+  // --- Time dilation ("super freeze") ---
+  // Measured: a super flies in ~0.7s and the blast lands ~0.18s after contact,
+  // so the entire beat — glow, streak, impact, knockdown — was over in under a
+  // second and read as "the ball just vanished". Fighting games solve exactly
+  // this with a brief slow-down on the super, and so do we. Applied to the sim
+  // dt, so the recorder captures the slowed stream and instant replay reproduces
+  // it faithfully.
+  TIME_SCALE: 0.34,          // sim speed while a super is live (1 = off)
+  TIME_RAMP_IN: 0.06,        // s to ease down into slow-mo
+  TIME_RAMP_OUT: 0.30,       // s to ease back to full speed
+  TIME_HOLD_AFTER: 0.55,     // s of slow-mo held after the blast connects
+  // Presentation
+  SHAKE_DELIVER: 0.30,
+  SHAKE_BLAST: 0.38,
+  TRAIL_OPACITY: 0.95,
+  TRAIL_WIDTH: 0.34,         // ribbon half-width (m) at the head; taper to 0 at the tail
+  BALL_SCALE: 1.35,
+  BALL_EMISSIVE_INT: 2.4,
+  // Grunt base pitch (Hz) by character voice. Per-character detune is derived
+  // from the character id so the five boys don't sound like one cloned voice.
+  VOICE_BASE: { boy: 128, girl: 208 },
+  // AI
+  // Chance a ready AI takes a qualifying look. Tuned against BOTH tiers: at DUPR
+  // 4.0 opportunities are scarce (~2 supers/20 points), but at DUPR 5.0 the
+  // larger stability sweet spot fills meters far faster and 0.9 produced a
+  // spammy 13 supers/20 points. 0.45 keeps Pro punchy without it becoming the
+  // whole match.
+  AI_UNLEASH_P: 0.45,
+  AI_WAIT_H: 1.9             // charged AI defers contact for a HIGHER ball
+};
+
 // Specialty shot triggers and poach windows.
 export const SPECIALTY = {
   ATP_X_MARGIN: 0.35,        // player must be this far outside sideline for ATP

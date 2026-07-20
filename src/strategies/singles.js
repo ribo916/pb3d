@@ -3,7 +3,7 @@
 import { COURT } from '../physics.js';
 import * as Shots from '../shots.js';
 import * as Rules from '../rules.js';
-import { SPECIALTY, POWER_CAP, MOVEMENT, SINGLES } from '../constants.js';
+import { SPECIALTY, POWER_CAP, MOVEMENT, SINGLES, SUPER } from '../constants.js';
 import { clamp } from '../utils.js';
 import { clampX, loneOpponent, singlesPassingTarget, feetDepth, rand,
          situationalLob, scorePressure, ballDifficultyMult, rallyLengthMult } from './common.js';
@@ -106,6 +106,25 @@ export function chooseShot(ai, ball, match, isServe, ctx) {
     var intent;
     var isReturn = match && match.rally && match.rally.shots === 2;
     var isThirdShot = match && match.rally && match.rally.shots === 3;
+
+    // Super smash — same gates as doubles. NOTE: singles has no partner to
+    // cover the forced pop-up, so a landed super is near-lethal here. That is
+    // intentional; frequency (MIN_SHOTS / CHARGE_CLEAN) is the dial, not the stun.
+    if (ctx.superReady && ball.pos.y >= SUPER.SMASH_H &&
+        match && match.rally && match.rally.shots >= SUPER.MIN_SHOTS &&
+        match.rally.phase === 'open' &&
+        !(SUPER.NO_KITCHEN && hitterPos && Math.abs(hitterPos.z) < C.KITCHEN) &&
+        Math.random() < aggr * cfg.superBias * SUPER.AI_UNLEASH_P) {
+      var supFoe = loneOpponent(opponents);
+      var supX = supFoe ? clampX(supFoe.pos.x + (supFoe.pos.x >= 0 ? -1 : 1) * 0.8, 0.88)
+                        : rand(-C.HALF_W * 0.7, C.HALF_W * 0.7);
+      return {
+        target: { x: supX, z: C.HALF_L * 0.66 },
+        apex: POWER_CAP.NET_H + 0.06,
+        spin: { x: 9.0, y: 0, z: 0 },
+        type: 'supersmash', margin: 0.04, isSmash: true, isSuper: true
+      };
+    }
 
     if (ball.pos.y >= cfg.smashMin && Math.random() < aggr * cfg.speedupBias) {
       return {

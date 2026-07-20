@@ -101,7 +101,14 @@ export function makePlayback(window, defaultSpeed) {
       players.push({
         pos: lerp2(pa.pos, pb.pos, f),
         vel: lerp2(pa.vel, pb.vel, f),
-        move: pa.move
+        move: pa.move,
+        // Discrete per-player state is SNAPPED from the earlier keyframe, never
+        // interpolated. Anything added to _captureFrame must be listed here or
+        // it is silently dropped: sample() rebuilds the frame rather than
+        // passing it through, so a missing field reads as undefined downstream.
+        power: pa.power,
+        armed: pa.armed,
+        stun: pa.stun
       });
     }
     return {
@@ -109,7 +116,8 @@ export function makePlayback(window, defaultSpeed) {
         pos: lerp3(a.ball.pos, b.ball.pos, f),
         vel: lerp3(a.ball.vel, b.ball.vel, f),
         spin: lerp3(a.ball.spin, b.ball.spin, f),
-        live: a.ball.live
+        live: a.ball.live,
+        superHot: a.ball.superHot
       },
       players: players,
       hud: a.hud

@@ -38,6 +38,26 @@ const PROFILES_V2 = {
   speedup: { apex: 1.05, depthFrac: 0.55, spinX:  5.5, spinY: 0, margin: 0.12, vMax: 17, driven: true },
   serve:   { apex: 2.30, depthFrac: 0.75, spinX:  2.5, spinY: 0, margin: 0.30, vMax: 16 },
   smash:   { apex: 0.95, depthFrac: 0.70, spinX:  7.0, spinY: 0, margin: 0.05, vMax: 22, direct: true },
+  // Super smash — the power-meter spend.
+  //
+  // DRIVEN, not direct, and that was a measured correction. The `direct` family
+  // pins the launch straight down the p0->target line, which only works when
+  // contact is genuinely ABOVE the target: measured net crossings from a 0.5-1.0m
+  // contact were 0.27-0.57m, i.e. straight into a 0.86m net. Real contacts in
+  // this game sit at a 0.49m median, so a direct super would have been a net
+  // fault nearly every time.
+  //
+  // Driven crosses the tape at netH+margin and lands on target, so it clears
+  // from any contact height. Launch speed then scales with how high the ball
+  // was — ~11 m/s off the shoelaces, ~31 m/s off a genuine overhead. That is
+  // physically honest AND good feel: a higher ball earns a faster super. The
+  // super's identity is the blast and the knockback, not one fixed velocity.
+  supersmash: { apex: 1.05, depthFrac: 0.70, spinX: 9.0, spinY: 0, margin: 0.14, vMax: 30, driven: true },
+  // The forced return: what a blasted receiver produces while being knocked
+  // back. Weak, high and short — a sitter for the attacking team, but NOT an
+  // automatic put-away. Its hang time is tuned against SUPER.STUN's total so a
+  // doubles partner has time to cover; in singles there is nobody to cover.
+  blastpop:   { apex: 3.60, depthFrac: 0.30, spinX: -0.5, spinY: 0, margin: 0.55, vMax: 8 },
   erne:    { apex: 0.95, depthFrac: 0.35, spinX:  4.0, spinY: 0, margin: 0.05, vMax: 18, direct: true },
   atp:     { apex: 0.60, depthFrac: 0.55, spinX:  0.0, spinY: 3.0, margin: 0, vMax: 15, allowNet: true },
   feed:    { apex: 2.55, depthFrac: 0.55, spinX:  1.0, spinY: 0, margin: 0.20, vMax: 12 }

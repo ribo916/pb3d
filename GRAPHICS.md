@@ -69,9 +69,12 @@ Graphics work must not change the feel contract:
 - Preserve the 4-shot pattern: deep serve, deep return, serving-team drop,
   kitchen battle.
 - Preserve side-out scoring, two-bounce rule, kitchen faults, serve rotation,
-  ATP/Erne/poach behavior, and current difficulty behavior.
+  ATP/Erne/poach behavior, the super-smash knockdown, and current difficulty
+  behavior. (Poaching and the super's blast both ARM at hit time and RESOLVE on
+  contact — see AGENTS.md → gameplay contract.)
 - Keep pure modules pure: no Three.js, DOM, or browser dependency in
-  `constants`, `physics`, `shots`, `rules`, `ai`, or `utils`.
+  `constants`, `physics`, `shots`, `rules`, `ai`, `utils`, `power`, `movement`,
+  `modes`, `practice`, `replay`, or `strategies/*`.
 - Keep tuning numbers in `src/constants.js` and `src/shots.js`; do not scatter
   gameplay constants into render modules.
 - Ball readability beats visual richness.
@@ -412,3 +415,83 @@ is now character presentation:
 
 Only after the full roster reads as premium/appropriate should broader
 venue/material polish resume.
+
+
+## Super Smash visuals
+
+Three cues, none of which may depend on bloom: `renderQuality()` disables bloom at
+`medium`, and **mobile defaults to medium**, so a bloom-driven effect is invisible
+on phones. Everything reads via emissive + additive blending + scale.
+
+**Ball.** `_updateBallAppearance()` is the SINGLE writer for the ball's material,
+scale and glow. It replaced `_updatePracticeBallCue`, which wrote the same
+material every frame — two independent writers would fight and flicker. The
+practice coaching cue and the super heat are resolved to one tier there, super
+winning. The super tier eases the scale in (the ball visibly swells off the
+paddle) and pulses the additive glow shell; a dead-steady glow reads as a texture,
+a pulsing one reads as charged.
+
+**Speed trail.** ⚠️ The normal trail is a `THREE.Line`, and **`linewidth` is
+ignored on essentially every WebGL platform** — it always renders 1px, so it can
+only be brightened, never thickened. A genuinely heavy streak therefore needs real
+geometry: `world.superRibbon` is an additive, camera-facing triangle strip built
+from the same trail buffer, tapered to a point at the tail and vertex-faded along
+its length. A constant-width ribbon looks like a tube; the taper is what reads as
+speed. It is `visible = false` outside a super, so normal play is untouched.
+
+Two gotchas already handled, both invisible without looking at a screenshot:
+- The trail buffer is sampled once per rendered frame, but `_tickRally` runs 4
+  physics substeps. A super moves ~0.5m per frame, which rendered as a visibly
+  polygonal chain — so `_sampleTrail()` is called per substep while the ball is hot.
+- `_executeSuper` clears the trail buffer, or the ribbon stretches back over
+  wherever the ball came from before contact.
+- Ribbon width is in absolute metres (`SUPER.TRAIL_WIDTH`), not ball radii:
+  `BALL_R * 1.6` is ~6cm, which is a couple of pixels at broadcast distance and
+  read as nothing at all.
+
+**Knockback.** The primitive rig carries the pose (`api.setStun` pitches
+`api.object` backward; the authored Mixamo mesh is a child of it, so this reads
+with or without the GLB). The authored `api.update` override must be short-
+circuited while stunned — it force-restores a locomotion loop every frame and
+would stomp the pose within one frame.
+
+Three things about the knockdown that are easy to get wrong, all measured:
+- The root uses `rotation.order = 'YXZ'` so facing (Y) is applied BEFORE the
+  knockback pitch (X). Under the default `'XYZ'` the pitch axis is effectively a
+  world axis, so players fell forward or sideways depending on which way they
+  happened to be facing.
+- The pivot is at the FEET (a standing player measures `minY ≈ -0.05`, height
+  1.60m). `SUPER.STUN_LIFT` must therefore be POSITIVE — an earlier negative
+  offset drove the body 42cm THROUGH the court.
+- The lift is driven by the mesh's ACTUAL pitch, not by the stun phase. The
+  pitch eases out slowly on get-up while the phase flips to `'none'` instantly,
+  so keying lift off the phase left a window where the body was still ~66% flat
+  with zero lift — and sank through the floor. `_stunOffsetY()` reads
+  `rotation.x` for exactly this reason.
+
+Verified by sweeping the whole stun timeline: worst ground penetration is 0.004m
+from the standing baseline, and it occurs while UPRIGHT (normal shoe overhang),
+not while flat.
+
+**Still to do (asset work):** the real knockback clip
+(`Death_Front_A__minionsManny.FBX`, in the character-preview tool only) is not
+baked into `pickleball-locomotion.glb`. When baking it via
+`tools/bake-locomotion-clips.mjs`, note that `clipKey()` tests
+`/backpedal|backward|back/` — the string "knockback" contains "back" and will be
+silently misfiled as backpedal locomotion unless a `/knock|blast|fall/` rule is
+placed ABOVE that line.
+
+
+## Replay carries more than positions
+
+`makePlayback.sample()` in `src/replay.js` **rebuilds** each frame by
+interpolating between two keyframes — it does not pass the recorded frame
+through. Any field added to `Game._captureFrame()` must ALSO be listed in
+`sample()` or it is silently dropped and reads as `undefined` downstream, with no
+error anywhere.
+
+This bit once: the super-smash ball glow and the knockdown pose were captured
+correctly and restored correctly, but `sample()` dropped them in between, so the
+highlight of the match replayed as an ordinary ball and a standing victim.
+Positions/velocities interpolate; discrete state (`superHot`, `power`, `armed`,
+`stun`) is snapped from the earlier keyframe. `test/logic.test.mjs` guards this.

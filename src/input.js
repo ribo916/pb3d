@@ -19,6 +19,7 @@ export function makeInput(el, joyEl, joyKnob) {
     swingPower: 'power',     // 'power' | 'touch'  (intent: drive/speedup vs drop/dink)
     swingShot: null,         // null | 'lob'       (explicit shot override)
     serveQueued: false,
+    superQueued: false,      // one-shot: set by the mobile SUPER button
     usingJoystick: false,
     joystickReleased: false,
     camCycleQueued: false    // one-shot: cycle camera mode
@@ -51,6 +52,9 @@ export function makeInput(el, joyEl, joyKnob) {
     if (e.code === 'Space') { queueSwing('power'); e.preventDefault(); }
     else if (e.code === 'KeyV') { queueSwing('touch'); e.preventDefault(); }
     else if (e.code === 'KeyB') { queueSwing('touch', 'lob'); e.preventDefault(); }
+    // R = super smash. Rides the same one-shot queue as every other swing; the
+    // meter check happens at contact time, so pressing it unarmed just swings.
+    else if (e.code === 'KeyR') { queueSwing('power', 'super'); e.preventDefault(); }
     if (e.code === 'Enter') state.serveQueued = true;
     if (e.code === 'KeyC') { state.camCycleQueued = true; e.preventDefault(); }
   });
@@ -178,6 +182,9 @@ export function makeInput(el, joyEl, joyKnob) {
 
   // --- per-frame poll: fold keyboard into move vector ---
   function poll() {
+    // The mobile SUPER button is a plain DOM click, so fold it into the same
+    // one-shot swing queue the R key uses.
+    if (state.superQueued) { state.superQueued = false; queueSwing('power', 'super'); }
     var kx = 0, kz = 0;
     if (keys['KeyA'] || keys['ArrowLeft']) kx -= 1;
     if (keys['KeyD'] || keys['ArrowRight']) kx += 1;

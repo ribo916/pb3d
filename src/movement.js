@@ -90,6 +90,9 @@ export function localVelocity(vel, facing) {
 }
 
 export function classifyVisual(local, speed, ready, override) {
+  // 'stun' must win over everything, including the speed test below: a blasted
+  // player is sliding backward fast, which would otherwise classify as 'run'.
+  if (override === 'stun') return 'stun';
   if (override === 'lunge' || override === 'plant' || override === 'split') return override;
   if (speed < 0.15) return ready ? 'ready' : 'idle';
   var side = Math.abs(local.side);

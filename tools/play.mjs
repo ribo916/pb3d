@@ -116,6 +116,16 @@ function printMetrics(metrics) {
   console.log(`net errors: ${metrics.netErrors}   serve faults: ${metrics.serveFaults}`);
   const reasons = Object.entries(metrics.pointsByReason || {}).sort((a, b) => b[1] - a[1]);
   console.log('point reasons: ' + reasons.map(([k, v]) => `${k}:${v}`).join('  '));
+  // Super smash balance. `blasted` vs `missed` is the "did it connect" rate — a
+  // low connect rate means supers are flying past unreturnable. In DOUBLES a
+  // shift toward no-return is the alarm that the super became a free winner; in
+  // SINGLES it is expected (no partner covers the pop-up) — see GAMEPLAY.md.
+  const fired = metrics.supersFired || 0;
+  if (fired || metrics.supersBlasted) {
+    const per = rallies.length ? (rallies.length / Math.max(1, fired)).toFixed(1) : '-';
+    console.log(`supers: fired:${fired}  blasted:${metrics.supersBlasted || 0}` +
+      `  missed:${metrics.supersMissed || 0}  (1 per ${per} points)`);
+  }
   // Arc-shape stats: mean apex + launch speed per shot type — the lens that
   // catches "everything is a lob" (rally counts alone can't see it).
   const stats = metrics.shotStats;

@@ -839,6 +839,51 @@
       .hud-text-btn span { max-width: 56px; }
     }
 
+    /* ---- power meter (human) + opponent pips ----
+       Sits bottom-center-RIGHT of the human bar area, deliberately clear of the
+       floating joystick's resting anchor (left: max(90, w*0.14)) so a thumb on
+       the stick never covers it. */
+    #powerMeter { position: absolute; bottom: calc(34px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%);
+      width: min(240px, 46vw); display: flex; flex-direction: column; gap: 4px;
+      opacity: 0.9; transition: opacity 0.2s; }
+    #powerLabel { font-size: 10px; font-weight: 800; letter-spacing: 3px;
+      color: rgba(255,255,255,0.55); text-align: center; transition: color 0.2s; }
+    #powerTrack { height: 9px; border-radius: 6px; overflow: hidden;
+      background: rgba(8,18,30,0.62); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.10);
+      backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+    #powerFill { height: 100%; width: 0%; border-radius: 6px;
+      background: linear-gradient(90deg, #2bd4ff, #7ce7ff);
+      transition: width 0.12s linear, background 0.2s; }
+    /* Armed: the bar goes hot and pulses. This is the "you may unleash" tell. */
+    #powerMeter.armed #powerLabel { color: #ffd43b; }
+    #powerMeter.armed #powerFill { background: linear-gradient(90deg, #ff8a1f, #ffd43b); }
+    #powerMeter.armed { animation: powerPulse 0.9s ease-in-out infinite; }
+    @keyframes powerPulse { 0%,100% { opacity: 0.82; } 50% { opacity: 1; } }
+
+    /* Compact per-player pips for the other three (partner + two opponents). */
+    #powerPips { position: absolute; top: 54px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 10px; align-items: center; }
+    .power-pip { width: 26px; height: 5px; border-radius: 4px;
+      background: rgba(8,18,30,0.60); overflow: hidden;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.10); }
+    .power-pip > i { display: block; height: 100%; width: 0%; border-radius: 4px;
+      transition: width 0.12s linear; }
+    .power-pip.armed { box-shadow: inset 0 0 0 1px rgba(255,212,59,0.85),
+      0 0 8px rgba(255,212,59,0.55); }
+
+    /* bottom-right: super unleash button (touch only, only while armed) */
+    .btns-br { position: absolute; right: 14px; bottom: 96px; display: none; }
+    body.touch-device .btns-br.armed { display: block; }
+    #superBtn { width: 54px; height: 54px; font-size: 24px;
+      background: rgba(255,138,31,0.90); color: #1a0d00;
+      box-shadow: 0 0 18px rgba(255,170,60,0.75); animation: powerPulse 0.9s ease-in-out infinite; }
+
+    @media (max-width: 430px) {
+      #powerMeter { bottom: calc(26px + env(safe-area-inset-bottom, 0px)); width: min(190px, 52vw); }
+      #powerPips { top: 46px; gap: 8px; }
+      .btns-br { bottom: 84px; right: 10px; }
+    }
+
     /* ---- Instant replay DVR bar ---- */
     #replayBar { display: none; position: fixed; left: 0; right: 0;
       bottom: env(safe-area-inset-bottom, 0px); z-index: 45; pointer-events: none;
@@ -1660,6 +1705,18 @@
     <div class="btns-bl">
       <div id="levelBadge">INTERMEDIATE</div>
     </div>
+
+    <!-- power meters: prominent bar for the human, compact pips for the rest -->
+    <div id="powerMeter">
+      <div id="powerLabel">SUPER</div>
+      <div id="powerTrack"><div id="powerFill"></div></div>
+    </div>
+    <div id="powerPips"></div>
+
+    <!-- bottom-right: unleash button (touch devices, only when armed) -->
+    <div class="btns-br">
+      <button id="superBtn" class="hud-icon-btn" title="Super Smash">💥</button>
+    </div>
   </div>
 
   <div id="joy"><div id="joyKnob"></div></div>
@@ -1790,6 +1847,7 @@
           <span class="info-key">Space</span> / left-click — drive (power)<br>
           <span class="info-key">V</span> / right-click — drop / dink (touch)<br>
           <span class="info-key">B</span> / shift-click — lob<br>
+          <span class="info-key">R</span> — <strong>SUPER SMASH</strong> (needs a full meter)<br>
           <span class="info-key">Enter</span> / <span class="info-key">Space</span> — serve<br>
           <span class="info-key">C</span> — cycle camera angle
         </p>
@@ -1804,7 +1862,8 @@
           &nbsp;&nbsp;Flick <em>down</em> = lob<br>
           &nbsp;&nbsp;Short / gentle swipe = <em>drop / dink</em><br>
           Drag right thumb left/right to aim cross-court<br>
-          <strong>SERVE button</strong> — tap to serve
+          <strong>SERVE button</strong> — tap to serve<br>
+          <strong>💥 button</strong> — super smash (appears when charged)
         </p>
       </div>
 
@@ -1813,7 +1872,10 @@
         <p>
           Side-out scoring to 11, win by 2.<br>
           Only the serving team scores.<br>
-          Kitchen (NVZ) — no volleys inside the line.
+          Kitchen (NVZ) — no volleys inside the line.<br>
+          <strong>Super meter</strong> — fills on clean contacts. When full, hit
+          <span class="info-key">R</span> from outside the kitchen to blast your
+          opponent off their feet and force a weak pop-up.
         </p>
       </div>
     </div>
@@ -1930,6 +1992,13 @@
               <label class="menu-option"><input type="radio" name="cameraMode" value="follow" checked><div class="menu-seg"><strong>Follow</strong></div></label>
               <label class="menu-option"><input type="radio" name="cameraMode" value="broadcast"><div class="menu-seg"><strong>Broadcast</strong></div></label>
               <label class="menu-option"><input type="radio" name="cameraMode" value="topdown"><div class="menu-seg"><strong>Top-Down</strong></div></label>
+            </div>
+          </div>
+          <div class="flow-adv-row">
+            <div class="flow-adv-label">Super</div>
+            <div class="flow-adv-ctrl">
+              <label class="menu-option"><input type="radio" name="superMode" value="on" checked><div class="menu-seg"><strong>On</strong></div></label>
+              <label class="menu-option"><input type="radio" name="superMode" value="off"><div class="menu-seg"><strong>Off</strong></div></label>
             </div>
           </div>
           <div class="flow-adv-row">
