@@ -913,7 +913,10 @@ holds at exactly 1.0 across 6000 frames of normal play.
 Glow/grow/pulse on the ball, an additive **tapered ribbon** for the speed trail,
 a shockwave ring + dust puff at the victim's feet, the two biggest camera shakes
 in the game, and a 3-layer procedural boom + gendered grunt + ground thud.
-See GRAPHICS.md for why none of it depends on bloom.
+Replay captures the continuous super state through `makePlayback.sample()` and
+the one-shot blast impact through `makePlayback.consumeEvents()`; keep both paths
+in sync when adding presentation beats. See GRAPHICS.md for why none of it
+depends on bloom.
 
 ## The 4-Shot Pattern
 

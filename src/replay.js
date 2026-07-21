@@ -126,18 +126,25 @@ export function makePlayback(window, defaultSpeed) {
 
   // Swing triggers whose frame-time falls in (firedThrough, playhead], in order.
   // Only fires while moving forward; seeking resets the marker (see seek()).
-  function consumeSwings() {
-    var out = [];
+  function consumeEvents() {
+    var out = { swings: [], effects: [] };
     if (playhead > firedThrough) {
       for (var i = 0; i < frames.length; i++) {
         var fr = frames[i];
         if (fr.t > firedThrough && fr.t <= playhead && fr.frame.swings) {
-          for (var j = 0; j < fr.frame.swings.length; j++) out.push(fr.frame.swings[j]);
+          for (var j = 0; j < fr.frame.swings.length; j++) out.swings.push(fr.frame.swings[j]);
+        }
+        if (fr.t > firedThrough && fr.t <= playhead && fr.frame.effects) {
+          for (var k = 0; k < fr.frame.effects.length; k++) out.effects.push(fr.frame.effects[k]);
         }
       }
     }
     firedThrough = playhead;
     return out;
+  }
+
+  function consumeSwings() {
+    return consumeEvents().swings;
   }
 
   function advance(dtRender) {
@@ -165,6 +172,7 @@ export function makePlayback(window, defaultSpeed) {
   return {
     sample: sample,
     advance: advance,
+    consumeEvents: consumeEvents,
     consumeSwings: consumeSwings,
     seek: seek,
     stepFrames: stepFrames,

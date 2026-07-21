@@ -270,6 +270,33 @@ test('singles return-of-serve stays deep and avoids middle body ball', () => {
   assert.ok(Math.abs(shot.target.x) > C.HALF_W * 0.45, 'return is not centered at the body');
 });
 
+test('singles super-ready AI chooses a super without referencing doubles locals', () => {
+  const ai = AI.makeAI('hard');
+  ai.cfg.miss = 0;
+  ai.cfg.aggression = 1;
+  ai.cfg.superBias = 1;
+  const m = Rules.makeMatch({ mode: 'singles', server: 'near' });
+  m.rally = { shots: SUPER.MIN_SHOTS, phase: 'open' };
+  const ball = Physics.makeBall();
+  ball.live = true;
+  ball.pos = Physics.vec(0.1, SUPER.SMASH_H + 0.15, -4.8);
+  const realRandom = Math.random;
+  Math.random = () => 0;
+  let shot;
+  try {
+    shot = AI.chooseShot(ai, ball, m, false, {
+      mode: 'singles',
+      hitterPos: { x: 0.1, z: -4.8 },
+      opponents: { a: { pos: { x: 1.0, z: 4.4 } } },
+      superReady: true
+    });
+  } finally {
+    Math.random = realRandom;
+  }
+  assert.equal(shot.type, 'supersmash');
+  assert.equal(shot.isSuper, true);
+});
+
 test('doubles neutral aim still tracks away from the deeper opponent body', () => {
   const target = DoublesStrategy.neutralAimTarget({
     a: { pos: { x: 1.0, z: 5.4 } },
@@ -661,6 +688,32 @@ test('replay sample() carries discrete ball + player state, not just positions',
   assert.equal(f.players[0].stun.phase, 'blown', 'stun phase must survive sampling');
   // Positions are still interpolated as before.
   assert.ok(f.ball.pos && typeof f.ball.pos.x === 'number', 'positions still interpolate');
+});
+
+test('replay consumeEvents carries one-shot power-shot effects with swings', () => {
+  const frame = {
+    ball: { pos: { x: 0, y: 1, z: 0 }, vel: { x: 0, y: 0, z: -5 },
+            spin: { x: 0, y: 0, z: 0 }, live: true, superHot: true },
+    players: [{ pos: { x: 0, z: 3 }, vel: { x: 0, z: 0 }, move: { kind: 'ready' },
+                power: 0, armed: false, stun: { phase: 'none', t: 0, dur: 0, dirX: 0, dirZ: 0 } }],
+    hud: { scores: { near: 0, far: 0 }, server: 'near', serverNum: 2 },
+    swings: [{ player: 0, type: 'smash' }],
+    effects: [{ type: 'blast', player: 0 }]
+  };
+  const win = { frames: [
+    { t: 0, frame: Object.assign({}, frame, { swings: null, effects: null }) },
+    { t: 0.1, frame },
+    { t: 0.2, frame: Object.assign({}, frame, { swings: null, effects: null }) }
+  ], duration: 0.2 };
+  const pb = makePlayback(win, 1);
+  pb.play();
+  pb.advance(0.11);
+  const ev = pb.consumeEvents();
+  assert.deepEqual(ev.swings, [{ player: 0, type: 'smash' }], 'swing event survives');
+  assert.deepEqual(ev.effects, [{ type: 'blast', player: 0 }], 'blast effect event survives');
+  const again = pb.consumeEvents();
+  assert.equal(again.swings.length, 0, 'swing event is one-shot');
+  assert.equal(again.effects.length, 0, 'effect event is one-shot');
 });
 
 /* ----------------------- AI poach helpers ------------------------------ */
