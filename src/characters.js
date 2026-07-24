@@ -50,6 +50,16 @@ export const DEFAULT_ROSTER = {
   nearYou: 'ch01', nearMate: 'ch06', farA: 'ch03', farB: 'ch04'
 };
 
+// Fixed 4-character cast for Drill mode — not user-selectable in phase 1.
+// P1=nearYou, P2=nearMate (Team A/near), P3=farA, P4=farB (Team B/far) —
+// matches drillStore.js's existing P1..P4 convention.
+export const DRILL_ROSTER = {
+  nearYou: 'ch08',  // Owen — P1
+  nearMate: 'ch06', // Nina — P2
+  farA: 'ch01',     // AJ   — P3
+  farB: 'ch03'      // Leo  — P4
+};
+
 // Team/role identity stays keyed by SLOT (reproduces the old SLOT_DEFAULTS
 // paddle/ring hex values exactly, so switching a slot's character doesn't
 // shift its existing team color).

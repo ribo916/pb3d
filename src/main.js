@@ -8,9 +8,10 @@ import { makeInput } from './input.js';
 import { makeHUD } from './hud.js';
 import { makeAudio } from './audio.js';
 import { preloadAssetPack, assetStatusSummary } from './assets.js';
-import { CHARACTERS, DEFAULT_ROSTER, getCharacter, resolveSlotCharacter } from './characters.js';
+import { CHARACTERS, DEFAULT_ROSTER, DRILL_ROSTER, getCharacter, resolveSlotCharacter } from './characters.js';
 import { makeCharacterPreview } from './characterPreview.js';
 import { normalizeMode } from './modes.js';
+import { loadDrills } from './drillStore.js';
 import * as Power from './power.js';
 import * as AI from './ai.js';
 import { PERSONA_META, personaStats, STAT_LABELS } from './strategies/personas.js';
@@ -25,6 +26,7 @@ let last    = 0;
 let running = false;
 let paused  = false;
 let replaying = false;
+let drilling = false;
 let starting = false;
 
 const MENU_META = {
@@ -169,6 +171,7 @@ function loop(now) {
     updateReplayBar();
   } else {
     game.update(dt);
+    if (drilling) updateDrillBar();
   }
   game.render();
   requestAnimationFrame(loop);
@@ -323,6 +326,7 @@ function quitToMenu() {
   running = false;
   paused = false;
   if (replaying) exitReplayMode();
+  if (drilling) exitDrillMode();
   closeMusicModal();
   $('pauseModal').classList.remove('active');
   $('hud').style.display = 'none';
@@ -334,6 +338,19 @@ function quitToMenu() {
   input = null;
   last = 0;
   updateAudioUI();
+}
+
+function buildHudRefs() {
+  return {
+    scoreNear: $('scoreNear'), scoreFar: $('scoreFar'),
+    dotNear: $('dotNear'), dotFar: $('dotFar'),
+    callout: $('callout'), banner: $('banner'),
+    shotTag: $('shotTag'), levelBadge: $('levelBadge'),
+    serveBtn: $('serveBtn'), camBtn: $('camBtn'),
+    powerMeter: $('powerMeter'), powerLabel: $('powerLabel'),
+    powerFill: $('powerFill'), powerPips: $('powerPips'),
+    superBtn: $('superBtn'), superBtnWrap: document.querySelector('.btns-br')
+  };
 }
 
 async function startMatch(difficulty, config) {
@@ -362,16 +379,7 @@ async function startMatch(difficulty, config) {
   $('menu').style.display = 'none';
   $('flowRoot').style.display = 'none';
 
-  const hudRefs = {
-    scoreNear: $('scoreNear'), scoreFar: $('scoreFar'),
-    dotNear: $('dotNear'), dotFar: $('dotFar'),
-    callout: $('callout'), banner: $('banner'),
-    shotTag: $('shotTag'), levelBadge: $('levelBadge'),
-    serveBtn: $('serveBtn'), camBtn: $('camBtn'),
-    powerMeter: $('powerMeter'), powerLabel: $('powerLabel'),
-    powerFill: $('powerFill'), powerPips: $('powerPips'),
-    superBtn: $('superBtn'), superBtnWrap: document.querySelector('.btns-br')
-  };
+  const hudRefs = buildHudRefs();
 
   game = new Game({
     canvas: $('game'),
@@ -756,6 +764,9 @@ function enterFlowScreen(id) {
     enterVs();
   } else if (id === 'loading') {
     disposeFlowPreview();
+  } else if (id === 'drills') {
+    disposeFlowPreview();
+    renderDrillLibrary();
   } else {
     if (flowPreview) flowPreview.stop();
   }
@@ -943,6 +954,162 @@ document.addEventListener('keydown', function (e) {
   if (FLOW_ACTIVE === 'start' && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); goToFlow('format'); }
   else if (FLOW_ACTIVE === 'vs' && e.key === 'Enter') { e.preventDefault(); launchFromFlow(); }
 });
+
+// ---- Drills wiring ----
+$('drillsBtn').addEventListener('click', function () { goToFlow('drills'); });
+
+function renderDrillLibrary() {
+  var list = $('drillCardList');
+  list.innerHTML = '<div style="padding:24px;opacity:.5;text-align:center">Loading…</div>';
+  loadDrills().then(function (drills) {
+    list.innerHTML = drills.map(function (d) {
+      var tags = (d.tags || []).map(function (t) {
+        return '<span class="drill-card-tag">' + t + '</span>';
+      }).join('');
+      var steps = d.steps ? d.steps.length : 0;
+      return '<div class="drill-card" data-drill-id="' + d.id + '">' +
+        '<div class="drill-card-name">' + escapeHtml(d.name) + '</div>' +
+        '<div class="drill-card-steps">' + steps + ' step' + (steps !== 1 ? 's' : '') + '</div>' +
+        '<div class="drill-card-desc">' + escapeHtml(d.desc || '') + '</div>' +
+        (tags ? '<div class="drill-card-tags">' + tags + '</div>' : '') +
+        '</div>';
+    }).join('') || '<div style="padding:24px;opacity:.5;text-align:center">No drills found.</div>';
+  });
+}
+
+$('drillCardList').addEventListener('click', function (e) {
+  var card = e.target.closest('[data-drill-id]');
+  if (!card) return;
+  var id = card.getAttribute('data-drill-id');
+  loadDrills().then(function (drills) {
+    var drill = drills.filter(function (d) { return d.id === id; })[0];
+    if (drill) startDrillView(drill);
+  });
+});
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function startDrillView(drill) {
+  if (starting || running) return;
+  starting = true;
+  // Show #drillBar immediately on tap — asset preload + Game construction
+  // below can take a real, visible amount of time on a real device (this
+  // was previously masked by #hud already being visible during that gap;
+  // now that #hud is hidden entirely, don't leave the screen blank while
+  // waiting). Steps/Exit both work before `game` exists; the badge/
+  // transport catch up to the live game state once updateDrillBar() runs.
+  drilling = true;
+  $('drillBar').classList.add('active');
+  $('drillBadge').textContent = '● LOADING';
+  $('drillTransport').style.display = 'none';
+  renderDrillSteps(drill);
+  var cfg = { mode: 'drill', venue: 'park', courtPalette: 'blue', timeOfDay: 'day',
+              difficulty: 'normal', cameraMode: 'broadcast', superMode: 'off',
+              roster: Object.assign({}, DRILL_ROSTER) };
+  var neededPlayerKeys = ALL_POSITIONS.map(function (pos) {
+    return resolveSlotCharacter(pos, cfg.roster[pos]).playerModelKey;
+  });
+  cfg.neededPlayerKeys = neededPlayerKeys;
+  var assetPack = null;
+  try {
+    assetPack = await preloadAssetPack(cfg);
+    window.__pb3dAssets = assetPack;
+  } catch (e) {
+    console.warn('PB3D drill asset preload failed; using procedural fallback.', e);
+  }
+  starting = false;
+  $('flowRoot').style.display = 'none';
+  game = new Game({
+    canvas: $('game'), difficulty: cfg.difficulty, audio: audio, isMobile: IS_TOUCH_DEVICE,
+    mode: 'drill', venue: cfg.venue, courtPalette: cfg.courtPalette,
+    timeOfDay: cfg.timeOfDay, roster: cfg.roster, assets: assetPack,
+    cameraMode: cfg.cameraMode, superMode: cfg.superMode
+  });
+  // No game.setInput() for drill mode — no player to drive. #hud (score,
+  // camera/pause/info/music controls) stays fully hidden too — there's no
+  // score, and every control a drill needs (steps/camera/exit/replay
+  // transport) is baked into #drillBar instead.
+  $('hud').style.display = 'none';
+  game.startDrill(drill);
+  updateDrillBar();
+  window.__game = game;
+  running = true;
+  paused = false;
+  last = 0;
+  requestAnimationFrame(loop);
+}
+
+function exitDrillMode() {
+  if (!drilling) return;
+  drilling = false;
+  $('drillBar').classList.remove('active');
+  $('drillStepsModal').classList.remove('active');
+}
+
+function updateDrillBar() {
+  if (!game) return;
+  $('drillCamBtn').textContent = '🎥 ' + ['BROADCAST', 'FOLLOW', 'TOP-DOWN'][game.camMode];
+  var info = game.drillReplayInfo();
+  var transport = $('drillTransport');
+  if (info) {
+    $('drillBadge').textContent = '🔁 REPLAY';
+    transport.style.display = 'flex';
+    var scrub = $('drillScrub');
+    if (document.activeElement !== scrub && !scrub._dragging) {
+      scrub.max = String(Math.max(0.001, info.duration));
+      scrub.value = String(info.playhead);
+    }
+    $('drillTime').textContent = fmtTime(info.playhead) + ' / ' + fmtTime(info.duration);
+    $('drillPlayBtn').textContent = info.playing ? '⏸' : '▶';
+  } else {
+    $('drillBadge').textContent = '● LIVE';
+    transport.style.display = 'none';
+  }
+}
+
+function renderDrillSteps(drill) {
+  if (!drill) return;
+  $('drillStepsList').innerHTML = drill.steps.map(function (s) {
+    return '<div class="drill-steps-row">' +
+      '<div class="drill-steps-row-title">' + escapeHtml(s.title || '') + '</div>' +
+      '<div class="drill-steps-row-desc">' + escapeHtml(s.desc || '') + '</div>' +
+      '</div>';
+  }).join('');
+}
+
+$('drillCamBtn').addEventListener('click', function () { if (game) { game.cycleCamera(); updateDrillBar(); } });
+$('drillExitBtn').addEventListener('click', function () { quitToMenu(); });
+$('drillPlayBtn').addEventListener('click', function () { if (game) { game.drillToggle(); updateDrillBar(); } });
+
+$('drillStepsBtn').addEventListener('click', function () {
+  if (game) renderDrillSteps(game.drillData);
+  $('drillStepsModal').classList.add('active');
+});
+$('drillStepsCloseBtn').addEventListener('click', function () { $('drillStepsModal').classList.remove('active'); });
+$('drillStepsModal').addEventListener('click', function (e) { if (e.target === $('drillStepsModal')) $('drillStepsModal').classList.remove('active'); });
+
+(function wireDrillScrub() {
+  var scrub = $('drillScrub');
+  scrub._dragging = false;
+  var onSeek = function () { if (game) { game.drillSeek(Number(scrub.value)); updateDrillBar(); } };
+  scrub.addEventListener('input', onSeek);
+  scrub.addEventListener('pointerdown', function () { scrub._dragging = true; });
+  scrub.addEventListener('pointerup', function () { scrub._dragging = false; });
+  scrub.addEventListener('change', function () { scrub._dragging = false; });
+})();
+
+// ?drill=<id> deep-link: skip the flow and jump straight to the viewer.
+(function () {
+  var params = new URLSearchParams(location.search);
+  var drillId = params.get('drill');
+  if (!drillId) return;
+  loadDrills().then(function (drills) {
+    var drill = drills.filter(function (d) { return d.id === drillId; })[0];
+    if (drill) startDrillView(drill);
+  });
+})();
 
 // Boot the flow on the Start screen (kicks off AJ's turntable).
 enterFlowScreen('start');

@@ -585,6 +585,7 @@
     }
     .flow-btn-ghost { flex: 0 0 auto; }
     .flow-btn:disabled { opacity: .4; cursor: default; transform: none; }
+    #drillsBtn { margin-top: 8px; }
 
     /* 01 · Start */
     #scrStart { justify-content: center; gap: 14px; }
@@ -786,6 +787,51 @@
       font-weight: 800; color: #0a1420; background: #2bd4ff; cursor: pointer;
       box-shadow: 0 6px 20px rgba(43,212,255,0.45); }
     #serveBtn:active { transform: translateX(-50%) scale(0.96); }
+
+    /* ---- drill live-viewing control bar: same positioning shell + .replay-*
+       inner classes as instant replay, for visual consistency — drill mode
+       is a real live simulated rally (src/drillDirector.js), not a replay,
+       but the chrome language matches. ---- */
+    #drillBar { display: none; position: fixed; left: 0; right: 0;
+      bottom: env(safe-area-inset-bottom, 0px); z-index: 45; pointer-events: none;
+      justify-content: center; padding: 0 12px 14px; }
+    #drillBar.active { display: flex; }
+
+    /* ---- drill steps modal: same shell as #infoModal ---- */
+    #drillStepsModal { display: none; position: fixed; inset: 0; z-index: 40;
+      background: rgba(6,18,31,0.75); backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px); align-items: center; justify-content: center;
+      padding: 20px; }
+    #drillStepsModal.active { display: flex; }
+    .drill-steps-list { display: flex; flex-direction: column; gap: 10px;
+      max-height: 60vh; overflow-y: auto; }
+    .drill-steps-row { padding: 10px 12px; border-radius: 10px;
+      background: color-mix(in srgb, var(--text) 5%, transparent); text-align: left;
+      font-family: inherit; }
+    .drill-steps-row-title { font-size: 13px; font-weight: 800; color: var(--text); margin-bottom: 3px; }
+    .drill-steps-row-desc { font-size: 12px; line-height: 1.5; color: var(--text-soft); }
+
+    /* ---- drill library flow screen ---- */
+    #scrDrills { overflow-y: auto; -webkit-overflow-scrolling: touch;
+      touch-action: pan-y; align-items: stretch; padding: 0; }
+    .drill-lib-header { padding: max(24px, env(safe-area-inset-top,16px)) 20px 16px;
+      display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+    .drill-lib-title { flex: 1; font-size: clamp(24px, 7vw, 34px); text-align: left; }
+    .drill-cards { padding: 0 14px max(20px, env(safe-area-inset-bottom,0px));
+      display: flex; flex-direction: column; gap: 12px; }
+    .drill-card { background: var(--card-bg, rgba(255,255,255,.05));
+      border: var(--card-bw,1px) solid var(--card-border, rgba(255,255,255,.1));
+      border-radius: var(--card-radius, 16px); box-shadow: var(--card-shadow, none);
+      padding: 16px; cursor: pointer; transition: opacity .15s; color: var(--text, #fff); }
+    .drill-card:active { opacity: 0.7; }
+    .drill-card-name { font-size: 16px; font-weight: 800; margin-bottom: 4px; }
+    .drill-card-steps { font-size: 11px; opacity: 0.5; font-weight: 700;
+      letter-spacing: 0.5px; margin-bottom: 4px; }
+    .drill-card-desc { font-size: 13px; opacity: 0.68; line-height: 1.4; margin-bottom: 8px; }
+    .drill-card-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+    .drill-card-tag { font-size: 10px; font-weight: 700; letter-spacing: 0.5px;
+      padding: 3px 8px; border-radius: 10px;
+      background: rgba(43,212,255,.12); color: #2bd4ff; }
 
     /* ---- circular HUD icon buttons ---- */
     .hud-icon-btn { pointer-events: auto; width: 36px; height: 36px; border: none;
@@ -1958,6 +2004,18 @@
       </div>
       <h1 class="flow-title">PB3D</h1>
       <button id="startGameBtn" type="button">Start Game</button>
+      <button id="drillsBtn" class="flow-btn flow-btn-ghost" type="button">Drills</button>
+    </section>
+
+    <!-- 01b · Drills Library -->
+    <section id="scrDrills" class="flow-screen">
+      <div class="drill-lib-header">
+        <button class="hud-icon-btn" data-flow-back="start" type="button" style="font-size:18px;width:40px;height:40px;">←</button>
+        <div class="drill-lib-title flow-title">Drills</div>
+      </div>
+      <div class="drill-cards" id="drillCardList">
+        <!-- populated by main.js -->
+      </div>
     </section>
 
     <!-- 02 · Format -->
@@ -2111,6 +2169,35 @@
       <div class="flow-loading-label">Entering court…</div>
     </section>
 
+  </div>
+
+  <!-- ================= Drill mode: live-viewing / looped-replay bar =================
+       The drill runs live once (bounded to a few shots), then loops as a real
+       recorded replay — the transport row (play/pause/scrub) only appears
+       once there's something recorded to scrub through. ================= -->
+  <div id="drillBar">
+    <div class="replay-inner">
+      <div class="replay-top">
+        <span class="replay-badge" id="drillBadge">● LIVE</span>
+        <button id="drillStepsBtn" class="replay-btn" title="View steps">📋 Steps</button>
+        <button id="drillCamBtn" class="replay-btn replay-cam" title="Camera angle">🎥 BROADCAST</button>
+        <button id="drillExitBtn" class="replay-btn replay-exit" title="Exit drill">EXIT ✕</button>
+      </div>
+      <div class="replay-transport" id="drillTransport" style="display:none;">
+        <button id="drillPlayBtn" class="replay-btn replay-play" title="Play / Pause">⏸</button>
+        <input id="drillScrub" class="replay-scrub" type="range" min="0" max="1" step="0.001" value="0" aria-label="Drill replay timeline">
+        <span id="drillTime" class="replay-time">0.0s / 0.0s</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Drill steps modal: what the drill's own AI/physics act out, for reference -->
+  <div id="drillStepsModal">
+    <div class="info-panel">
+      <button class="info-close" id="drillStepsCloseBtn">✕</button>
+      <h2 id="drillStepsTitle">STEPS</h2>
+      <div class="drill-steps-list" id="drillStepsList"></div>
+    </div>
   </div>
 
   <script type="module" src="./src/main.js"></script>

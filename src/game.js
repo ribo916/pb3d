@@ -27,8 +27,9 @@ import { resolveSlotCharacter } from './characters.js';
 import { makeCamera, updateCamera } from './camera.js';
 import { makeRecorder, makePlayback, makeOrbitCam } from './replay.js';
 import { clamp, dist2D } from './utils.js';
-import { HIT, PHYS_V2, STABILITY, POWER_CAP, SPECIALTY, MOVEMENT, PRACTICE, TIMING_V2, REPLAY, SUPER } from './constants.js';
+import { HIT, PHYS_V2, STABILITY, POWER_CAP, SPECIALTY, MOVEMENT, PRACTICE, TIMING_V2, REPLAY, SUPER, DRILL } from './constants.js';
 import { normalizeMode } from './modes.js';
+import * as DrillDirector from './drillDirector.js';
 
 const C = Physics.COURT;
 Rules.setGeometry(C.KITCHEN, C.HALF_W);
@@ -164,6 +165,13 @@ export function Game(opts) {
                    // supersFired vs supersBlasted is the "did it connect" rate;
                    // a low ratio means supers are sailing past unreturnable.
                    supersFired: 0, supersBlasted: 0, supersMissed: 0 };
+  this.drillData = null;
+  this.drillForcedShot = null;
+  this.drillHitCount = 0;
+  this.drillEndGrace = 0;
+  this.drillReplaying = false;
+  this.drillPlayback = null;
+  this._drillLoopHoldTimer = 0;
   this.state = STATE.MENU;
   this.excitement = 0;
   this.cameraShake = 0;
@@ -277,6 +285,13 @@ Game.prototype._initWorld = function () {
     this.players = [
       entry('near', 0, true,  palettes.nearYou),
       entry('far',  0, false, palettes.farA)
+    ];
+  } else if (this.mode === 'drill') {
+    this.players = [
+      entry('near', 0, false, palettes.nearYou),
+      entry('near', 1, false, palettes.nearMate),
+      entry('far',  0, false, palettes.farA),
+      entry('far',  1, false, palettes.farB)
     ];
   } else {
     this.players = [
@@ -696,6 +711,24 @@ Game.prototype._endPoint = function (result) {
     Power.carryPoint(this.players[pi].power);
     this.players[pi].stun = Power.makeStun();
   }
+
+  if (this.mode === 'drill') {
+    // Don't reuse _resultMessage() — it says "You score!"/"Opponent WINS",
+    // meaningless with no human in a drill. Reps never accumulate real
+    // score/game-over either, so a long drill session can't trip one.
+    this.pointPause = DRILL.REP_PAUSE;
+    // Hitting the cap always shows as a deliberate "REP COMPLETE," not
+    // whatever literal fault reason the untouched ball happened to trigger
+    // (typically 'no-return') — an earlier, genuine fault still shows its
+    // real reason.
+    var reason = (this.drillHitCount >= DRILL.MAX_SHOTS) ? 'drill-end' : result.reason;
+    var label = DrillDirector.DRILL_RESULT_LABELS[reason] || (result.scored ? 'Point' : 'Side out');
+    this._message(label, 1.0);
+    this.match.scores = { near: 0, far: 0 };
+    this.match.gameOver = false; this.match.winner = null;
+    return;
+  }
+
   // Metrics for A/B tuning (tools/play.mjs reads game.metrics).
   var m = this.metrics;
   if (m) {
@@ -793,7 +826,11 @@ Game.prototype.update = function (dt) {
 
   if (this.input && this.input.consumeCamCycle()) this._cycleCamera();
 
-  this._updateHuman(dt, inp);
+  // Drill mode drives players[0] via real AI (see _initWorld's roster
+  // builder) — _updateHuman would otherwise fight _moveCPU's steering every
+  // frame, actively decelerating vel toward zero right before _moveCPU
+  // re-accelerates it toward the AI's target.
+  if (this.mode !== 'drill') this._updateHuman(dt, inp);
   this._updateCPUs(dt);
 
   // Swing input opens a short TIMING WINDOW (arcade-tennis style).
@@ -816,7 +853,8 @@ Game.prototype.update = function (dt) {
     }
   }
 
-  if (this.mode === 'practice') this._tickPractice(dt);
+  if (this.mode === 'drill') this._tickDrill(dt);
+  else if (this.mode === 'practice') this._tickPractice(dt);
   else if (this.state === STATE.SERVE) this._tickServe(dt);
   else if (this.state === STATE.RALLY) this._tickRally(dt);
   else if (this.state === STATE.POINT) {
@@ -1151,6 +1189,12 @@ Game.prototype._reachOK = function (pos) {
 };
 
 Game.prototype._checkContacts = function (dt) {
+  // "The drill is the drill" — once the cap is reached, stop letting anyone
+  // return the ball. It naturally bounces out untouched and the existing
+  // real fault detection (Rules.onFloor's "no-return" rule) ends the point
+  // for free — no separate forced-cutoff timer needed, and the capping
+  // shot's own flight always completes and lands naturally first.
+  if (this.mode === 'drill' && this.drillHitCount >= DRILL.MAX_SHOTS) return;
   if (this.lastHitCooldown > 0) return;
   var rally = this.match.rally;
   if (!rally) return;
@@ -1719,21 +1763,40 @@ Game.prototype._cpuHit = function (p) {
     return;
   }
 
+  // "The drill is the drill" — a bounded, repeatable sequence, not
+  // open-ended AI play. _checkContacts stops processing further hits once
+  // this reaches DRILL.MAX_SHOTS, so this shot's own flight always
+  // completes and lands naturally before the (untouched) ball triggers a
+  // real "no-return" fault. drillEndGrace is a backstop only (armed once,
+  // never reset — no further hits can occur once capped): a low-energy
+  // shot can settle after a single bounce and never produce the second one
+  // "no-return" needs, which would otherwise strand the rep forever.
+  if (this.mode === 'drill') {
+    this.drillHitCount++;
+    if (this.drillHitCount >= DRILL.MAX_SHOTS) this.drillEndGrace = DRILL.END_GRACE;
+  }
+
   var opponents = this._opponentsFor(p.team);
   // Stability at contact doubles as an incoming-difficulty signal: a stretched,
   // sprinting contact (low index) makes the AI more error-prone. Computed once
   // here and reused for the apex-quality degradation below.
   var stabilityIdx = this._computeStability(p);
-  var shot = AI.chooseShot(p.ai, this.ball, this.match, false, {
-    mode: this.mode,
-    opponents: opponents,
-    hitterPos: pos,
-    hitterTeam: p.team,
-    servingTeam: this.match.server,
-    contactQuality: stabilityIdx,
-    superReady: this.superMode !== 'off' && !!(p.power && p.power.armed) &&
-      (this._rallySupers[p.team] || 0) < SUPER.MAX_PER_RALLY
-  });
+  var shot;
+  if (this.drillForcedShot && this.drillForcedShot.hitter === p) {
+    shot = DrillDirector.dropShotTarget(this.players[0].pos, C.KITCHEN, C.HALF_L);
+    this.drillForcedShot = null;
+  } else {
+    shot = AI.chooseShot(p.ai, this.ball, this.match, false, {
+      mode: this.mode,
+      opponents: opponents,
+      hitterPos: pos,
+      hitterTeam: p.team,
+      servingTeam: this.match.server,
+      contactQuality: stabilityIdx,
+      superReady: this.superMode !== 'off' && !!(p.power && p.power.armed) &&
+        (this._rallySupers[p.team] || 0) < SUPER.MAX_PER_RALLY
+    });
+  }
   // Super smash: spend the meter and route through the shared executor so the
   // AI delivers an identical shot to the human's (including the blast marker).
   if (shot.isSuper && p.power && p.power.armed) {
@@ -2617,6 +2680,76 @@ Game.prototype._endPracticeRep = function (feedback) {
   this._message(feedback.banner, 1.2);
   this._flashShot(feedback.shot);
 };
+
+// Drill mode: real live simulated gameplay (real AI, real physics ball,
+// real fault detection) directed just enough to enact a specific drill's
+// premise — see src/drillDirector.js. Runs through the normal SERVE/RALLY/
+// POINT state machine (unlike the old timeline approach, nothing here
+// early-returns before update()'s tail, so camera cycling, instant replay,
+// and mesh-sync all work unmodified).
+Game.prototype.startDrill = function (drillData) {
+  this.drillData = drillData;
+  DrillDirector.resetRep(this, drillData);
+};
+
+Game.prototype._tickDrill = function (dt) {
+  if (this.drillReplaying) { this._tickDrillReplay(dt); return; }
+  if (this.state === STATE.SERVE) {
+    this.serveDelay -= dt;
+    if (this.serveDelay <= 0) DrillDirector.fireFeed(this, this.drillData);
+  } else if (this.state === STATE.RALLY) {
+    this._tickRally(dt);
+    // Backstop only — see the comment where drillEndGrace is armed in
+    // _cpuHit. Re-check state: _tickRally may have already ended the point
+    // naturally (the common case) this same tick.
+    if (this.state === STATE.RALLY && this.drillEndGrace > 0) {
+      this.drillEndGrace -= dt;
+      if (this.drillEndGrace <= 0) {
+        this._endPoint({ scored: false, reason: 'drill-end', rallyWinner: null });
+      }
+    }
+  } else if (this.state === STATE.POINT) {
+    this.pointPause -= dt;
+    if (this.pointPause <= 0) DrillDirector.enterReplayLoop(this);
+  }
+};
+
+// Once the bounded live rep ends (cap or fault), advance/loop the just-
+// recorded replay of it — real pause/rewind/scrub (drillToggle/drillSeek),
+// same makePlayback/_applyFrame machinery instant replay uses. Holds on the
+// final frame briefly, then seeks back to Setup and plays again.
+Game.prototype._tickDrillReplay = function (dt) {
+  var pb = this.drillPlayback;
+  if (!pb) return;
+  if (this._drillLoopHoldTimer > 0) {
+    this._drillLoopHoldTimer -= dt;
+    if (this._drillLoopHoldTimer <= 0) { pb.seek(0); pb.play(); }
+  } else {
+    pb.advance(dt);
+    if (!pb.isPlaying() && pb.getPlayhead() >= pb.getDuration()) {
+      this._drillLoopHoldTimer = DRILL.LOOP_END_HOLD;
+    }
+  }
+  var frame = pb.sample();
+  if (!frame) return;
+  this._applyFrame(frame);
+  // _syncMeshes/updateCamera run once already, unconditionally, in
+  // update()'s shared tail right after _tickDrill returns — don't call
+  // them again here.
+};
+
+Game.prototype.drillToggle = function () { if (this.drillPlayback) this.drillPlayback.toggle(); };
+Game.prototype.drillSeek = function (t) { if (this.drillPlayback) this.drillPlayback.seek(t); };
+Game.prototype.drillReplayInfo = function () {
+  var pb = this.drillPlayback;
+  if (!pb) return null;
+  return { playhead: pb.getPlayhead(), duration: pb.getDuration(), playing: pb.isPlaying() };
+};
+
+// Live-viewing camera cycle (Broadcast/Follow/Top-Down) for the drill
+// control bar — deliberately the plain 3-way cycler, not replayCycleCamera's
+// 4-way-with-free-orbit (that's for actual instant-replay viewing).
+Game.prototype.cycleCamera = function () { return this._cycleCamera(); };
 
 Game.prototype.render = function () {
   if (this.composer) this.composer.render();

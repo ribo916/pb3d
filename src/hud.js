@@ -65,12 +65,12 @@ export function makeHUD(refs, onServe, onSuper) {
   }
 
   function update(s) {
-    var practice = s.mode === 'practice';
-    refs.scoreNear.textContent = practice ? '--' : s.scores.near;
-    refs.scoreFar.textContent = practice ? '--' : s.scores.far;
-    refs.dotNear.style.opacity = practice ? '0.15' : (s.server === 'near' ? '1' : '0.15');
-    refs.dotFar.style.opacity = practice ? '0.15' : (s.server === 'far' ? '1' : '0.15');
-    refs.callout.textContent = s.callout || '';
+    var scoreless = s.mode === 'practice' || s.mode === 'drill';
+    refs.scoreNear.textContent = scoreless ? '--' : s.scores.near;
+    refs.scoreFar.textContent = scoreless ? '--' : s.scores.far;
+    refs.dotNear.style.opacity = scoreless ? '0.15' : (s.server === 'near' ? '1' : '0.15');
+    refs.dotFar.style.opacity = scoreless ? '0.15' : (s.server === 'far' ? '1' : '0.15');
+    refs.callout.textContent = scoreless ? '' : (s.callout || '');
 
     if (s.msg) {
       refs.banner.textContent = s.msg;
@@ -89,7 +89,7 @@ export function makeHUD(refs, onServe, onSuper) {
     refs.levelBadge.textContent = s.level.label;
     refs.levelBadge.style.background = s.level.tint;
 
-    refs.serveBtn.style.display = (!practice && s.isHumanServe) ? 'block' : 'none';
+    refs.serveBtn.style.display = (!scoreless && s.isHumanServe) ? 'block' : 'none';
 
     updatePower(s);
   }

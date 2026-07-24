@@ -300,3 +300,26 @@ export const PRACTICE = {
   STABILITY_GOOD_MIN: 0.0,
   RETURN_VISUALS_MAX: 4
 };
+
+// Drill mode: scripted-AI live gameplay, simulated ONCE per drill-open and
+// then looped as a real recorded replay (director in src/drillDirector.js).
+// "The drill is the drill" — a bounded, repeatable sequence, not open-ended
+// AI play.
+export const DRILL = {
+  SETUP_HOLD: 1.2,       // seconds to hold the starting formation before the feed fires
+  REP_PAUSE: 1.5,        // seconds to pause after the live rep ends before entering the replay loop
+  // Paddle contacts (feed counts as #1) before _checkContacts stops letting
+  // anyone return the ball — it then naturally bounces out untouched and
+  // real "no-return" fault detection ends the point, so the capping shot's
+  // own flight always completes and lands first.
+  MAX_SHOTS: 4,
+  // Backstop only (not competing with anything, since hits are already
+  // blocked once MAX_SHOTS is reached — nothing can reset it): a real
+  // "no-return" fault needs the ball to bounce TWICE untouched, but a
+  // low-energy shot (e.g. a drop) can settle after just one bounce and
+  // never produce a clean second one, leaving the point stuck forever
+  // without this. Whichever ends the point first wins.
+  END_GRACE: 2.5,
+  LOOP_END_HOLD: 1.0,    // seconds to hold the final replay frame before looping back to Setup
+  RECORD_WINDOW_SEC: 20  // generous recorder window so one bounded rep never gets truncated
+};

@@ -11,6 +11,8 @@ import * as Practice from '../src/practice.js';
 import * as SinglesStrategy from '../src/strategies/singles.js';
 import * as DoublesStrategy from '../src/strategies/doubles.js';
 import { normalizeMode } from '../src/modes.js';
+import { DEFAULT_DRILLS, getDrillById } from '../src/drillStore.js';
+import { dropShotTarget } from '../src/drillDirector.js';
 import { buildMusicCatalog, sanitizeMusicState } from '../src/audio.js';
 import * as Power from '../src/power.js';
 import { makePlayback } from '../src/replay.js';
@@ -1144,6 +1146,30 @@ test('v2 predict forward-sim (post-bounce) lands within 0.3m of a fine sim', () 
   const pred = AI.predict(ball);
   assert.ok(Math.hypot(pred.x - fine.landing.x, pred.z - fine.landing.z) < 0.3,
     'coarse predict within 0.3m of fine sim');
+});
+
+/* ---------------------------- drill mode ---------------------------- */
+test('DEFAULT_DRILLS: phase 1 ships exactly drill-drip', () => {
+  assert.equal(DEFAULT_DRILLS.length, 1);
+  assert.equal(DEFAULT_DRILLS[0].id, 'drill-drip');
+});
+
+test('drill-drip: Setup positions all 4 players (the only step the director reads)', () => {
+  const drill = getDrillById('drill-drip');
+  assert.ok(drill, 'drill-drip exists');
+  const positions = drill.steps[0].positions;
+  for (const slot of ['P1', 'P2', 'P3', 'P4']) {
+    assert.ok(positions[slot] && typeof positions[slot].x === 'number' && typeof positions[slot].z === 'number',
+      slot + ' has a resolved world position');
+  }
+});
+
+test('dropShotTarget: aims at P1\'s feet (P1 is always the near-side player)', () => {
+  const shot = dropShotTarget({ x: 1.5, z: 7.5 }, 2.13, 6.7);
+  assert.equal(shot.type, 'drop');
+  assert.equal(shot.target.x, 1.5, 'aims at P1\'s x');
+  assert.equal(shot.target.z, 7.5, 'aims at P1\'s (near-side, positive) z');
+  assert.ok(shot.apex > 0 && shot.margin > 0, 'carries a real physical envelope from Shots.specV2');
 });
 
 console.log('\n' + passed + ' assertions passed.');
