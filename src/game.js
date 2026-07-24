@@ -185,6 +185,7 @@ export function Game(opts) {
   this.recorder = makeRecorder(REPLAY.WINDOW_SEC);
   this.replaying = false;
   this._swingsThisFrame = [];
+  this._effectsThisFrame = [];
   this.replayPlayback = null;
   this.replayOrbit = null;
   this.replayFreeCam = false;   // true = free-orbit; false = reuse camMode presets
@@ -872,6 +873,7 @@ Game.prototype.update = function (dt) {
   // per-frame swing list (populated by the wrapped mesh.swing triggers above).
   if (this.state !== STATE.MENU) this.recorder.record(this._captureFrame(), dt);
   this._swingsThisFrame = [];
+  this._effectsThisFrame = [];
 };
 
 // Compact, mesh-relevant snapshot of the current live frame (plain numbers).
@@ -910,7 +912,8 @@ Game.prototype._captureFrame = function () {
       server: m ? m.server : 'near',
       serverNum: m ? m.serverNum : 0
     },
-    swings: this._swingsThisFrame.length ? this._swingsThisFrame.slice() : null
+    swings: this._swingsThisFrame.length ? this._swingsThisFrame.slice() : null,
+    effects: this._effectsThisFrame.length ? this._effectsThisFrame.slice() : null
   };
 };
 
@@ -1050,6 +1053,13 @@ Game.prototype._handlePracticeBallEvent = function (e) {
 
 // A rally ends on a point, a side-out, or a hand-off to the 2nd server.
 function rallyOver(r) { return r && (r.point !== null || r.sideOut || r.secondServer); }
+
+Game.prototype._playPaddleContact = function (p, visualSwingType, effectMag) {
+  p.mesh.swing(visualSwingType);
+  if (this.audio) this.audio.sfx.paddle();
+  this._triggerHitEffect(effectMag);
+  this.cameraShake = Math.max(this.cameraShake, 0.08);
+};
 
 // Clamp a position to one team's side, with optional lane restriction for CPU doubles.
 Game.prototype._clampToSide = function (pos, team, lane) {
@@ -1479,11 +1489,11 @@ Game.prototype._hit = function (p) {
   var volley = rally ? (rally.bouncesSinceHit < 1) : false;
   var inKitchen = isErne ? false : (Math.abs(pos.z) < C.KITCHEN);
   var res = Rules.onPaddleHit(this.match, p.team, { volley: volley, inKitchen: inKitchen });
-  this.cameraShake = Math.max(this.cameraShake, 0.08);
-  p.mesh.swing(visualSwingType);
-  if (this.audio) this.audio.sfx.paddle();
-  this._triggerHitEffect();
-  if (rallyOver(res)) { this._endPoint(res); return; }
+  if (rallyOver(res)) {
+    this._playPaddleContact(p, visualSwingType);
+    this._endPoint(res);
+    return;
+  }
 
   // Super smash — the power-meter spend. Checked BEFORE the ATP/Erne branches so
   // an explicit super is never silently converted into a specialty shot because
@@ -1508,6 +1518,7 @@ Game.prototype._hit = function (p) {
 
   // ATP — flat around-the-post arc, only at Pro level.
   if (this.difficulty === 'hard' && this._isAtpPosition(p)) {
+    this._playPaddleContact(p, visualSwingType);
     var atpSign = pos.x > 0 ? 1 : -1;
     var atpX = atpSign * C.HALF_W * 0.85;
     var atpZ = -fwd * (C.HALF_L * 0.55);
@@ -1519,6 +1530,7 @@ Game.prototype._hit = function (p) {
 
   // Erne — smash downward from outside the sideline near the kitchen.
   if (isErne) {
+    this._playPaddleContact(p, visualSwingType);
     var erneX = clamp(this.ball.pos.x, -C.HALF_W * 0.7, C.HALF_W * 0.7);
     var erneZ = -fwd * (C.HALF_L * 0.35);
     var erneSpin = Physics.vec(3.5 * -fwd, 0, 0);
@@ -1545,6 +1557,7 @@ Game.prototype._hit = function (p) {
   // Dink battle: everyone at kitchen + ball below net height → cross-court dink.
   var allAtKitchen = this._allPlayersAtKitchen();
   if (allAtKitchen && this.ball.pos.y <= POWER_CAP.NET_H) {
+    this._playPaddleContact(p, visualSwingType);
     var dbTarget = Shots.dinkBattleTarget(pos, this.ball.pos, fwd, C.KITCHEN, C.HALF_W);
     var dbBaseApex = Shots.specV2('dink', C.KITCHEN, C.HALF_L).apex;
     var dbApex = this._apexForQuality(dbBaseApex, quality);
@@ -1570,6 +1583,7 @@ Game.prototype._hit = function (p) {
 
   // Smash: ball at or above smash height — steep overhead arc matching the AI path.
   if (maxI === 'smash') {
+    this._playPaddleContact(p, visualSwingType);
     var smashSpin = Physics.vec(7.0 * -fwd, blend * 1.5, 0);
     this._flashShot('speedup');
     var smashTm = this._humanTiming(p, swingType, fwd);
@@ -1582,6 +1596,7 @@ Game.prototype._hit = function (p) {
   var apex = this._apexForQuality(at.sp.apex, quality);
   var spinVec = Physics.vec((at.sp.spinX + (swingType === 'bh' ? -1.5 : 0)) * -fwd,
                              blend * 1.5 + at.sp.spinY, 0);
+  this._playPaddleContact(p, visualSwingType);
   this._flashShot(at.type);
   var tm = this._humanTiming(p, swingType, fwd);
   // Only a CLEAN power shot flies the driven (flat) family; a float/popup
@@ -1978,6 +1993,10 @@ Game.prototype._updateBounceEffect = function (dt) {
 
 // Shockwave + dust at the blasted player's feet.
 Game.prototype._triggerBlastEffect = function (victim) {
+  if (!this.replaying) {
+    var idx = this.players.indexOf(victim);
+    if (idx >= 0) this._effectsThisFrame.push({ type: 'blast', player: idx });
+  }
   if (this.blastFx) {
     this.blastFx.mesh.position.set(victim.pos.x, 0.05, victim.pos.z);
     this.blastFx.mesh.scale.set(1, 1, 1);
@@ -2533,6 +2552,11 @@ Game.prototype._applyFrame = function (frame) {
     if (p.move && fp.move) {
       p.move.kind = fp.move.kind; p.move.split = fp.move.split;
       p.move.plant = fp.move.plant; p.move.lunge = fp.move.lunge;
+      if (fp.move.target) {
+        if (!p.move.target) p.move.target = { x: 0, z: 0 };
+        p.move.target.x = fp.move.target.x;
+        p.move.target.z = fp.move.target.z;
+      }
     }
     if (p.power) { p.power.charge = fp.power || 0; p.power.armed = !!fp.armed; }
     if (p.stun && fp.stun) {
@@ -2550,10 +2574,19 @@ Game.prototype.updateReplay = function (dtRender) {
   var frame = pb.sample();
   if (!frame) return;
   this._applyFrame(frame);
-  var swings = pb.consumeSwings();
+  var ev = pb.consumeEvents ? pb.consumeEvents() : { swings: pb.consumeSwings(), effects: [] };
+  var swings = ev.swings || [];
   for (var i = 0; i < swings.length; i++) {
     var pl = this.players[swings[i].player];
     if (pl) pl.mesh.swing(swings[i].type);
+  }
+  var effects = ev.effects || [];
+  for (var j = 0; j < effects.length; j++) {
+    var fx = effects[j];
+    if (fx.type === 'blast') {
+      var victim = this.players[fx.player];
+      if (victim) this._triggerBlastEffect(victim);
+    }
   }
   // Hard freeze-frame while paused; live animation while playing.
   this._syncMeshes(pb.isPlaying() ? dtRender : 0);

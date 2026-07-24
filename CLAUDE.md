@@ -83,8 +83,10 @@ teleported the ball 4-5.5m across the court in a single frame. If you need a new
 ### Replay drops fields you don't declare
 `makePlayback.sample()` in `replay.js` rebuilds each frame by interpolation
 instead of passing it through. Anything you add to `Game._captureFrame()` must
-also be listed there or it silently reads as `undefined` — no error. This already
-cost the super smash its glow and knockdown in instant replay once.
+also be listed there or it silently reads as `undefined` — no error. One-shot
+replay payloads such as swing triggers and blast impact effects go through
+`makePlayback.consumeEvents()` instead. This already cost the super smash its
+glow/knockdown once, then cost the blast its shockwave/dust replay later.
 
 ### Don't regress the net solver
 `physics.solveArc()` searches for a launch velocity that carries the ball to the

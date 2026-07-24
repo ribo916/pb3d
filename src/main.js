@@ -260,10 +260,16 @@ function resumeGame() {
   paused = false;
   $('pauseModal').classList.remove('active');
   closeMusicModal();
+  clearTransientInput();
+}
+
+function clearTransientInput() {
   if (input) {
     input.state.swingQueued = false;
     input.state.serveQueued = false;
+    input.state.superQueued = false;
     input.state.camCycleQueued = false;
+    input.state.swingShot = null;
   }
 }
 
@@ -287,11 +293,8 @@ function exitReplayMode() {
   replaying = false;
   $('replayBar').classList.remove('active');
   if (game) game.exitReplay();
-  if (input) {   // drop any input queued while reviewing so it can't fire on resume
-    input.state.swingQueued = false;
-    input.state.serveQueued = false;
-    input.state.camCycleQueued = false;
-  }
+  // Drop any input queued while reviewing so it can't fire on resume.
+  clearTransientInput();
   last = 0;   // avoid a dt spike on the first resumed live frame
 }
 

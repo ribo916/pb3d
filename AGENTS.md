@@ -261,11 +261,13 @@ final art, live in [`GRAPHICS.md`](GRAPHICS.md).
 - **`_responsibleSlot` prefers the un-stunned partner in doubles only.** Without
   it every blasted rally dies instantly because the ball keeps being assigned to
   the player on the ground.
-- **Anything added to `Game._captureFrame` must also be added to
-  `makePlayback.sample()`** in `replay.js` — sample() *rebuilds* frames by
-  interpolation rather than passing them through, so a missing field is silently
-  dropped with no error. This already bit once: the super's glow and the
-  knockdown both vanished in instant replay.
+- **Anything added to `Game._captureFrame` must also be added to the replay
+  playback path** in `replay.js` — continuous/discrete state belongs in
+  `makePlayback.sample()`, while one-shot events such as swing triggers or blast
+  impact effects belong in `consumeEvents()`. Replay rebuilds frames by
+  interpolation rather than passing them through, so a missing field or event is
+  silently dropped with no error. This already bit twice: the super's glow and
+  knockdown vanished once, and the blast impact effect vanished later.
 - New characters in `characters.js` need an explicit `voice: 'boy'|'girl'`.
   **Never infer it from the name** — Leo and Max are girls, and several other
   roster names are deliberately unisex.

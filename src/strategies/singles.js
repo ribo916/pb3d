@@ -115,7 +115,7 @@ export function chooseShot(ai, ball, match, isServe, ctx) {
         match.rally.phase === 'open' &&
         !(SUPER.NO_KITCHEN && hitterPos && Math.abs(hitterPos.z) < C.KITCHEN) &&
         Math.random() < aggr * cfg.superBias * SUPER.AI_UNLEASH_P) {
-      var supFoe = loneOpponent(opponents);
+      var supFoe = opp;
       var supX = supFoe ? clampX(supFoe.pos.x + (supFoe.pos.x >= 0 ? -1 : 1) * 0.8, 0.88)
                         : rand(-C.HALF_W * 0.7, C.HALF_W * 0.7);
       return {
