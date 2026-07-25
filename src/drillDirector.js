@@ -43,6 +43,7 @@
 import * as Physics from './physics.js';
 import * as Rules from './rules.js';
 import * as Shots from './shots.js';
+import * as Power from './power.js';
 import { makeRecorder, makePlayback } from './replay.js';
 import { DRILL } from './constants.js';
 
@@ -110,6 +111,14 @@ export function resetRep(game, drillData) {
     p.move.kind = 'ready';
     p.move.target.x = pos.x; p.move.target.z = pos.z;
     p.move.split = 0; p.move.plant = 0; p.move.lunge = 0;
+    // Currently a no-op — drills hardcode superMode:'off' (main.js), so
+    // p.power can never move off its fresh-construction zero values, and
+    // resetRep today only ever runs once per Game instance right after
+    // construction. Reset explicitly anyway (matching _endPoint's full
+    // p.stun replacement) so a future "restart this rep"/super-enabled
+    // drill feature doesn't inherit stale charge/stun from a prior rep.
+    p.power = Power.makeMeter();
+    p.stun = Power.makeStun();
   });
   game.ball.live = false;
 

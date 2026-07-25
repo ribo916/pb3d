@@ -253,7 +253,15 @@ out the state machine and replay-loop transport.
   `npm run dev`, ES-module imports straight from `src/drillStore.js`/
   `src/drillDirector.js`/`src/shots.js`/`src/constants.js`, no new build
   step, purpose-built for this schema rather than ported from the sibling
-  app's own court/creator UI):
+  app's own court/creator UI). Markup + a dark theme mirrored from the main
+  game only; logic lives in `tools/drill-builder/` as plain ES modules
+  loaded via `<script type="module" src="./drill-builder/main.js">` (still
+  no build step — Vite's dev server resolves the imports natively, same as
+  it already did for the single-file version): `state.js` (shared authoring
+  state + roster derivation), `court-svg.js` (the court/player/cue
+  rendering — the one piece worth reusing if an in-app admin UI ever
+  replaces this standalone tool), `script-editor.js` (the Script/Steps
+  panels), `main.js` (wiring + the validation gate, below).
   - Player icons: P1/P2 (near) below the court, P3/P4 (far) above it —
     matching where those teams actually render on the court, not an
     arbitrary choice. Circular, color-coded to match the court dots.
@@ -321,7 +329,36 @@ stays hidden throughout. `drill-drip` specifically confirmed post-fix: ball
 x at both scripted contacts (P1→P3 and P3→P1) is exactly `1.524` — a true
 shared-column down-the-line exchange. The builder tool's full flow (place
 players via icons+checkboxes, script a back-and-forth, validate, test live)
-is also verified end-to-end. `node test/logic.test.mjs`: 113/113.
+is also verified end-to-end.
+
+**Test suite**: `npm test` (`test/run-all.mjs`) runs `test/logic.test.mjs`
+(general pure-logic/physics/AI) and `test/drill.test.mjs` (drill schema,
+validation, director, and — via lightweight `Object.create(Game.prototype)`
+stubs that never touch three.js/DOM — the drill-specific branches inside
+`_moveCPU`/`_checkContacts`/`_checkPoach`/`_clampToSide`) as one suite.
+`npm run drill:check` (`tools/drill-check.mjs`) is the permanent live-
+browser companion for what a stub can't cover: real mesh swing animation,
+real replay capture/loop timing, and a real Setup→live-rep→REP COMPLETE→
+looped-replay run of all four shipped drills plus the exact 4-player-
+corners/no-cues scenario from this repo's drill-mode bug-hunt history.
+Before this, live verification was a series of throwaway `tools/_verify*.mjs`
+scripts reinvented per debugging session — `drill-check.mjs` is that pattern
+made permanent.
+
+A later audit pass (see git history around the "drill mode: full audit" work)
+found and fixed several more engine bugs the same way this file's design
+history already anticipated bugs would surface — by reproducing exact
+failure scenarios live, not by inspection: `_clampToSide` and the
+`_moveCPU`/`_checkContacts` responsibility override (documented above) were
+the first round; a second round fixed `_checkPoach` reading an already-
+nulled `drillForcedShot` on a script's final beat (letting a real auto-poach
+hijack the climactic last scripted contact), the same zone-guess bug in
+`_checkPoach`'s own partner selection, a stale `moves` cue reactivating one
+beat late instead of being dropped when its player becomes the armed
+hitter, `_tickDrillReplay` never dispatching swing events (so every looped
+replay showed the ball changing direction with nobody visibly swinging,
+forever), and the "YOU" ring never being hidden in drill mode. All are
+covered by regression tests in `test/drill.test.mjs`'s "Engine" section.
 
 ---
 

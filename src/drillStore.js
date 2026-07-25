@@ -2,18 +2,27 @@
 
 import { SLOT_INFO } from './drillDirector.js';
 import { COURT } from './constants.js';
+import { TYPES as SHOT_TYPES } from './shots.js';
 
 // Convert a pickleball-drills grid coord (e.g. 'F10') to pb3d world coords.
 // Top of the SVG (row 1) = far side (z < 0); bottom (row 10) = near side (z > 0).
 var COLS = 'ABCDEFGH';
 var X_STOPS = [-3.8, -3.048, -1.524, -0.508, 0.508, 1.524, 3.048, 3.8];
 var Z_STOPS = [-7.5, -6.706, -4.0, -2.134, -0.5, 0.5, 2.134, 4.0, 6.706, 7.5];
+var VALID_SHOT_TYPES = SHOT_TYPES.concat(['smash']);
+var ROW_RE = /^[0-9]+$/;
 
+// Returns `null` (not a fallback coordinate) for anything malformed — a
+// caller that gets `{x:0,z:0}` back from a typo can't tell "the drill wants
+// the net" from "the input was garbage." Column letter is accepted case-
+// insensitively (harmless authoring leniency); everything else (unknown
+// column, out-of-range/non-numeric row, stray whitespace) is rejected.
 export function gridToWorld(coord) {
-  if (!coord || typeof coord !== 'string') return { x: 0, z: 0 };
-  var col = COLS.indexOf(coord[0]);
-  var row = parseInt(coord.slice(1), 10);
-  if (col < 0 || isNaN(row) || row < 1 || row > 10) return { x: 0, z: 0 };
+  if (typeof coord !== 'string' || coord.trim() !== coord || coord.length < 2) return null;
+  var col = COLS.indexOf(coord[0].toUpperCase());
+  var rowStr = coord.slice(1);
+  var row = Number(rowStr);
+  if (col < 0 || !ROW_RE.test(rowStr) || row < 1 || row > 10) return null;
   return { x: X_STOPS[col], z: Z_STOPS[row - 1] };
 }
 
@@ -37,7 +46,7 @@ function normalizePositions(positions) {
 // each cue's `to` accepts the same grid-coord-string-or-{x,z} shape
 // startPositions does, so it needs the same one-time resolution.
 function normalizeScript(script) {
-  return (script || []).map(function (entry) {
+  return (Array.isArray(script) ? script : []).map(function (entry) {
     if (!entry.moves) return entry;
     return Object.assign({}, entry, {
       moves: entry.moves.map(function (m) {
@@ -54,7 +63,12 @@ function normalizeScript(script) {
 // the engine's real inputs.
 export function normalizeDrill(drill) {
   if (!drill) return drill;
-  var steps = (drill.steps || []).map(function (step) {
+  // Guarded against a malformed/non-object entry (e.g. `null`) in a hand-
+  // authored DEFAULT_DRILLS list — this runs at module load for every
+  // shipped drill, so one bad entry would otherwise throw and take the
+  // entire drill library down with it, not just that one drill.
+  var steps = (Array.isArray(drill.steps) ? drill.steps : []).map(function (step) {
+    step = step || {};
     return { title: step.title, desc: step.desc };
   });
   return Object.assign({}, drill, {
@@ -94,6 +108,24 @@ export function activeSlotsOf(drill) {
 export function validateDrill(drill) {
   var errors = [];
   if (!drill) return errors;
+
+  // Raw startPositions keys — checked independently of `active` below, so a
+  // typo'd slot name or an unresolvable grid coord gets its own precise
+  // error instead of only ever showing up indirectly as "no near-side
+  // player"/"P2 without P1" once the bad entry silently drops out of the
+  // active roster.
+  var rawPositions = drill.startPositions || {};
+  Object.keys(rawPositions).forEach(function (k) {
+    if (!SLOT_INFO[k]) {
+      errors.push('startPositions: "' + k + '" is not a recognized slot (expected P1-P4)');
+      return;
+    }
+    var p = normalizeMoveTo(rawPositions[k]);
+    if (!p || typeof p.x !== 'number' || typeof p.z !== 'number' || !isFinite(p.x) || !isFinite(p.z)) {
+      errors.push('startPositions: ' + k + ' has an invalid position (' + JSON.stringify(rawPositions[k]) + ')');
+    }
+  });
+
   var positions = normalizePositions(drill.startPositions || {});
   var active = activeSlotsOf(Object.assign({}, drill, { startPositions: positions }));
   var activeSet = {};
@@ -111,7 +143,22 @@ export function validateDrill(drill) {
   if (activeSet.P2 && !activeSet.P1) errors.push('roster: P2 is present without P1 — P1 is always the near-side anchor');
   if (activeSet.P4 && !activeSet.P3) errors.push('roster: P4 is present without P3 — P3 is always the far-side anchor');
 
-  var script = drill.script || [];
+  // Two active players standing on the exact same spot is never a real
+  // drill formation — flag it rather than silently letting the engine sort
+  // out an overlapping contact-reach/movement mess at runtime.
+  for (var ai = 0; ai < active.length; ai++) {
+    for (var aj = ai + 1; aj < active.length; aj++) {
+      var pa = positions[active[ai]], pb = positions[active[aj]];
+      if (pa && pb && pa.x === pb.x && pa.z === pb.z) {
+        errors.push('startPositions: ' + active[ai] + ' and ' + active[aj] + ' are at the exact same position');
+      }
+    }
+  }
+
+  var script = Array.isArray(drill.script) ? drill.script : [];
+  if (!script.length) {
+    errors.push('script: has no shots — a drill needs at least one scripted shot, or it never starts (Setup hangs forever)');
+  }
   for (var i = 0; i < script.length; i++) {
     var entry = script[i];
     if (!activeSet[entry.hitter]) {
@@ -122,11 +169,16 @@ export function validateDrill(drill) {
       errors.push('shot ' + i + ': target ' + entry.target + ' is not in this drill\'s roster');
       continue;
     }
-    if (TEAM_OF[entry.hitter] === TEAM_OF[entry.target]) {
+    if (entry.hitter === entry.target) {
+      errors.push('shot ' + i + ': ' + entry.hitter + ' cannot target themselves');
+    } else if (TEAM_OF[entry.hitter] === TEAM_OF[entry.target]) {
       errors.push(
         'shot ' + i + ': ' + entry.hitter + ' hits to ' + entry.target + ', but they\'re partners (same team) — ' +
         'a shot always crosses the net to an opponent, never sideways to your own partner'
       );
+    }
+    if (VALID_SHOT_TYPES.indexOf(entry.shotType) === -1) {
+      errors.push('shot ' + i + ': shotType "' + entry.shotType + '" is not a recognized shot type (' + VALID_SHOT_TYPES.join('|') + ')');
     }
 
     // Movement cues (optional): each names any active player (hitter,

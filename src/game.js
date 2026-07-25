@@ -1252,10 +1252,23 @@ Game.prototype._moveCPU = function (p, dt) {
   // faked/interpolated position — produces the resulting motion.
   var forcedMoveHitter = this.drillForcedShot && this.drillForcedShot.hitter === p;
   var forcedMove = this.drillForcedMoves && this.drillForcedMoves[p.drillSlot];
-  if (forcedMove && !forcedMoveHitter) {
-    tx = forcedMove.x; tz = forcedMove.z;
-    if (dist2D(tx - p.pos.x, tz - p.pos.z) <= MOVEMENT.CPU_ARRIVE) {
+  if (forcedMove) {
+    if (forcedMoveHitter) {
+      // This player has just become the armed hitter — any outstanding cue
+      // from an earlier beat is now stale (a fresh cue for their OWN beat,
+      // if authored, would already have overwritten it via
+      // armMovesForBeat's per-slot merge). Drop it now instead of leaving
+      // it dangling: left alone, it never gets deleted while they're the
+      // hitter (that only happens in the `else` branch below), so the
+      // moment they stop being the hitter it reactivates and steers them
+      // toward a beat-old, outdated position instead of holding/recovering
+      // where they actually are.
       delete this.drillForcedMoves[p.drillSlot];
+    } else {
+      tx = forcedMove.x; tz = forcedMove.z;
+      if (dist2D(tx - p.pos.x, tz - p.pos.z) <= MOVEMENT.CPU_ARRIVE) {
+        delete this.drillForcedMoves[p.drillSlot];
+      }
     }
   }
 
@@ -1906,7 +1919,11 @@ Game.prototype._cpuHit = function (p) {
   // here and reused for the apex-quality degradation below.
   var stabilityIdx = this._computeStability(p);
   var shot;
-  if (this.drillForcedShot && this.drillForcedShot.hitter === p) {
+  // Captured BEFORE armNextScriptedShot below can null drillForcedShot (on
+  // the script's final beat) — _checkPoach needs to know whether THIS shot
+  // was scripted, not whether a FUTURE one is armed.
+  var firedScriptedShot = !!(this.drillForcedShot && this.drillForcedShot.hitter === p);
+  if (firedScriptedShot) {
     var firingBeat = this.drillData.script[this.drillScriptIndex];
     shot = DrillDirector.getScriptedShot(this, this.drillData, this.drillScriptIndex, p);
     DrillDirector.armMovesForBeat(this, firingBeat);
@@ -1973,7 +1990,7 @@ Game.prototype._cpuHit = function (p) {
       driven: quality === 'clean' ? null : false });
 
   // Poach check: can the net partner intercept this shot?
-  this._checkPoach(p.team);
+  this._checkPoach(p.team, firedScriptedShot);
 };
 
 // Poach check — called after a shot is fired toward `hitterTeam`'s opponents.
@@ -1991,15 +2008,22 @@ Game.prototype._cpuHit = function (p) {
  *
  * Now it marks intent and _checkPoachContact() resolves it when the ball
  * actually reaches the poacher — same deferral pattern as _checkBlastContact. */
-Game.prototype._checkPoach = function (hitterTeam) {
+Game.prototype._checkPoach = function (hitterTeam, wasScriptedShot) {
   if (this.mode === 'singles' || this.mode === 'practice') return;
   // A real auto-poach would steal the ball from drillDirector.js's named
   // scripted target, bypassing drillForcedShot/armNextScriptedShot entirely
-  // and desyncing drillScriptIndex from what actually gets hit. Only
-  // suppressed while a scripted beat is still armed — once the script runs
-  // out (drillForcedShot null, genuine free-play tail), real poaching is
-  // allowed again like every other free-play behavior.
-  if (this.mode === 'drill' && this.drillForcedShot) return;
+  // and desyncing drillScriptIndex from what actually gets hit. Gated on
+  // whether the shot just fired was ITSELF a scripted beat — captured by
+  // the caller before armNextScriptedShot advances/nulls drillForcedShot,
+  // not by re-checking drillForcedShot here: on a script's FINAL beat,
+  // drillForcedShot is already null by the time this runs, so that check
+  // would wrongly allow a real auto-poach to hijack the climactic last
+  // scripted contact. This also sidesteps _responsibleSlot's real-serve-
+  // rotation zone math entirely for scripted beats (below) — that math is
+  // meaningless for a drill's always-{0,0}-score, freeform-placed roster,
+  // and the script already names the real receiver explicitly, so there's
+  // no "off-ball partner" concept to compute for a scripted beat at all.
+  if (wasScriptedShot) return;
   if (!this.ball.flight) return;
   var path = { samples: this.ball.flight.samples, landing: this.ball.flight.landing };
   var landingX = this.ball.flight.landing.x;
@@ -2844,6 +2868,13 @@ Game.prototype._endPracticeRep = function (feedback) {
 Game.prototype.startDrill = function (drillData) {
   this.drillData = drillData;
   DrillDirector.resetRep(this, drillData);
+  // Same "gameplay-only markers would be misleading" call real instant-
+  // replay's enterReplay()/exitReplay() already make (_setReplayMarkers) —
+  // drill mode never had an equivalent, so the "YOU" ring permanently
+  // tracked players[0] (a CPU, not a human) for the entire drill and its
+  // eternal replay loop. players[0] is never human in drill mode, so these
+  // markers should just never appear, for the whole session.
+  this._setReplayMarkers(false);
 };
 
 // "The drill is the drill" — the rep ends exactly when the authored `script`
@@ -2896,6 +2927,25 @@ Game.prototype._tickDrillReplay = function (dt) {
   var frame = pb.sample();
   if (!frame) return;
   this._applyFrame(frame);
+  // Same event dispatch as updateReplay() — without this, position/ball
+  // state loops correctly but no player ever visibly swings a paddle for
+  // the entire (eternal) drill replay loop, since swing pose is driven
+  // exclusively by mesh.swing()'s one-shot timer, never implied by
+  // move.kind/position alone.
+  var ev = pb.consumeEvents ? pb.consumeEvents() : { swings: pb.consumeSwings(), effects: [] };
+  var swings = ev.swings || [];
+  for (var i = 0; i < swings.length; i++) {
+    var pl = this.players[swings[i].player];
+    if (pl) pl.mesh.swing(swings[i].type);
+  }
+  var effects = ev.effects || [];
+  for (var j = 0; j < effects.length; j++) {
+    var fx = effects[j];
+    if (fx.type === 'blast') {
+      var victim = this.players[fx.player];
+      if (victim) this._triggerBlastEffect(victim);
+    }
+  }
   // _syncMeshes/updateCamera run once already, unconditionally, in
   // update()'s shared tail right after _tickDrill returns — don't call
   // them again here.
