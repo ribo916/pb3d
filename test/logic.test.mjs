@@ -11,8 +11,8 @@ import * as Practice from '../src/practice.js';
 import * as SinglesStrategy from '../src/strategies/singles.js';
 import * as DoublesStrategy from '../src/strategies/doubles.js';
 import { normalizeMode } from '../src/modes.js';
-import { DEFAULT_DRILLS, getDrillById, validateDrill, activeSlotsOf } from '../src/drillStore.js';
-import { getScriptedShot, armNextScriptedShot } from '../src/drillDirector.js';
+import { DEFAULT_DRILLS, getDrillById, validateDrill, activeSlotsOf, normalizeDrill } from '../src/drillStore.js';
+import { getScriptedShot, armNextScriptedShot, armMovesForBeat } from '../src/drillDirector.js';
 import { buildMusicCatalog, sanitizeMusicState } from '../src/audio.js';
 import * as Power from '../src/power.js';
 import { makePlayback } from '../src/replay.js';
@@ -1388,6 +1388,112 @@ test('validateDrill: catches a script entry referencing a slot absent from the r
   const errors = validateDrill(drill);
   assert.equal(errors.length, 1);
   assert.match(errors[0], /not in this drill's roster/);
+});
+
+/* ------------------------- drill movement cues ------------------------- */
+
+test('normalizeDrill: resolves a grid-coord moves[].to the same way startPositions does, leaves raw {x,z} untouched', () => {
+  const drill = normalizeDrill({
+    startPositions: { P1: 'F10', P3: 'F1' },
+    script: [
+      { hitter: 'P1', shotType: 'drive', target: 'P3', moves: [
+        { player: 'P1', to: 'F8' },
+        { player: 'P3', to: { x: -1.2, z: 3.0 } }
+      ] }
+    ]
+  });
+  const moves = drill.script[0].moves;
+  assert.deepEqual(moves[0].to, { x: 1.524, z: 4.0 }, 'grid coord F8 resolves via gridToWorld');
+  assert.deepEqual(moves[1].to, { x: -1.2, z: 3.0 }, 'raw {x,z} passes through unchanged');
+});
+
+test('normalizeDrill: a beat with no moves array is left untouched', () => {
+  const drill = normalizeDrill({
+    startPositions: { P1: 'F10', P3: 'F1' },
+    script: [{ hitter: 'P1', shotType: 'drive', target: 'P3' }]
+  });
+  assert.equal(drill.script[0].moves, undefined);
+});
+
+test('validateDrill: catches a moves[].player not in the roster', () => {
+  const drill = {
+    startPositions: { P1: { x: 1.5, z: 7.5 }, P3: { x: -1.5, z: -7.5 } }, // no P4
+    script: [{ hitter: 'P1', shotType: 'drive', target: 'P3', moves: [{ player: 'P4', to: { x: 0, z: -5 } }] }]
+  };
+  const errors = validateDrill(drill);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /is not in this drill's roster/);
+});
+
+test('validateDrill: catches a moves[].to that is missing or non-numeric', () => {
+  const drill = {
+    startPositions: { P1: { x: 1.5, z: 7.5 }, P3: { x: -1.5, z: -7.5 } },
+    script: [{ hitter: 'P1', shotType: 'drive', target: 'P3', moves: [{ player: 'P1', to: null }] }]
+  };
+  const errors = validateDrill(drill);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /has no valid `to` position/);
+});
+
+test('validateDrill: catches a moves[].to wildly outside the court', () => {
+  const drill = {
+    startPositions: { P1: { x: 1.5, z: 7.5 }, P3: { x: -1.5, z: -7.5 } },
+    script: [{ hitter: 'P1', shotType: 'drive', target: 'P3', moves: [{ player: 'P1', to: { x: 40, z: 0 } }] }]
+  };
+  const errors = validateDrill(drill);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /unreasonably far outside the court/);
+});
+
+test('validateDrill: a well-formed moves cue on a non-hitter (partner poach) validates clean', () => {
+  const drill = {
+    startPositions: { P1: { x: 1.5, z: 7.5 }, P2: { x: -0.5, z: 2.0 }, P3: { x: -1.5, z: -7.5 } },
+    script: [{ hitter: 'P1', shotType: 'drive', target: 'P3', moves: [
+      { player: 'P1', to: { x: 0, z: 2.0 } },  // self-recovery
+      { player: 'P2', to: { x: 1.0, z: 1.5 } } // partner poach cue
+    ] }]
+  };
+  assert.deepEqual(validateDrill(drill), []);
+});
+
+test('armMovesForBeat: arms drillForcedMoves for each named player from the beat', () => {
+  const stubGame = stubDrillGame();
+  stubGame.drillForcedMoves = {};
+  armMovesForBeat(stubGame, { hitter: 'P1', shotType: 'drive', target: 'P3', moves: [
+    { player: 'P1', to: { x: 0, z: 2.0 } },
+    { player: 'P2', to: { x: 1.0, z: 1.5 } }
+  ] });
+  assert.deepEqual(stubGame.drillForcedMoves.P1, { x: 0, z: 2.0 });
+  assert.deepEqual(stubGame.drillForcedMoves.P2, { x: 1.0, z: 1.5 });
+  assert.equal(stubGame.drillForcedMoves.P3, undefined, 'a beat that doesn\'t name P3 leaves it alone');
+});
+
+test('armMovesForBeat: a later beat naming only P2 leaves an outstanding P1 entry untouched (the persistence rule)', () => {
+  const stubGame = stubDrillGame();
+  stubGame.drillForcedMoves = {};
+  armMovesForBeat(stubGame, { hitter: 'P1', shotType: 'drive', target: 'P3', moves: [
+    { player: 'P1', to: { x: 0, z: 2.0 } }
+  ] });
+  armMovesForBeat(stubGame, { hitter: 'P3', shotType: 'drop', target: 'P1', moves: [
+    { player: 'P2', to: { x: 1.0, z: 1.5 } }
+  ] });
+  assert.deepEqual(stubGame.drillForcedMoves.P1, { x: 0, z: 2.0 }, 'P1\'s cue from the earlier beat still stands');
+  assert.deepEqual(stubGame.drillForcedMoves.P2, { x: 1.0, z: 1.5 });
+});
+
+test('armMovesForBeat: a beat naming the same player again overwrites the earlier target', () => {
+  const stubGame = stubDrillGame();
+  stubGame.drillForcedMoves = {};
+  armMovesForBeat(stubGame, { moves: [{ player: 'P1', to: { x: 0, z: 2.0 } }] });
+  armMovesForBeat(stubGame, { moves: [{ player: 'P1', to: { x: -1, z: 3.5 } }] });
+  assert.deepEqual(stubGame.drillForcedMoves.P1, { x: -1, z: 3.5 });
+});
+
+test('armMovesForBeat: a beat with no moves array is a no-op', () => {
+  const stubGame = stubDrillGame();
+  stubGame.drillForcedMoves = { P1: { x: 0, z: 2.0 } };
+  armMovesForBeat(stubGame, { hitter: 'P1', shotType: 'drive', target: 'P3' });
+  assert.deepEqual(stubGame.drillForcedMoves.P1, { x: 0, z: 2.0 });
 });
 
 console.log('\n' + passed + ' assertions passed.');

@@ -14,10 +14,19 @@
  * stability/timing degradation still applies to them. Once the scripted
  * shots run out, everything is genuine, undirected AI/physics free-play —
  * src/game.js's normal _tickRally/_cpuHit/_moveCPU pipeline runs completely
- * unmodified. Player MOVEMENT is never scripted, only ball CONTACTS — an
- * earlier pass that scripted positions directly produced a visible sliding/
- * gliding artifact (see DRILLS.md's "Pass 2" note); real AI drives movement
- * at all times, including between and during scripted shots.
+ * unmodified. Player POSITION is never scripted directly — an earlier pass
+ * that authored/interpolated positions directly produced a visible sliding/
+ * gliding artifact (see DRILLS.md's "Pass 2" note). Instead, each beat can
+ * carry an optional `moves` array — {player, to} cues, armed the instant that
+ * beat's shot fires (armMovesForBeat below) — that only ever override the
+ * STEERING TARGET fed into game.js's existing per-frame Movement.seek() call,
+ * the same call every CPU's movement already runs through every frame. Real
+ * accel/decel/arrive physics still produces the resulting position and
+ * velocity, so the animation/facing pipeline sees exactly the kind of
+ * velocity it's always tuned for — just aimed at an author-chosen point
+ * instead of an AI-chosen one. Cues are fire-and-forget: they never gate the
+ * script's advance (that stays purely contact-driven), and ball
+ * responsibility always overrides a queued cue (see game.js's _moveCPU).
  *
  * "The drill is the drill" — not open-ended AI play. The live rep is
  * bounded to `_drillMaxShots()` paddle contacts (the opener counts as #1),
@@ -111,6 +120,7 @@ export function resetRep(game, drillData) {
   game.match.winner = null;
 
   game.drillForcedShot = null;
+  game.drillForcedMoves = {};
   game.drillScriptIndex = 0;
   game.drillHitCount = 0;
   game.drillEndGrace = 0;
@@ -155,6 +165,28 @@ export function armNextScriptedShot(game, drillData) {
   if (!next) { game.drillForcedShot = null; return; }
   var hitter = resolvePlayer(game, next.hitter);
   game.drillForcedShot = hitter ? { hitter: hitter } : null;
+}
+
+// Arms game.drillForcedMoves from `beat.moves` — called the moment a beat's
+// shot actually FIRES (fireOpeningShot for script[0], game.js's _cpuHit for
+// script[1+]), never when a future beat is merely armed via
+// armNextScriptedShot: a cue shouldn't start steering a player toward it
+// before the shot that triggers it has actually happened.
+//
+// Per-slot merge, not a wholesale replace: only the slots THIS beat names are
+// overwritten. A slot with an outstanding cue from an earlier beat that this
+// beat doesn't mention is left untouched — it keeps holding/approaching its
+// previous target rather than snapping back to default AI positioning the
+// instant an unrelated beat fires. game.drillForcedMoves is only ever wiped
+// wholesale in resetRep(), once per drill open.
+export function armMovesForBeat(game, beat) {
+  var moves = (beat && beat.moves) || [];
+  if (!game.drillForcedMoves) game.drillForcedMoves = {};
+  for (var i = 0; i < moves.length; i++) {
+    var mv = moves[i];
+    var p = resolvePlayer(game, mv.player);
+    if (p && mv.to) game.drillForcedMoves[mv.player] = { x: mv.to.x, z: mv.to.z };
+  }
 }
 
 // Fire the drill's scripted opener (script[0]) — a real, physics-fired shot,
@@ -207,6 +239,7 @@ export function fireOpeningShot(game, drillData) {
   game._executeShotV2(targetPlayer.pos.x, clampLandingZ(targetPlayer.pos.z), spec.apex, spec.margin, spin, { type: first.shotType });
   Rules.onPaddleHit(game.match, hitterTeam, { volley: false, inKitchen: false });
   game.drillHitCount = 1; // the opener is contact #1 of the drill's max-shots cap
+  armMovesForBeat(game, first);
 
   game.drillScriptIndex = 1;
   armNextScriptedShot(game, drillData);

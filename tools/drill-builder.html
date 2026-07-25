@@ -19,6 +19,14 @@
   textarea { min-height: 44px; resize: vertical; }
   .row { display: flex; gap: 8px; align-items: center; margin: 4px 0; }
   .row select { flex: 1; }
+  .shot-block { border: 1px solid #262a33; border-radius: 6px; padding: 8px; margin: 8px 0; }
+  .moves-toggle { background: none; border: none; color: #7a8cc4; font-size: 11px; cursor: pointer; padding: 4px 0; }
+  .moves-toggle:hover { text-decoration: underline; }
+  .move-row { display: flex; gap: 6px; align-items: center; margin: 4px 0 4px 12px; }
+  .move-row select { flex: 1; }
+  .move-row button.place { font-size: 11px; padding: 4px 8px; }
+  .move-row button.place.armed { background: #3a2f1c; border-color: #6a5230; color: #f0cfa8; }
+  .move-row .to-readout { font-size: 10px; color: #777; min-width: 90px; }
   button { background: #2a2f3a; color: #e8e8ec; border: 1px solid #3a4050; border-radius: 4px;
     padding: 6px 10px; font-size: 12px; cursor: pointer; }
   button:hover { background: #343b4a; }
@@ -69,8 +77,13 @@
   sideline work too. The UI only lets you click on that player's own side of the net (near for
   P1/P2, far for P3/P4) — a click on the wrong side snaps to the nearest legal spot instead of being
   ignored. Wherever you place a script target within their own side, the engine guarantees they're
-  the one who receives that shot. Positions here are Setup-only — the engine never scripts movement,
-  only who hits what at whom.
+  the one who receives that shot. This positioning is Setup-only, before the rep begins.<br><br>
+  <b>Movement cues:</b> each shot in the script can also carry "moves" — telling any player
+  (the hitter recovering, or a partner poaching/shadowing) to head toward a spot the instant that
+  shot fires. Expand "moves" under a shot row, add a cue, pick who it's for, then click "place on
+  court" and click the target spot. Cues are directions, not guarantees — real AI movement (the
+  same physics-driven steering used everywhere else) carries the player there, and ball
+  responsibility always takes priority if that player needs to actually play the next shot.
 </div>
 
 <div id="banner" class="banner ok">Place your active players and add at least one shot to the script to validate.</div>
@@ -94,8 +107,8 @@
     <textarea id="fGoal"></textarea>
     <label>Tags (comma separated)</label>
     <input type="text" id="fTags">
-    <label>Max shots (cap on the live rep)</label>
-    <input type="number" id="fMaxShots" value="4" min="1">
+    <label>Shots in this rep</label>
+    <div id="shotCount" class="hint" style="margin-top:0;">0 — add shots in the Script panel</div>
   </div>
 
   <div class="panel" style="width:340px;">
@@ -137,8 +150,10 @@ const state = {
   includeP2: true,
   includeP4: true,
   positions: {},           // { P1: {x,z}, ... } — raw world coords, no grid quantization
-  script: [],              // [{ hitter, shotType, target }]
-  steps: [{ title: 'Setup', desc: '' }]
+  script: [],              // [{ hitter, shotType, target, moves?: [{player, to}] }]
+  steps: [{ title: 'Setup', desc: '' }],
+  expandedMoveRow: null,   // index of the script row whose "moves" editor is open (also what's drawn on the court)
+  placingMoveFor: null     // { entryIndex, moveIndex } while the next court click sets a move's target
 };
 
 // P1/P3 are always active (the anchors); P2/P4 follow their checkboxes.
@@ -255,6 +270,19 @@ function clampToOwnSide(team, z) {
 }
 svg.addEventListener('click', (evt) => {
   const p = svgPointFromEvent(evt);
+  // Placing a movement cue's target takes priority over the normal
+  // player-placement click — a cue can legitimately aim across the net
+  // (a player transitioning forward/back), so it's NOT clamped to either
+  // side the way initial Setup placement is.
+  if (state.placingMoveFor) {
+    const { entryIndex, moveIndex } = state.placingMoveFor;
+    state.script[entryIndex].moves[moveIndex].to = p;
+    state.placingMoveFor = null;
+    renderScript();
+    renderPlayers();
+    revalidate();
+    return;
+  }
   p.z = clampToOwnSide(TEAM_OF[state.selectedSlot], p.z);
   state.positions[state.selectedSlot] = p;
   renderPlayers();
@@ -276,6 +304,34 @@ function renderPlayers() {
     lines.push(slot + ': x=' + p.x.toFixed(2) + ', z=' + p.z.toFixed(2));
   });
   document.getElementById('posReadout').textContent = lines.join('\n');
+
+  // Only draw movement-cue markers for the script row currently expanded —
+  // showing every beat's cues at once across a multi-shot script would be
+  // unreadable clutter. Hollow/dashed ring + arrow glyph, distinct from the
+  // solid filled start-position dot above, so "cue" reads differently from
+  // "starts here" at a glance.
+  if (state.expandedMoveRow != null) {
+    const entry = state.script[state.expandedMoveRow];
+    (entry && entry.moves || []).forEach(mv => {
+      if (!mv.to) return;
+      const color = SLOT_COLOR[mv.player] || '#aaa';
+      const ring = svgEl('circle', {
+        cx: mv.to.x, cy: mv.to.z, r: 0.3, fill: 'none', stroke: color,
+        'stroke-width': 0.05, 'stroke-dasharray': '0.1,0.08'
+      });
+      const glyph = svgEl('text', { x: mv.to.x, y: mv.to.z + 0.09, 'text-anchor': 'middle', 'font-size': 0.28, fill: color });
+      glyph.textContent = '→';
+      playerGroup.appendChild(ring);
+      playerGroup.appendChild(glyph);
+      const fromPos = state.positions[mv.player];
+      if (fromPos) {
+        playerGroup.appendChild(svgEl('line', {
+          x1: fromPos.x, y1: fromPos.z, x2: mv.to.x, y2: mv.to.z,
+          stroke: color, 'stroke-width': 0.02, 'stroke-dasharray': '0.06,0.1', opacity: 0.6
+        }));
+      }
+    });
+  }
 }
 
 // ---- script editor ----
@@ -283,6 +339,9 @@ const scriptList = document.getElementById('scriptList');
 function renderScript() {
   scriptList.innerHTML = '';
   state.script.forEach((entry, i) => {
+    const block = document.createElement('div');
+    block.className = 'shot-block';
+
     const row = document.createElement('div');
     row.className = 'row';
     const hitterSelect = select(activeSlots(), entry.hitter, v => {
@@ -301,9 +360,70 @@ function renderScript() {
     row.appendChild(targetSelect);
     const rm = document.createElement('button');
     rm.textContent = '✕'; rm.className = 'danger';
-    rm.addEventListener('click', () => { state.script.splice(i, 1); renderScript(); revalidate(); });
+    rm.addEventListener('click', () => {
+      state.script.splice(i, 1);
+      if (state.expandedMoveRow === i) state.expandedMoveRow = null;
+      renderScript(); renderPlayers(); revalidate();
+    });
     row.appendChild(rm);
-    scriptList.appendChild(row);
+    block.appendChild(row);
+
+    const moves = entry.moves || [];
+    const expanded = state.expandedMoveRow === i;
+    const toggle = document.createElement('button');
+    toggle.className = 'moves-toggle';
+    toggle.textContent = (expanded ? '▾' : '▸') + ' moves (' + moves.length + ') — who heads where the instant this shot fires';
+    toggle.addEventListener('click', () => {
+      state.expandedMoveRow = expanded ? null : i;
+      state.placingMoveFor = null;
+      renderScript();
+      renderPlayers();
+    });
+    block.appendChild(toggle);
+
+    if (expanded) {
+      moves.forEach((mv, mi) => {
+        const mrow = document.createElement('div');
+        mrow.className = 'move-row';
+        const playerSelect = select(activeSlots(), mv.player, v => { mv.player = v; renderPlayers(); revalidate(); });
+        mrow.appendChild(playerSelect);
+        const placeBtn = document.createElement('button');
+        const armed = state.placingMoveFor && state.placingMoveFor.entryIndex === i && state.placingMoveFor.moveIndex === mi;
+        placeBtn.className = 'place' + (armed ? ' armed' : '');
+        placeBtn.textContent = armed ? 'click the court…' : (mv.to ? 'move target' : 'place on court');
+        placeBtn.addEventListener('click', () => {
+          state.placingMoveFor = armed ? null : { entryIndex: i, moveIndex: mi };
+          renderScript();
+        });
+        mrow.appendChild(placeBtn);
+        const readout = document.createElement('span');
+        readout.className = 'to-readout';
+        readout.textContent = mv.to ? ('x=' + mv.to.x.toFixed(2) + ', z=' + mv.to.z.toFixed(2)) : 'not placed';
+        mrow.appendChild(readout);
+        const rmMove = document.createElement('button');
+        rmMove.textContent = '✕'; rmMove.className = 'danger';
+        rmMove.addEventListener('click', () => {
+          moves.splice(mi, 1);
+          if (state.placingMoveFor && state.placingMoveFor.entryIndex === i && state.placingMoveFor.moveIndex === mi) state.placingMoveFor = null;
+          renderScript(); renderPlayers(); revalidate();
+        });
+        mrow.appendChild(rmMove);
+        block.appendChild(mrow);
+      });
+      const addMove = document.createElement('button');
+      addMove.textContent = '+ add move';
+      addMove.style.marginLeft = '12px';
+      addMove.addEventListener('click', () => {
+        if (!entry.moves) entry.moves = [];
+        // Default to the hitter's own post-contact recovery — the most
+        // common cue — the author can retarget the select to any active slot.
+        entry.moves.push({ player: entry.hitter, to: null });
+        renderScript();
+      });
+      block.appendChild(addMove);
+    }
+
+    scriptList.appendChild(block);
   });
 }
 function select(options, value, onChange) {
@@ -360,6 +480,13 @@ renderSteps();
 const banner = document.getElementById('banner');
 function revalidate() {
   renderPlayers(); // keep the per-player zone-mismatch markers current
+  // The rep ends exactly when the script runs out — no separate cap to
+  // configure — so this is purely informational, kept in sync with the
+  // script editor rather than authored independently.
+  const n = state.script.length;
+  document.getElementById('shotCount').textContent = n
+    ? n + ' scripted shot' + (n === 1 ? '' : 's') + ' — the rep ends right after the last one'
+    : '0 — add shots in the Script panel';
   const missing = activeSlots().filter(s => !state.positions[s]);
   if (missing.length) {
     banner.className = 'banner err';
@@ -394,8 +521,15 @@ function buildDrill() {
     goal: document.getElementById('fGoal').value,
     tags: document.getElementById('fTags').value.split(',').map(t => t.trim()).filter(Boolean),
     startPositions: Object.assign({}, state.positions),
-    maxShots: Number(document.getElementById('fMaxShots').value) || 4,
-    script: state.script.map(s => Object.assign({}, s)),
+    script: state.script.map(s => {
+      const copy = Object.assign({}, s);
+      if (copy.moves && copy.moves.length) {
+        copy.moves = copy.moves.map(m => Object.assign({}, m));
+      } else {
+        delete copy.moves;
+      }
+      return copy;
+    }),
     steps: state.steps.filter(s => s.title || s.desc)
   };
 }

@@ -76,14 +76,21 @@ mesh sync all work with zero drill-specific code.
 {
   id, name, desc, goal, tags, players,   // players is a display count, informational
   startPositions: { P1: 'F10', P2: 'D7', P3: 'F1', P4: 'C2' },  // grid coords or raw {x,z}; only present slots are in the roster
-  maxShots: 4,                            // per-drill cap on the live rep; falls back to DRILL.MAX_SHOTS if omitted
   script: [
     { hitter: 'P1', shotType: 'drive', target: 'P3' },
-    { hitter: 'P3', shotType: 'drop',  target: 'P1' }
+    { hitter: 'P3', shotType: 'drop',  target: 'P1', moves: [{ player: 'P1', to: 'F8' }] }
   ],
   steps: [{ title, desc }, ...]            // pure on-screen narration, NOT read by the engine
 }
 ```
+
+No separate `maxShots` cap exists anymore — the rep ends EXACTLY when `script`
+runs out (`game.js`'s `_drillMaxShots()` is always `script.length`), never
+with extra undirected AI touches tacked on. If you author N scripted shots,
+you get exactly N hits, every rep, every time. A `script` entry can also
+carry an optional `moves: [{player, to}]` — movement cues (self-recovery or a
+partner poach/shadow) that arm the instant that beat's shot fires; see
+"Movement cues" below.
 
 - **Roster is variable**: 2, 3, or 4 players, derived purely from which
   `P1`-`P4` keys exist in `startPositions` (`activeSlotsOf(drill)`, exported
@@ -100,11 +107,24 @@ mesh sync all work with zero drill-specific code.
   fired directly; `script[1+]` are forced responses, armed one at a time and
   resolved through the same AI-shot-execution pipeline real free-play uses
   (so real stability/timing degradation still applies — a forced shot can
-  still pop up). Once the list runs out, everything is genuine undirected
-  AI/physics free-play up to `maxShots`. `shotType` is any of
-  `Shots.TYPES` (`drive`/`drop`/`dink`/`lob`/`speedup`) plus `smash`.
-  `target` is always a player slot on the hitter's OPPOSING team — a shot
-  can't be aimed at your own partner.
+  still pop up). The rep ends the instant `script` runs out — no undirected
+  free-play tail. `shotType` is any of `Shots.TYPES`
+  (`drive`/`drop`/`dink`/`lob`/`speedup`) plus `smash`. `target` is always a
+  player slot on the hitter's OPPOSING team — a shot can't be aimed at your
+  own partner.
+- **Movement cues (`moves`, optional per beat)**: `{player, to}` entries that
+  arm the instant that beat's shot fires (`drillDirector.js`'s
+  `armMovesForBeat`), directing any active player (the hitter's own
+  recovery, or a partner's poach/shadow) toward a spot. They only ever
+  override the steering TARGET fed into the existing per-frame
+  `Movement.seek()` call (`game.js`'s `_moveCPU`) — never position directly
+  — so real accel/decel physics still produces the resulting velocity/
+  animation, the same load-bearing property that made the sliding-artifact
+  fix (Pass 2, above) stick. Cues are fire-and-forget: non-blocking, cleared
+  on arrival, always overridden by real ball responsibility, and an
+  outstanding cue persists across later beats unless one re-issued for that
+  slot. This is also the replacement for what free-play-after-script used to
+  paper over (shadowing/coverage) — script it explicitly instead.
 - **`validateDrill(drill)`** (`drillStore.js`) — the only authoring
   constraints left: roster shape (at least one player per side; P2 can't
   exist without P1, P4 can't exist without P3; every script `hitter`/
@@ -258,7 +278,7 @@ out the state machine and replay-loop transport.
 
 ### Shipped drills (`DEFAULT_DRILLS`, `src/drillStore.js`)
 
-- **`drill-drip`** ("Drip Practice", 4 players, `maxShots: 4`) — P1
+- **`drill-drip`** ("Drip Practice", 4 players, 2 scripted shots) — P1
   simulates a short return down the line to P3, who drips back at P1's
   feet; P1 and P3 share a grid column for a genuine down-the-line lane.
   P2 shades/poaches, P4 follows P3 in. **Open item, not silently
@@ -266,13 +286,22 @@ out the state machine and replay-loop transport.
   "a drive that lands at P1's feet" — real `drive` (`shots.js`) is the
   flat, fast, driven family; `drop` is the soft, arcing, kitchen-dying
   family, closer to the original neutralize-the-point intent. Flagged in a
-  comment directly above the script entry — confirm or correct.
-- **`drill-dink-rally`** ("Cross-Court Dink Rally", 4 players,
-  `maxShots: 5`) — P1 opens with a soft dink cross-court to P3 (opposite x,
-  a true diagonal); no forced response — real AI free-plays the rest. P2/P4
-  shadow via ordinary AI positioning, not scripted.
-- **`drill-1v1-test`** (2 players, `maxShots: 3`) and **`drill-2v1-test`**
-  (3 players, near side has a partner, far side doesn't, `maxShots: 3`) —
+  comment directly above the script entry — confirm or correct. **Also
+  pending confirmation post-`maxShots` removal**: its `goal` describes P1
+  working "the emergency split-step reset" after P3's drip, but the script
+  only has 2 entries, so the rep now ends right when P3's drip lands —
+  before P1 ever gets to hit that reset. Needs either a 3rd scripted entry
+  (P1's reset) or a rewritten goal/steps; not decided yet.
+- **`drill-dink-rally`** ("Cross-Court Dink Rally", 4 players, 1 scripted
+  shot) — P1 opens with a soft dink cross-court to P3 (opposite x, a true
+  diagonal). **Pending confirmation post-`maxShots` removal**: this used to
+  free-play 4 more touches for a real back-and-forth "rally" feel with P2/P4
+  shadowing; with no free-play tail, the rep now ends after that single
+  dink. Needs its `script` extended to alternate P1↔P3 for as many touches
+  as the rally should have, with `moves` cues replacing what the shadowing
+  used to get from ordinary AI free-play; not decided yet.
+- **`drill-1v1-test`** (2 players, 1 scripted shot) and **`drill-2v1-test`**
+  (3 players, near side has a partner, far side doesn't, 1 scripted shot) —
   minimal drills tagged `['test']`, shipped specifically to exercise the
   variable-roster code path in the test suite and be manually launchable
   from the drill library.
@@ -286,7 +315,7 @@ Headless Playwright, direct `game.state`/`game.drillHitCount`/
 under headless SwiftShader software rendering — state polling is the
 trustworthy signal). All four shipped drills confirmed: correct player
 count, forced shots fire (or don't, per shape) and land where intended, hit
-count climbs and stops exactly at `maxShots`, "REP COMPLETE" hands off to a
+count climbs and stops exactly at `script.length`, "REP COMPLETE" hands off to a
 real captured replay that loops forever with working pause/scrub, `#hud`
 stays hidden throughout. `drill-drip` specifically confirmed post-fix: ball
 x at both scripted contacts (P1→P3 and P3→P1) is exactly `1.524` — a true

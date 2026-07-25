@@ -171,6 +171,7 @@ export function Game(opts) {
                    supersFired: 0, supersBlasted: 0, supersMissed: 0 };
   this.drillData = null;
   this.drillForcedShot = null;
+  this.drillForcedMoves = {};
   this.drillScriptIndex = 0;
   this.drillHitCount = 0;
   this.drillEndGrace = 0;
@@ -1199,6 +1200,22 @@ Game.prototype._moveCPU = function (p, dt) {
   });
   var tx = strategy.target.x, tz = strategy.target.z, kind = strategy.kind;
 
+  // A drill movement cue (game.drillForcedMoves, armed by
+  // DrillDirector.armMovesForBeat) overrides the AI-chosen steering target —
+  // but never while this player is the currently-armed ball responsibility;
+  // reaching the ball always wins (same precedent as the drillForcedShot
+  // override on `responsible` above). Still flows into the same
+  // Movement.seek() call below, so real accel/decel/arrive physics — not a
+  // faked/interpolated position — produces the resulting motion.
+  var forcedMoveHitter = this.drillForcedShot && this.drillForcedShot.hitter === p;
+  var forcedMove = this.drillForcedMoves && this.drillForcedMoves[p.drillSlot];
+  if (forcedMove && !forcedMoveHitter) {
+    tx = forcedMove.x; tz = forcedMove.z;
+    if (dist2D(tx - p.pos.x, tz - p.pos.z) <= MOVEMENT.CPU_ARRIVE) {
+      delete this.drillForcedMoves[p.drillSlot];
+    }
+  }
+
   var spd = p.ai.cfg.speed;
   var beforeX = p.vel.x, beforeZ = p.vel.z;
   Movement.seek(p.pos, p.vel, { x: tx, z: tz }, spd, dt, {
@@ -1834,7 +1851,9 @@ Game.prototype._cpuHit = function (p) {
   var stabilityIdx = this._computeStability(p);
   var shot;
   if (this.drillForcedShot && this.drillForcedShot.hitter === p) {
+    var firingBeat = this.drillData.script[this.drillScriptIndex];
     shot = DrillDirector.getScriptedShot(this, this.drillData, this.drillScriptIndex, p);
+    DrillDirector.armMovesForBeat(this, firingBeat);
     this.drillScriptIndex++;
     DrillDirector.armNextScriptedShot(this, this.drillData);
   } else {
@@ -2764,11 +2783,13 @@ Game.prototype.startDrill = function (drillData) {
   DrillDirector.resetRep(this, drillData);
 };
 
-// Most drills share DRILL.MAX_SHOTS; a drill can override with its own
-// maxShots (e.g. a dinking rally that wants more touches than a scripted
-// feed-and-drop drill) without every drill needing to declare one.
+// "The drill is the drill" — the rep ends exactly when the authored `script`
+// runs out, never with extra undirected AI touches tacked on. The cap is
+// always the script's own length; DRILL.MAX_SHOTS is only a defensive
+// fallback for the (invalid) case of a drill with no script at all.
 Game.prototype._drillMaxShots = function () {
-  return (this.drillData && this.drillData.maxShots) || DRILL.MAX_SHOTS;
+  var script = this.drillData && this.drillData.script;
+  return (script && script.length) || DRILL.MAX_SHOTS;
 };
 
 Game.prototype._tickDrill = function (dt) {

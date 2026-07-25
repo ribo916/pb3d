@@ -1,6 +1,7 @@
 'use strict';
 
 import { SLOT_INFO } from './drillDirector.js';
+import { COURT } from './constants.js';
 
 // Convert a pickleball-drills grid coord (e.g. 'F10') to pb3d world coords.
 // Top of the SVG (row 1) = far side (z < 0); bottom (row 10) = near side (z > 0).
@@ -16,16 +17,34 @@ export function gridToWorld(coord) {
   return { x: X_STOPS[col], z: Z_STOPS[row - 1] };
 }
 
+function normalizeMoveTo(v) {
+  return (typeof v === 'string') ? gridToWorld(v) : v;
+}
+
 function normalizePositions(positions) {
   if (!positions) return {};
   var out = {};
   var keys = Object.keys(positions);
   for (var i = 0; i < keys.length; i++) {
     var k = keys[i];
-    var v = positions[k];
-    out[k] = (typeof v === 'string') ? gridToWorld(v) : v;
+    out[k] = normalizeMoveTo(positions[k]);
   }
   return out;
+}
+
+// A script entry's optional `moves` array carries movement cues that arm the
+// instant that beat's shot fires (see drillDirector.js's armMovesForBeat) —
+// each cue's `to` accepts the same grid-coord-string-or-{x,z} shape
+// startPositions does, so it needs the same one-time resolution.
+function normalizeScript(script) {
+  return (script || []).map(function (entry) {
+    if (!entry.moves) return entry;
+    return Object.assign({}, entry, {
+      moves: entry.moves.map(function (m) {
+        return Object.assign({}, m, { to: normalizeMoveTo(m.to) });
+      })
+    });
+  });
 }
 
 // Engine-consumed data (startPositions, script) and on-screen narration
@@ -40,6 +59,7 @@ export function normalizeDrill(drill) {
   });
   return Object.assign({}, drill, {
     startPositions: normalizePositions(drill.startPositions),
+    script: normalizeScript(drill.script),
     steps: steps
   });
 }
@@ -108,6 +128,34 @@ export function validateDrill(drill) {
         'a shot always crosses the net to an opponent, never sideways to your own partner'
       );
     }
+
+    // Movement cues (optional): each names any active player (hitter,
+    // partner, or opponent — unlike `target`, not restricted to opponents,
+    // since a cue can be a self-recovery or a partner poach/shadow) and a
+    // position to head toward the instant this beat's shot fires. Not
+    // restricted to the player's own side of the net — a wrong-side target
+    // just walks them to the net and stops (game.js's _clampToSide clamps
+    // live position every frame regardless of steering target).
+    var moves = entry.moves || [];
+    for (var mi = 0; mi < moves.length; mi++) {
+      var mv = moves[mi];
+      if (!activeSet[mv.player]) {
+        errors.push('shot ' + i + ' move ' + mi + ': player ' + mv.player + ' is not in this drill\'s roster');
+        continue;
+      }
+      var to = normalizeMoveTo(mv.to);
+      if (!to || typeof to.x !== 'number' || typeof to.z !== 'number' || !isFinite(to.x) || !isFinite(to.z)) {
+        errors.push('shot ' + i + ' move ' + mi + ': player ' + mv.player + ' has no valid `to` position');
+        continue;
+      }
+      var margin = 2.5;
+      if (Math.abs(to.x) > COURT.HALF_W + margin || Math.abs(to.z) > COURT.HALF_L + margin) {
+        errors.push(
+          'shot ' + i + ' move ' + mi + ': player ' + mv.player + ' target (' +
+          to.x.toFixed(2) + ',' + to.z.toFixed(2) + ') is unreasonably far outside the court'
+        );
+      }
+    }
   }
   return errors;
 }
@@ -117,15 +165,24 @@ var _drills = null;
 // Played out as real live simulated gameplay (see src/drillDirector.js)
 // rather than scripted/animated. `startPositions` and `script` are the only
 // fields the engine reads: `startPositions` places all 4 players before the
-// rep begins, `script` is the ordered {hitter, shotType, target} shot
+// rep begins, `script` is the ordered {hitter, shotType, target, moves?} shot
 // sequence the director follows (script[0] is the opener; script[1+] are
-// forced responses; once the list runs out, real undirected AI free-plays
-// until `maxShots`). `steps` is pure on-screen narration for the Steps
+// forced responses). "The drill is the drill" — the rep ends EXACTLY when
+// `script` runs out (game.js's _drillMaxShots() is always script.length; no
+// undirected free-play tail beyond it), so a script's own length is the only
+// thing that controls how many hits a rep plays before it loops. `steps` is
+// pure on-screen narration for the Steps
 // modal, describing what the drill's own AI/physics naturally produce — not
 // a script the engine follows. `shotType` is any of Shots.TYPES
 // ('drive'|'drop'|'dink'|'lob'|'speedup') plus 'smash'. `target` is always a
 // player slot (P1-P4) on the OPPOSING team from `hitter`; see validateDrill
-// above for the authoring constraints that come with that.
+// above for the authoring constraints that come with that. `moves` (optional)
+// is a list of {player, to} movement cues that arm the instant this beat's
+// shot fires — `player` can be ANY active slot (hitter or not), `to` is a
+// grid coord or {x,z}; see drillDirector.js's armMovesForBeat. Cues are
+// fire-and-forget: they steer real per-frame AI movement (never faked/
+// interpolated position) toward `to` until the player arrives or ball
+// responsibility overrides them, and never gate the script's advance.
 export var DEFAULT_DRILLS = [
   {
     id: 'drill-drip',
@@ -144,7 +201,6 @@ export var DEFAULT_DRILLS = [
     // zone their position sits in. Any x/z on your own side of the net now
     // works for any target.
     startPositions: { P1: 'F10', P2: 'D7', P3: 'F1', P4: 'C2' },
-    maxShots: 4,
     script: [
       { hitter: 'P1', shotType: 'drive', target: 'P3' }, // "return directly down the line"
       // Open question flagged for confirmation: described as "a drive that
@@ -172,9 +228,8 @@ export var DEFAULT_DRILLS = [
     tags: ['dinking', 'cross-court', 'NVZ', 'soft game', 'shadowing'],
     // P1/P3 on opposite x makes this a true diagonal, not a shared column.
     startPositions: { P1: 'F7', P2: 'C7', P3: 'C4', P4: 'F4' },
-    maxShots: 5,
     script: [
-      { hitter: 'P1', shotType: 'dink', target: 'P3' } // opens the rally; no forced response — real AI free-plays the rest
+      { hitter: 'P1', shotType: 'dink', target: 'P3' } // opens the rally; only touch — see note below
     ],
     steps: [
       { title: 'Setup', desc: "All four players are at the kitchen line. P1 and P3 are diagonally cross-court from each other — the live dinking lane. P2 and P4 hold the other diagonal, shadowing the rally." },
@@ -193,13 +248,12 @@ export var DEFAULT_DRILLS = [
     goal: 'Verify a solo-vs-solo drill roster plays correctly.',
     tags: ['test'],
     startPositions: { P1: 'F10', P3: 'F1' },
-    maxShots: 3,
     script: [
       { hitter: 'P1', shotType: 'drive', target: 'P3' }
     ],
     steps: [
       { title: 'Setup', desc: 'P1 and P3 only — no partners on either side.' },
-      { title: 'Rally', desc: 'P1 drives to P3, then real AI free-plays to the cap.' }
+      { title: 'Rally', desc: 'P1 drives to P3 and the rep ends there — a single scripted touch.' }
     ]
   },
   {
@@ -210,13 +264,12 @@ export var DEFAULT_DRILLS = [
     goal: 'Verify an uneven 2-vs-1 drill roster plays correctly.',
     tags: ['test'],
     startPositions: { P1: 'F10', P2: 'D7', P3: 'F1' },
-    maxShots: 3,
     script: [
       { hitter: 'P1', shotType: 'drive', target: 'P3' }
     ],
     steps: [
       { title: 'Setup', desc: 'P1 and P2 (near) vs P3 alone (far).' },
-      { title: 'Rally', desc: 'P1 drives to P3, then real AI free-plays to the cap.' }
+      { title: 'Rally', desc: 'P1 drives to P3 and the rep ends there — a single scripted touch.' }
     ]
   }
 ];
