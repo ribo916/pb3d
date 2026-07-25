@@ -524,12 +524,26 @@ test('engine _moveCPU: a corner-placed partner whose zone-guess would misfire st
   assert.equal(p2.move.kind, 'hold', 'P2 never chases, regardless of what the raw zone math would have guessed');
 });
 
-test('engine _moveCPU: once the script is exhausted (drillForcedShot null), holding stops and free-play resumes', () => {
+test('engine _moveCPU: once the script is exhausted (drillForcedShot null), players still hold instead of dropping into free-play recovery', () => {
   const p1 = makeStubPlayer('near', 0, 'P1', -2.8, 6.4);
   const p3 = makeStubPlayer('far', 0, 'P3', -2.54, -6.4);
   const stub = makeDrillStub([p1, p3], { drillForcedShot: null });
   stub._moveCPU(p1, 0.016);
-  assert.notEqual(p1.move.kind, 'hold', 'no scripted beat pending -> genuine undirected AI/physics free-play, per drillDirector.js\'s contract');
+  assert.deepEqual(p1.move.target, { x: -2.8, z: 6.4 });
+  assert.equal(p1.move.kind, 'hold', 'the rep stays fully scripted through the final ball flight; no free-play recovery');
+});
+
+test('engine _moveCPU: once the final scripted shot has been hit, the receiver no longer chases an unreturnable ball', () => {
+  const p1 = makeStubPlayer('near', 0, 'P1', -2.8, 6.4);
+  const p3 = makeStubPlayer('far', 0, 'P3', 2.43, -6.33);
+  const stub = makeDrillStub([p1, p3], {
+    drillForcedShot: null,
+    ball: { live: true, vel: { x: 0, y: 0, z: 5 }, pos: { x: -2.6, y: 1, z: 0.2 } }
+  });
+  stub.drillHitCount = 4; // capped: the rep is visually finishing, not still playable
+  stub._moveCPU(p1, 0.016);
+  assert.deepEqual(p1.move.target, { x: -2.8, z: 6.4 });
+  assert.equal(p1.move.kind, 'hold', 'the last receiver holds position instead of sprinting after a dead-end final ball');
 });
 
 test('engine _moveCPU: a moves cue always takes priority over the hold default', () => {

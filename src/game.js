@@ -1181,13 +1181,14 @@ Game.prototype._moveCPU = function (p, dt) {
   // drillForcedShot.hitter anyway. Suppressed only while a beat is armed —
   // once the script runs out (drillForcedShot null), the real zone check
   // resumes for the genuine undirected free-play tail.
-  var responsible = (this.mode === 'drill' && this.drillForcedShot) ? false :
+  var drillCapped = this.mode === 'drill' && this.drillHitCount >= this._drillMaxShots();
+  var responsible = (this.mode === 'drill' && (this.drillForcedShot || drillCapped)) ? false :
     pred && (this.mode === 'singles' || p.slot === this._responsibleSlot(team, pred.x));
   // A drill's armed forced-shot target must actively move to intercept
   // regardless of the x-zone rotation (see the matching override in
   // _checkContacts) — otherwise they'd stand there "not responsible" while
   // the ball sails past, and the scripted shot would strand the rep.
-  if (this.drillForcedShot && this.drillForcedShot.hitter === p) responsible = true;
+  if (!drillCapped && this.drillForcedShot && this.drillForcedShot.hitter === p) responsible = true;
   // Strategy dispatch is per-TEAM, not per-match: a solo drill-mode team
   // (2/3-player drill) plays singles.js's movement logic (full-court
   // coverage, no partner/lane assumptions) even though the match's overall
@@ -1222,8 +1223,7 @@ Game.prototype._moveCPU = function (p, dt) {
   // pulls EVERY player — including the two scripted hitters between their
   // own touches — toward the kitchen line by default. DRILLS.md documents
   // this as the intended contract ("script shadowing explicitly via `moves`
-  // cues, don't rely on default AI") — this just enforces it universally
-  // instead of only for solo teams.
+  // cues, don't rely on default AI") — this just enforces it universally.
   //
   // Gated on `pred && responsible`, not plain `responsible`: `responsible`
   // is forced true for the armed scripted hitter unconditionally (see
@@ -1234,11 +1234,11 @@ Game.prototype._moveCPU = function (p, dt) {
   // `!responsible` gate (responsible there already reduces to exactly
   // `pred`), so the previously-verified 2-player case is unaffected.
   //
-  // A `moves` cue (below) always takes priority over this default. Once the
-  // script runs out (drillForcedShot goes null), this no-ops and genuine
-  // undirected AI/physics free-play takes back over, per drillDirector.js's
-  // documented contract.
-  if (this.mode === 'drill' && this.drillForcedShot &&
+  // A `moves` cue (below) always takes priority over this default. Even
+  // after the last scripted shot has fired (drillForcedShot already nulled),
+  // drill mode keeps everyone on-script by holding rather than dropping back
+  // into normal rally positioning before the rep resets.
+  if (this.mode === 'drill' &&
       !(pred && responsible) && !(this.drillForcedMoves && this.drillForcedMoves[p.drillSlot])) {
     tx = p.pos.x; tz = p.pos.z; kind = 'hold';
   }
