@@ -10,7 +10,10 @@ var COLS = 'ABCDEFGH';
 var X_STOPS = [-3.8, -3.048, -1.524, -0.508, 0.508, 1.524, 3.048, 3.8];
 var Z_STOPS = [-7.5, -6.706, -4.0, -2.134, -0.5, 0.5, 2.134, 4.0, 6.706, 7.5];
 var VALID_SHOT_TYPES = SHOT_TYPES.concat(['smash']);
+var VALID_PLAYER_BEHAVIORS = ['move', 'hold', 'shadow', 'recover', 'crash', 'retreat', 'switch', 'chase'];
+var VALID_ARRIVE_BY = ['none', 'bounce', 'contact', 'ball-contact', 'next-contact'];
 var ROW_RE = /^[0-9]+$/;
+var MIN_PLAYER_SPACING = 0.35;
 
 // Returns `null` (not a fallback coordinate) for anything malformed — a
 // caller that gets `{x:0,z:0}` back from a typo can't tell "the drill wants
@@ -47,13 +50,38 @@ function normalizePositions(positions) {
 // startPositions does, so it needs the same one-time resolution.
 function normalizeScript(script) {
   return (Array.isArray(script) ? script : []).map(function (entry) {
-    if (!entry.moves) return entry;
-    return Object.assign({}, entry, {
-      moves: entry.moves.map(function (m) {
+    var out = Object.assign({}, entry);
+    if (out.landing) out.landing = normalizeMoveTo(out.landing);
+    if (out.players) {
+      var playerKeys = Object.keys(out.players);
+      var players = {};
+      for (var pi = 0; pi < playerKeys.length; pi++) {
+        var slot = playerKeys[pi];
+        var dir = out.players[slot] || {};
+        players[slot] = Object.assign({}, dir, dir.to ? { to: normalizeMoveTo(dir.to) } : {});
+      }
+      out.players = players;
+    }
+    if (out.moves) {
+      out.moves = out.moves.map(function (m) {
         return Object.assign({}, m, { to: normalizeMoveTo(m.to) });
-      })
-    });
+      });
+    }
+    return out;
   });
+}
+
+function receiverOf(entry) {
+  return entry && (entry.receiver || entry.target);
+}
+
+function landingOf(entry) {
+  return entry && entry.landing ? normalizeMoveTo(entry.landing) : null;
+}
+
+function directiveTo(entry, slot) {
+  var dir = entry && entry.players && entry.players[slot];
+  return dir && dir.to ? normalizeMoveTo(dir.to) : null;
 }
 
 // Engine-consumed data (startPositions, script) and on-screen narration
@@ -100,6 +128,16 @@ export function activeSlotsOf(drill) {
   return Object.keys(SLOT_INFO).filter(function (slot) { return !!positions[slot]; });
 }
 
+function dist2D(a, b) {
+  var dx = a.x - b.x, dz = a.z - b.z;
+  return Math.sqrt(dx * dx + dz * dz);
+}
+
+function ownSide(slot, pos) {
+  if (!pos) return true;
+  return TEAM_OF[slot] === 'near' ? pos.z > 0 : pos.z < 0;
+}
+
 // Validates a drill's roster and `script`. Returns a (possibly empty) array
 // of human-readable error strings — never throws, so it can be used both as
 // a test assertion and as live feedback in an authoring UI. Accepts either
@@ -142,15 +180,25 @@ export function validateDrill(drill) {
   if (!hasFar) errors.push('roster: no far-side player (need P3 and/or P4)');
   if (activeSet.P2 && !activeSet.P1) errors.push('roster: P2 is present without P1 — P1 is always the near-side anchor');
   if (activeSet.P4 && !activeSet.P3) errors.push('roster: P4 is present without P3 — P3 is always the far-side anchor');
+  if (typeof drill.players === 'number' && drill.players !== active.length) {
+    errors.push('players: says ' + drill.players + ', but startPositions defines ' + active.length + ' active player(s)');
+  }
 
-  // Two active players standing on the exact same spot is never a real
-  // drill formation — flag it rather than silently letting the engine sort
-  // out an overlapping contact-reach/movement mess at runtime.
+  for (var si = 0; si < active.length; si++) {
+    var startPos = positions[active[si]];
+    if (startPos && !ownSide(active[si], startPos)) {
+      errors.push('startPositions: ' + active[si] + ' is on the wrong side of the net for its team');
+    }
+  }
+
+  // Two active players standing too close together is never a real drill
+  // formation — flag it rather than silently letting the engine sort out an
+  // overlapping contact-reach/movement mess at runtime.
   for (var ai = 0; ai < active.length; ai++) {
     for (var aj = ai + 1; aj < active.length; aj++) {
       var pa = positions[active[ai]], pb = positions[active[aj]];
-      if (pa && pb && pa.x === pb.x && pa.z === pb.z) {
-        errors.push('startPositions: ' + active[ai] + ' and ' + active[aj] + ' are at the exact same position');
+      if (pa && pb && dist2D(pa, pb) < MIN_PLAYER_SPACING) {
+        errors.push('startPositions: ' + active[ai] + ' and ' + active[aj] + ' are too close together');
       }
     }
   }
@@ -161,44 +209,124 @@ export function validateDrill(drill) {
   }
   for (var i = 0; i < script.length; i++) {
     var entry = script[i];
+    var receiver = receiverOf(entry);
     if (!activeSet[entry.hitter]) {
       errors.push('shot ' + i + ': hitter ' + entry.hitter + ' is not in this drill\'s roster');
       continue;
     }
-    if (!activeSet[entry.target]) {
-      errors.push('shot ' + i + ': target ' + entry.target + ' is not in this drill\'s roster');
+    if (!activeSet[receiver]) {
+      errors.push('shot ' + i + ': receiver ' + receiver + ' is not in this drill\'s roster');
       continue;
     }
-    if (entry.hitter === entry.target) {
+    if (entry.target && entry.receiver && entry.target !== entry.receiver) {
+      errors.push('shot ' + i + ': target and receiver disagree — use receiver plus landing for v2 shots');
+    }
+    if (entry.hitter === receiver) {
       errors.push('shot ' + i + ': ' + entry.hitter + ' cannot target themselves');
-    } else if (TEAM_OF[entry.hitter] === TEAM_OF[entry.target]) {
+    } else if (TEAM_OF[entry.hitter] === TEAM_OF[receiver]) {
       errors.push(
-        'shot ' + i + ': ' + entry.hitter + ' hits to ' + entry.target + ', but they\'re partners (same team) — ' +
+        'shot ' + i + ': ' + entry.hitter + ' hits to ' + receiver + ', but they\'re partners (same team) — ' +
         'a shot always crosses the net to an opponent, never sideways to your own partner'
       );
     }
     if (VALID_SHOT_TYPES.indexOf(entry.shotType) === -1) {
       errors.push('shot ' + i + ': shotType "' + entry.shotType + '" is not a recognized shot type (' + VALID_SHOT_TYPES.join('|') + ')');
     }
+    if (i + 1 < script.length) {
+      var next = script[i + 1];
+      if (next && receiver !== next.hitter) {
+        errors.push(
+          'shot ' + i + ': receiver ' + receiver + ' does not match shot ' + (i + 1) +
+          ' hitter ' + next.hitter + ' — the next hitter is how the receiving player is chosen'
+        );
+      }
+    }
+    var hasLanding = entry.landing != null;
+    var landing = landingOf(entry);
+    if (hasLanding && !landing) {
+      errors.push('shot ' + i + ': landing has an invalid position (' + JSON.stringify(entry.landing) + ')');
+    } else if (landing) {
+      if (typeof landing.x !== 'number' || typeof landing.z !== 'number' || !isFinite(landing.x) || !isFinite(landing.z)) {
+        errors.push('shot ' + i + ': landing has an invalid position (' + JSON.stringify(entry.landing) + ')');
+      } else {
+        var landingSide = TEAM_OF[entry.hitter] === 'near' ? 'far' : 'near';
+        if (!ownSide(landingSide === 'near' ? 'P1' : 'P3', landing)) {
+          errors.push('shot ' + i + ': landing is on the wrong side of the net for a shot from ' + entry.hitter);
+        }
+        if (Math.abs(landing.x) > COURT.HALF_W || Math.abs(landing.z) > COURT.HALF_L) {
+          errors.push('shot ' + i + ': landing (' + landing.x.toFixed(2) + ',' + landing.z.toFixed(2) + ') must be inside the court');
+        }
+      }
+    }
 
-    // Movement cues (optional): each names any active player (hitter,
-    // partner, or opponent — unlike `target`, not restricted to opponents,
-    // since a cue can be a self-recovery or a partner poach/shadow) and a
-    // position to head toward the instant this beat's shot fires. Not
-    // restricted to the player's own side of the net — a wrong-side target
-    // just walks them to the net and stops (game.js's _clampToSide clamps
-    // live position every frame regardless of steering target).
+    // Player directives (v2, `players`) and legacy movement cues (`moves`):
+    // each names any active player (hitter, partner, or opponent — unlike
+    // `target`, not restricted to opponents, since a cue can be a self-
+    // recovery or a partner poach/shadow) and, when movement is requested,
+    // a legal own-side position to head toward the instant this beat's shot
+    // fires.
+    var directives = entry.players || {};
+    var directivePlayers = {};
+    Object.keys(directives).forEach(function (slot) {
+      var dir = directives[slot] || {};
+      directivePlayers[slot] = true;
+      if (!activeSet[slot]) {
+        errors.push('shot ' + i + ' player ' + slot + ': is not in this drill\'s roster');
+        return;
+      }
+      var behavior = dir.behavior || 'move';
+      if (VALID_PLAYER_BEHAVIORS.indexOf(behavior) === -1) {
+        errors.push('shot ' + i + ' player ' + slot + ': behavior "' + behavior + '" is not recognized');
+      }
+      var arriveBy = dir.arriveBy || 'none';
+      if (VALID_ARRIVE_BY.indexOf(arriveBy) === -1) {
+        errors.push('shot ' + i + ' player ' + slot + ': arriveBy "' + arriveBy + '" is not recognized');
+      }
+      var toDir = directiveTo(entry, slot);
+      if ((behavior !== 'hold') && !toDir) {
+        errors.push('shot ' + i + ' player ' + slot + ': has no valid `to` position');
+        return;
+      }
+      if (toDir) {
+        if (typeof toDir.x !== 'number' || typeof toDir.z !== 'number' || !isFinite(toDir.x) || !isFinite(toDir.z)) {
+          errors.push('shot ' + i + ' player ' + slot + ': has no valid `to` position');
+          return;
+        }
+        if (!ownSide(slot, toDir)) {
+          errors.push('shot ' + i + ' player ' + slot + ': target is on the wrong side of the net');
+        }
+        var dirMargin = 2.5;
+        if (Math.abs(toDir.x) > COURT.HALF_W + dirMargin || Math.abs(toDir.z) > COURT.HALF_L + dirMargin) {
+          errors.push(
+            'shot ' + i + ' player ' + slot + ': target (' +
+            toDir.x.toFixed(2) + ',' + toDir.z.toFixed(2) + ') is unreasonably far outside the court'
+          );
+        }
+      }
+    });
+
     var moves = entry.moves || [];
+    var movedPlayers = {};
     for (var mi = 0; mi < moves.length; mi++) {
       var mv = moves[mi];
       if (!activeSet[mv.player]) {
         errors.push('shot ' + i + ' move ' + mi + ': player ' + mv.player + ' is not in this drill\'s roster');
         continue;
       }
+      if (movedPlayers[mv.player]) {
+        errors.push('shot ' + i + ' move ' + mi + ': player ' + mv.player + ' already has a move cue on this shot');
+      }
+      if (directivePlayers[mv.player]) {
+        errors.push('shot ' + i + ' move ' + mi + ': player ' + mv.player + ' also has a v2 players directive on this shot');
+      }
+      movedPlayers[mv.player] = true;
       var to = normalizeMoveTo(mv.to);
       if (!to || typeof to.x !== 'number' || typeof to.z !== 'number' || !isFinite(to.x) || !isFinite(to.z)) {
         errors.push('shot ' + i + ' move ' + mi + ': player ' + mv.player + ' has no valid `to` position');
         continue;
+      }
+      if (!ownSide(mv.player, to)) {
+        errors.push('shot ' + i + ' move ' + mi + ': player ' + mv.player + ' target is on the wrong side of the net');
       }
       var margin = 2.5;
       if (Math.abs(to.x) > COURT.HALF_W + margin || Math.abs(to.z) > COURT.HALF_L + margin) {
@@ -241,7 +369,7 @@ export var DEFAULT_DRILLS = [
     name: 'Drip Practice',
     players: 4,
     desc: "P1 simulates a short return and can't quite reach the kitchen line before P3 attacks their feet with a drip down the line.",
-    goal: "Train the 3rd-shot drip under pressure: P3 must get there before P1 recovers to the kitchen line and finish at P1's feet, while P1 works the emergency split-step reset.",
+    goal: "Train the 3rd-shot drip under pressure: P3 must get there before P1 recovers to the kitchen line and finish at P1's feet, while P2/P4 learn the matching shadow positions.",
     tags: ['3rd shot drip', 'down the line', 'NVZ', 'reset', 'poaching'],
     // P1 and P3 share a column so the down-the-line shot actually travels in
     // a straight line between them both directions. This didn't use to be
@@ -273,8 +401,7 @@ export var DEFAULT_DRILLS = [
       { title: 'Setup', desc: "P1 is at the baseline about to hit a short return — simulating shot 2 of a rally that came up just short of the kitchen line. P2 shades the middle, ready to poach but respecting P1's down-the-line lane. P3 and P4 start at the baseline, P3 directly across from P1." },
       { title: 'P1 Returns Down the Line', desc: "P1 hits shot 2 — a return down the line to P3 — then starts moving forward toward the kitchen line. Because the return was short, P1 won't quite get there in time." },
       { title: "P3 Drips at P1's Feet", desc: "P3 reads the short return and attacks it — shot 3, a drip down the line at P1's feet — trying to arrive before P1 reaches the kitchen line. P4 moves in alongside P3, ready to crash if the ball pops up." },
-      { title: 'P1 Resets — P2 Holds', desc: "P1 split-steps the instant P3 makes contact — shot 4, a low reset. P2 covers the middle, ready to poach, but respects the angle and stays in the lane rather than jumping the shot early." },
-      { title: 'Resolution — Rep Ends', desc: "Shot 5 resolves the exchange: P1 forced low again, or P3/P4 pressing an easy ball. The ball mostly stays between P1 and P3 down the line, with P2 and P4 moving in but staying honest. After 4 hits (shots 2 through 5), the rep ends and loops as a replay you can pause, rewind, and rewatch." }
+      { title: 'Rep Ends — Review the Shape', desc: "The rep stops after P3's drip lands. Watch whether P4 crashes behind the attack and P2 shades middle without overcommitting. The replay loops so the down-the-line shape can be reviewed." }
     ]
   },
   {

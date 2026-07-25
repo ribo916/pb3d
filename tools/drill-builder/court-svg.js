@@ -32,6 +32,13 @@ function clampToOwnSide(team, z) {
   return team === 'near' ? Math.max(z, MIN_NET_GAP) : Math.min(z, -MIN_NET_GAP);
 }
 
+function clampCourtPoint(p, team) {
+  p.x = Math.max(-HALF_W, Math.min(HALF_W, p.x));
+  p.z = Math.max(-HALF_L, Math.min(HALF_L, p.z));
+  p.z = clampToOwnSide(team, p.z);
+  return p;
+}
+
 // Court body + kitchen zones colored to match the real game's green court
 // palette (COURT_PALETTES.green in scene.js), rather than a neutral slate —
 // so the preview reads as an actual pickleball court. Draws once; returns
@@ -66,10 +73,21 @@ function svgPointFromEvent(svg, evt) {
 export function attachCourtClicks(svg, onChange) {
   svg.addEventListener('click', (evt) => {
     const p = svgPointFromEvent(svg, evt);
+    if (state.placingLandingFor != null) {
+      const entry = state.script[state.placingLandingFor];
+      state.placingLandingFor = null;
+      if (entry) {
+        const receiverTeam = TEAM_OF[entry.target || entry.receiver];
+        entry.landing = clampCourtPoint(p, receiverTeam);
+      }
+      onChange();
+      return;
+    }
     // Placing a movement cue's target takes priority over the normal
-    // player-placement click — a cue can legitimately aim across the net
-    // (a player transitioning forward/back), so it's NOT clamped to either
-    // side the way initial Setup placement is.
+    // player-placement click. Cue targets are clamped to that player's own
+    // side too; the runtime also clamps live position, but authoring a
+    // wrong-side steering target creates misleading arrows and validation
+    // errors.
     if (state.placingMoveFor) {
       const { entryIndex, moveIndex } = state.placingMoveFor;
       const entry = state.script[entryIndex];
@@ -80,13 +98,13 @@ export function attachCourtClicks(svg, onChange) {
       // in that bookkeeping degrades to "the click did nothing" instead of
       // throwing and leaving placingMoveFor armed forever.
       if (entry && entry.moves && entry.moves[moveIndex]) {
-        entry.moves[moveIndex].to = p;
+        const mv = entry.moves[moveIndex];
+        mv.to = clampCourtPoint(p, TEAM_OF[mv.player]);
       }
       onChange();
       return;
     }
-    p.z = clampToOwnSide(TEAM_OF[state.selectedSlot], p.z);
-    state.positions[state.selectedSlot] = p;
+    state.positions[state.selectedSlot] = clampCourtPoint(p, TEAM_OF[state.selectedSlot]);
     onChange();
   });
 }
@@ -115,6 +133,27 @@ export function renderPlayers(playerGroup) {
   // here" at a glance.
   if (state.expandedMoveRow != null) {
     const entry = state.script[state.expandedMoveRow];
+    if (entry && entry.landing) {
+      const hitterPos = state.positions[entry.hitter];
+      const color = '#f2e85b';
+      const ring = svgEl('circle', {
+        cx: entry.landing.x, cy: entry.landing.z, r: 0.2, fill: color,
+        stroke: '#1b1d26', 'stroke-width': 0.04
+      });
+      const label = svgEl('text', {
+        x: entry.landing.x, y: entry.landing.z - 0.32,
+        'text-anchor': 'middle', 'font-size': 0.22, fill: color
+      });
+      label.textContent = 'ball';
+      playerGroup.appendChild(ring);
+      playerGroup.appendChild(label);
+      if (hitterPos) {
+        playerGroup.appendChild(svgEl('line', {
+          x1: hitterPos.x, y1: hitterPos.z, x2: entry.landing.x, y2: entry.landing.z,
+          stroke: color, 'stroke-width': 0.025, 'stroke-dasharray': '0.12,0.08', opacity: 0.75
+        }));
+      }
+    }
     (entry && entry.moves || []).forEach(mv => {
       if (!mv.to) return;
       const color = SLOT_COLOR[mv.player] || '#aaa';

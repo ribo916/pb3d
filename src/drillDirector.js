@@ -17,8 +17,8 @@
  * unmodified. Player POSITION is never scripted directly — an earlier pass
  * that authored/interpolated positions directly produced a visible sliding/
  * gliding artifact (see DRILLS.md's "Pass 2" note). Instead, each beat can
- * carry an optional `moves` array — {player, to} cues, armed the instant that
- * beat's shot fires (armMovesForBeat below) — that only ever override the
+ * carry optional `players` directives (legacy `moves` still load), armed the
+ * instant that beat's shot fires (armMovesForBeat below) — that only override the
  * STEERING TARGET fed into game.js's existing per-frame Movement.seek() call,
  * the same call every CPU's movement already runs through every frame. Real
  * accel/decel/arrive physics still produces the resulting position and
@@ -33,7 +33,8 @@
  * captured into a fresh recorder started exactly at Setup, then looped
  * forever as a real recorded replay (src/replay.js's makePlayback — the
  * same engine instant replay uses) with real pause/rewind/scrub, instead of
- * continuing to re-simulate indefinitely.
+ * continuing to re-simulate indefinitely. `arriveBy` deadlines plan a speed
+ * through that same seek path and warn when the real player cannot get there.
  *
  * Functions here take `game` (a Game instance) and mutate it directly —
  * same layering as src/practice.js (pure helpers) + game.js's _tickPractice/
@@ -44,8 +45,9 @@ import * as Physics from './physics.js';
 import * as Rules from './rules.js';
 import * as Shots from './shots.js';
 import * as Power from './power.js';
+import * as Movement from './movement.js';
 import { makeRecorder, makePlayback } from './replay.js';
-import { DRILL } from './constants.js';
+import { DRILL, HIT, MOVEMENT } from './constants.js';
 
 const C = Physics.COURT;
 // game.js's STATE.SERVE/STATE.RALLY string values, inlined to avoid a
@@ -81,6 +83,23 @@ function resolvePlayer(game, slotKey) {
   return null;
 }
 
+function receiverKeyOf(entry) {
+  return entry && (entry.receiver || entry.target);
+}
+
+function landingOf(entry, receiverPlayer, explicitClamp) {
+  if (entry && entry.landing) {
+    return {
+      x: entry.landing.x,
+      z: explicitClamp ? clampExplicitLandingZ(entry.landing.z) : entry.landing.z
+    };
+  }
+  return receiverPlayer ? {
+    x: receiverPlayer.pos.x,
+    z: clampLandingZ(receiverPlayer.pos.z)
+  } : null;
+}
+
 // A target player's authored *standing* position can legitimately sit just
 // behind the real baseline (drillStore.js's grid rows 1/10 resolve to
 // z=±7.5, deliberately beyond HALF_L=±6.706, matching where a player
@@ -94,6 +113,11 @@ function resolvePlayer(game, slotKey) {
 // pulled in.
 function clampLandingZ(z) {
   var mag = Math.min(Math.abs(z), C.HALF_L * 0.92);
+  return mag * (z < 0 ? -1 : 1);
+}
+
+function clampExplicitLandingZ(z) {
+  var mag = Math.min(Math.abs(z), C.HALF_L);
   return mag * (z < 0 ? -1 : 1);
 }
 
@@ -130,6 +154,7 @@ export function resetRep(game, drillData) {
 
   game.drillForcedShot = null;
   game.drillForcedMoves = {};
+  game.drillWarnings = [];
   game.drillScriptIndex = 0;
   game.drillHitCount = 0;
   game.drillEndGrace = 0;
@@ -173,10 +198,10 @@ export function armNextScriptedShot(game, drillData) {
   var next = script[game.drillScriptIndex];
   if (!next) { game.drillForcedShot = null; return; }
   var hitter = resolvePlayer(game, next.hitter);
-  game.drillForcedShot = hitter ? { hitter: hitter } : null;
+  game.drillForcedShot = hitter ? { hitter: hitter, receiver: resolvePlayer(game, receiverKeyOf(next)) } : null;
 }
 
-// Arms game.drillForcedMoves from `beat.moves` — called the moment a beat's
+// Arms game.drillForcedMoves from v2 `beat.players` and legacy `beat.moves` —
 // shot actually FIRES (fireOpeningShot for script[0], game.js's _cpuHit for
 // script[1+]), never when a future beat is merely armed via
 // armNextScriptedShot: a cue shouldn't start steering a player toward it
@@ -188,13 +213,95 @@ export function armNextScriptedShot(game, drillData) {
 // previous target rather than snapping back to default AI positioning the
 // instant an unrelated beat fires. game.drillForcedMoves is only ever wiped
 // wholesale in resetRep(), once per drill open.
-export function armMovesForBeat(game, beat) {
-  var moves = (beat && beat.moves) || [];
+function directiveSeconds(game, arriveBy) {
+  if (!arriveBy || arriveBy === 'none') return null;
+  var flight = game.ball && game.ball.flight;
+  if (!flight || !(flight.T >= 0)) return null;
+  var bounce = Math.max(0, flight.T - (flight.elapsed || 0));
+  if (arriveBy === 'bounce') return bounce;
+  // contact / ball-contact / next-contact are authoring aliases for the
+  // next paddle contact. Estimate the first hittable point near the solved
+  // landing from the cached flight samples. If a sparse/legacy flight has no
+  // samples, fall back to a small allowance after its first bounce.
+  var samples = flight.samples || [];
+  var landing = flight.landing;
+  if (landing) {
+    for (var i = 0; i < samples.length; i++) {
+      var sample = samples[i];
+      var dx = sample.x - landing.x, dz = sample.z - landing.z;
+      if (sample.t > (flight.elapsed || 0) &&
+          sample.y > 0 && sample.y < HIT.REACH_Y_MAX &&
+          Math.sqrt(dx * dx + dz * dz) < HIT.REACH) {
+        return Math.max(0, sample.t - (flight.elapsed || 0));
+      }
+    }
+  }
+  return bounce + DRILL.CONTACT_AFTER_BOUNCE;
+}
+
+function deadlineFor(game, slot, p, target, arriveBy, beatIndex) {
+  var seconds = directiveSeconds(game, arriveBy);
+  if (seconds === null) return null;
+  var maxSpeed = p.ai && p.ai.cfg ? p.ai.cfg.speed : 0;
+  var plan = Movement.planSeekArrival(p.pos, p.vel, target, maxSpeed, seconds, {
+    accel: MOVEMENT.CPU_ACCEL,
+    decel: MOVEMENT.CPU_DECEL,
+    arrive: MOVEMENT.CPU_ARRIVE,
+    stop: MOVEMENT.CPU_STOP
+  });
+  var deadline = {
+    seconds: seconds,
+    speed: plan.speed,
+    reachable: plan.reachable,
+    minTime: plan.minTime
+  };
+  if (!plan.reachable) {
+    if (!game.drillWarnings) game.drillWarnings = [];
+    var shotLabel = typeof beatIndex === 'number' ? 'shot ' + beatIndex + ' ' : '';
+    var minLabel = isFinite(plan.minTime) ? plan.minTime.toFixed(2) + 's' : 'more than 8.00s';
+    var warning = shotLabel + 'player ' + slot + ': arriveBy ' + arriveBy +
+      ' is unreachable (' + minLabel + ' needed, ' + seconds.toFixed(2) + 's available)';
+    game.drillWarnings.push(warning);
+    if (typeof console !== 'undefined' && console.warn) console.warn('PB3D drill warning: ' + warning);
+  }
+  return deadline;
+}
+
+export function armMovesForBeat(game, beat, beatIndex) {
   if (!game.drillForcedMoves) game.drillForcedMoves = {};
+  var directives = (beat && beat.players) || {};
+  Object.keys(directives).forEach(function (slot) {
+    var dir = directives[slot] || {};
+    var p = resolvePlayer(game, slot);
+    if (!p) return;
+    if (dir.behavior === 'hold') {
+      var holdTarget = { x: p.pos.x, z: p.pos.z };
+      var holdMove = {
+        x: p.pos.x, z: p.pos.z,
+        behavior: 'hold',
+        arriveBy: dir.arriveBy || null
+      };
+      var holdDeadline = deadlineFor(game, slot, p, holdTarget, dir.arriveBy, beatIndex);
+      if (holdDeadline) holdMove.deadline = holdDeadline;
+      game.drillForcedMoves[slot] = holdMove;
+      return;
+    }
+    if (dir.to) {
+      var move = {
+        x: dir.to.x, z: dir.to.z,
+        behavior: dir.behavior || 'move',
+        arriveBy: dir.arriveBy || null
+      };
+      var deadline = deadlineFor(game, slot, p, dir.to, dir.arriveBy, beatIndex);
+      if (deadline) move.deadline = deadline;
+      game.drillForcedMoves[slot] = move;
+    }
+  });
+  var moves = (beat && beat.moves) || [];
   for (var i = 0; i < moves.length; i++) {
     var mv = moves[i];
     var p = resolvePlayer(game, mv.player);
-    if (p && mv.to) game.drillForcedMoves[mv.player] = { x: mv.to.x, z: mv.to.z };
+    if (p && mv.to) game.drillForcedMoves[mv.player] = { x: mv.to.x, z: mv.to.z, behavior: 'move', arriveBy: null };
   }
 }
 
@@ -209,8 +316,10 @@ export function fireOpeningShot(game, drillData) {
   var first = script[0];
   if (!first) return;
   var hitter = resolvePlayer(game, first.hitter);
-  var targetPlayer = resolvePlayer(game, first.target);
-  if (!hitter || !targetPlayer) return;
+  var receiverPlayer = resolvePlayer(game, receiverKeyOf(first));
+  if (!hitter || !receiverPlayer) return;
+  var landing = landingOf(first, receiverPlayer, true);
+  if (!landing) return;
 
   var hitterTeam = hitter.team;
   var responderTeam = (hitterTeam === 'near') ? 'far' : 'near';
@@ -236,19 +345,28 @@ export function fireOpeningShot(game, drillData) {
   var spec = Shots.specV2(first.shotType, C.KITCHEN, C.HALF_L);
   game.ball.pos.x = hitter.pos.x; game.ball.pos.y = 0.9; game.ball.pos.z = hitter.pos.z;
   var spin = { x: spec.spinX || 0, y: spec.spinY || 0, z: 0 };
-  // Target the named player's ACTUAL current position (x and z) directly —
-  // the chess-like "aim at this player" semantics the schema promises, and
-  // (unlike deriving an x-sign from Rules.sideX's service-court-rotation
-  // formula, which two earlier drills got wrong) can't misfire onto empty
-  // court: it's aimed at exactly where the target visibly stands. game.js's
+  // Legacy shots target the receiver's live body position. v2 shots can
+  // instead carry an explicit landing while still naming the receiver who
+  // owns the next contact. This avoids deriving an x-sign from Rules.sideX's
+  // service-court-rotation formula, which two earlier drills got wrong, and
+  // also lets authors aim at feet/open court without changing who receives.
+  // game.js's
   // _checkContacts/_moveCPU also override the engine's normal x-zone
   // contact-responsibility check whenever a drillForcedShot is armed, so the
-  // named target always gets the chance to hit it regardless of which zone
+  // named receiver always gets the chance to hit it regardless of which zone
   // their authored position happens to sit in.
-  game._executeShotV2(targetPlayer.pos.x, clampLandingZ(targetPlayer.pos.z), spec.apex, spec.margin, spin, { type: first.shotType });
+  if (hitter.mesh && hitter.mesh.swing) {
+    hitter.mesh.swing(first.shotType === 'smash' ? 'smash' : Shots.swingSide(hitter.pos.x, landing.x, hitterTeam === 'near' ? 1 : -1));
+  }
+  if (game.audio) game.audio.sfx.paddle();
+  if (game._triggerHitEffect) game._triggerHitEffect();
+  game._executeShotV2(landing.x, landing.z, spec.apex, spec.margin, spin, {
+    type: first.shotType,
+    isSmash: first.shotType === 'smash'
+  });
   Rules.onPaddleHit(game.match, hitterTeam, { volley: false, inKitchen: false });
   game.drillHitCount = 1; // the opener is contact #1 of the drill's max-shots cap
-  armMovesForBeat(game, first);
+  armMovesForBeat(game, first, 0);
 
   game.drillScriptIndex = 1;
   armNextScriptedShot(game, drillData);
@@ -275,16 +393,19 @@ export function getScriptedShot(game, drillData, scriptIndex, hitterPlayer) {
   var script = (drillData && drillData.script) || [];
   var entry = script[scriptIndex];
   if (!entry) return null;
-  var targetPlayer = resolvePlayer(game, entry.target);
-  if (!targetPlayer) return null;
+  var receiverPlayer = resolvePlayer(game, receiverKeyOf(entry));
+  if (!receiverPlayer) return null;
+  var landing = landingOf(entry, receiverPlayer, true);
+  if (!landing) return null;
   var sp = Shots.specV2(entry.shotType, C.KITCHEN, C.HALF_L);
   var zSign = (hitterPlayer.team === 'near') ? -1 : 1;
   return {
-    target: { x: targetPlayer.pos.x, z: clampLandingZ(targetPlayer.pos.z) * zSign },
+    target: { x: landing.x, z: landing.z * zSign },
     apex: sp.apex,
     margin: sp.margin,
     spin: { x: sp.spinX || 0, y: sp.spinY || 0, z: 0 },
-    type: entry.shotType
+    type: entry.shotType,
+    isSmash: entry.shotType === 'smash'
   };
 }
 

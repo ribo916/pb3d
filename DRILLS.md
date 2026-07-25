@@ -78,7 +78,8 @@ mesh sync all work with zero drill-specific code.
   startPositions: { P1: 'F10', P2: 'D7', P3: 'F1', P4: 'C2' },  // grid coords or raw {x,z}; only present slots are in the roster
   script: [
     { hitter: 'P1', shotType: 'drive', target: 'P3' },
-    { hitter: 'P3', shotType: 'drop',  target: 'P1', moves: [{ player: 'P1', to: 'F8' }] }
+    { hitter: 'P3', shotType: 'drop',  target: 'P1', players: { P1: { to: 'F8', behavior: 'recover', arriveBy: 'bounce' } } },
+    { hitter: 'P1', shotType: 'lob', receiver: 'P4', landing: 'G2' } // receiver is separate from landing
   ],
   steps: [{ title, desc }, ...]            // pure on-screen narration, NOT read by the engine
 }
@@ -88,9 +89,9 @@ No separate `maxShots` cap exists anymore — the rep ends EXACTLY when `script`
 runs out (`game.js`'s `_drillMaxShots()` is always `script.length`), never
 with extra undirected AI touches tacked on. If you author N scripted shots,
 you get exactly N hits, every rep, every time. A `script` entry can also
-carry an optional `moves: [{player, to}]` — movement cues (self-recovery or a
-partner poach/shadow) that arm the instant that beat's shot fires; see
-"Movement cues" below.
+carry optional per-player directives (`players: { P1: {to, behavior,
+arriveBy} }`) that arm the instant that beat's shot fires; see "Player
+directives" below. Legacy `moves: [{player, to}]` entries still load.
 
 - **Roster is variable**: 2, 3, or 4 players, derived purely from which
   `P1`-`P4` keys exist in `startPositions` (`activeSlotsOf(drill)`, exported
@@ -109,29 +110,53 @@ partner poach/shadow) that arm the instant that beat's shot fires; see
   (so real stability/timing degradation still applies — a forced shot can
   still pop up). The rep ends the instant `script` runs out — no undirected
   free-play tail. `shotType` is any of `Shots.TYPES`
-  (`drive`/`drop`/`dink`/`lob`/`speedup`) plus `smash`. `target` is always a
-  player slot on the hitter's OPPOSING team — a shot can't be aimed at your
-  own partner.
-- **Movement cues (`moves`, optional per beat)**: `{player, to}` entries that
-  arm the instant that beat's shot fires (`drillDirector.js`'s
-  `armMovesForBeat`), directing any active player (the hitter's own
-  recovery, or a partner's poach/shadow) toward a spot. They only ever
-  override the steering TARGET fed into the existing per-frame
+  (`drive`/`drop`/`dink`/`lob`/`speedup`) plus `smash`. Legacy entries use
+  `target` as both the receiver and the body-position landing proxy. v2
+  entries can use `receiver` plus `landing` to separate "who must play the
+  next ball" from "where the ball lands." `receiver`/`target` must always be
+  a player slot on the hitter's OPPOSING team — a shot can't be aimed at
+  your own partner.
+- **Player directives (`players`, optional per beat)**: keyed by player slot,
+  e.g. `players: { P2: { to: 'D7', behavior: 'shadow', arriveBy:
+  'contact' } }`. They arm the instant that beat's shot fires
+  (`drillDirector.js`'s `armMovesForBeat`), directing any active player
+  (the hitter's own recovery, or a partner's poach/shadow) toward a spot.
+  `behavior` is authored intent metadata (`move`/`recover`/`shadow`/
+  `crash`/`retreat`/`switch`/`chase`/`hold`); `arriveBy` is timing metadata
+  (`none`/`bounce`/`contact`/`ball-contact`/`next-contact`). `bounce` uses
+  the current solved `ball.flight.T`; the three contact spellings are
+  aliases for the next paddle contact, estimated from the first hittable
+  cached flight sample near the solved landing (with
+  `DRILL.CONTACT_AFTER_BOUNCE` as a sparse/legacy-flight fallback). The
+  runtime simulates the existing
+  `Movement.seek()` path against cloned state to choose the lowest real
+  movement speed that can satisfy the deadline. If even the player's normal
+  top speed cannot make it, the player still runs at that real top speed and
+  `game.drillWarnings` receives a one-time authoring warning — positions are
+  never faked. Directives only
+  ever override the steering TARGET fed into the existing per-frame
   `Movement.seek()` call (`game.js`'s `_moveCPU`) — never position directly
   — so real accel/decel physics still produces the resulting velocity/
   animation, the same load-bearing property that made the sliding-artifact
   fix (Pass 2, above) stick. Cues are fire-and-forget: non-blocking, cleared
   on arrival, always overridden by real ball responsibility, and an
   outstanding cue persists across later beats unless one re-issued for that
-  slot. This is also the replacement for what free-play-after-script used to
-  paper over (shadowing/coverage) — script it explicitly instead.
+  slot. Legacy `moves: [{player, to}]` are normalized into this same runtime
+  queue for backward compatibility. This is also the replacement for what
+  free-play-after-script used to paper over (shadowing/coverage) — script it
+  explicitly instead.
 - **`validateDrill(drill)`** (`drillStore.js`) — the only authoring
-  constraints left: roster shape (at least one player per side; P2 can't
-  exist without P1, P4 can't exist without P3; every script `hitter`/
-  `target` must be in the active roster) and same-team targets. Returns a
-  list of human-readable errors; used in `test/logic.test.mjs` and live by
-  the builder tool. **There is no positional/zone constraint** — a script
-  target can be authored anywhere on their own side of the net (see below
+  constraints: roster shape (at least one player per side; P2 can't exist
+  without P1, P4 can't exist without P3; optional `players` count must match
+  `startPositions`), legal own-side starting positions, minimum spacing,
+  every script `hitter` and effective receiver (`receiver || target`) in
+  the active roster, cross-net receivers, receiver-chain continuity
+  (`script[i]`'s receiver must be `script[i+1].hitter`), valid shot types,
+  legal explicit `landing` points, and well-formed `players`/legacy `moves`
+  (one directive per player per beat, on that player's own side). Returns a list of
+  human-readable errors; used in `test/drill.test.mjs` and live by the
+  builder tool. **There is no lane/zone-sign constraint** — a script
+  receiver can be authored anywhere on their own side of the net (see below
   for why that's safe).
 
 ### Director (`src/drillDirector.js`)
@@ -148,15 +173,16 @@ partner poach/shadow) that arm the instant that beat's shot fires; see
   starts a fresh recorder sized to capture one bounded rep from its true
   start.
 - **`fireOpeningShot(game, drillData)`** — fires `script[0]` directly via
-  `_executeShotV2` (a table-setting injection, no timing/stability noise —
-  nothing realistically "swings" for it). Seeds a synthetic `match.rally`
+  `_executeShotV2` (a table-setting injection, no timing/stability noise,
+  but still with visible swing/audio/contact feedback). Seeds a synthetic `match.rally`
   already "deep in" (`shots: 4`, `phase: 'open'`) rather than framing it as a
   serve or return: skips `Rules.onFloor`'s shots===1 serve-fault check on
   the first bounce, and clears `strategies/doubles.js`'s `advanceAllowed`
   threshold (>=3) so both teams read as "already at the net" immediately.
-  Targets the named player's **actual live position** (x and z) directly —
-  the chess-like "aim at this player" semantics the schema promises. Then
-  arms `script[1]` via `armNextScriptedShot`.
+  Legacy entries target the named receiver's actual live position (x and z)
+  directly; v2 entries with `landing` target that explicit court spot while
+  keeping the named receiver responsible for the next contact. Then arms
+  `script[1]` via `armNextScriptedShot`.
 - **`getScriptedShot(game, drillData, scriptIndex, hitterPlayer)`** — the
   forced-shot computation for the current script index; same
   `{target, apex, spin, type, margin}` shape `AI.chooseShot()` returns.
@@ -289,25 +315,15 @@ out the state machine and replay-loop transport.
 - **`drill-drip`** ("Drip Practice", 4 players, 2 scripted shots) — P1
   simulates a short return down the line to P3, who drips back at P1's
   feet; P1 and P3 share a grid column for a genuine down-the-line lane.
-  P2 shades/poaches, P4 follows P3 in. **Open item, not silently
-  resolved**: the drip shot is authored as `shotType: 'drop'`. Described as
-  "a drive that lands at P1's feet" — real `drive` (`shots.js`) is the
-  flat, fast, driven family; `drop` is the soft, arcing, kitchen-dying
-  family, closer to the original neutralize-the-point intent. Flagged in a
-  comment directly above the script entry — confirm or correct. **Also
-  pending confirmation post-`maxShots` removal**: its `goal` describes P1
-  working "the emergency split-step reset" after P3's drip, but the script
-  only has 2 entries, so the rep now ends right when P3's drip lands —
-  before P1 ever gets to hit that reset. Needs either a 3rd scripted entry
-  (P1's reset) or a rewritten goal/steps; not decided yet.
-- **`drill-dink-rally`** ("Cross-Court Dink Rally", 4 players, 1 scripted
-  shot) — P1 opens with a soft dink cross-court to P3 (opposite x, a true
-  diagonal). **Pending confirmation post-`maxShots` removal**: this used to
-  free-play 4 more touches for a real back-and-forth "rally" feel with P2/P4
-  shadowing; with no free-play tail, the rep now ends after that single
-  dink. Needs its `script` extended to alternate P1↔P3 for as many touches
-  as the rally should have, with `moves` cues replacing what the shadowing
-  used to get from ordinary AI free-play; not decided yet.
+  P2 shades/poaches, P4 follows P3 in. The drip shot is authored as
+  `shotType: 'drop'` because real `drive` (`shots.js`) is the flat, fast,
+  driven family; `drop` is the soft, arcing, kitchen-dying family, closer
+  to the neutralizing drip intent.
+- **`drill-dink-rally`** ("Cross-Court Dink Rally", 4 players, 5 scripted
+  shots) — P1/P3 alternate a true diagonal dink exchange, and P2/P4 carry
+  explicit moves cues to shadow in/out while staying off-ball. This used to
+  depend on the removed free-play tail; the current config now scripts the
+  full five-touch exchange directly.
 - **`drill-1v1-test`** (2 players, 1 scripted shot) and **`drill-2v1-test`**
   (3 players, near side has a partner, far side doesn't, 1 scripted shot) —
   minimal drills tagged `['test']`, shipped specifically to exercise the

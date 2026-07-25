@@ -52,6 +52,47 @@ export function seek(pos, vel, target, maxSpeed, dt, opts) {
   return stepVelocity(pos, vel, desired, dt, opts);
 }
 
+// Find the lowest maxSpeed that lets the normal seek path reach `target`
+// within `seconds`. This simulates seek against clones only; the live player
+// still moves exclusively through the caller's real per-frame seek call.
+// Returns maxSpeed with reachable:false when even the player's real top speed
+// cannot satisfy the deadline.
+export function planSeekArrival(pos, vel, target, maxSpeed, seconds, opts) {
+  opts = opts || {};
+  var stop = opts.stop || 0.05;
+  var dx = target.x - pos.x, dz = target.z - pos.z;
+  if (len2(dx, dz) <= stop) return { speed: 0, reachable: true, minTime: 0 };
+  if (!(seconds > 0) || !(maxSpeed > 0)) {
+    return { speed: Math.max(0, maxSpeed || 0), reachable: false, minTime: Infinity };
+  }
+
+  function arrivalTime(speed, limit) {
+    var p = { x: pos.x, z: pos.z };
+    var v = { x: vel.x || 0, z: vel.z || 0 };
+    var elapsed = 0;
+    var step = 1 / 60;
+    while (elapsed < limit - 1e-8) {
+      var dt = Math.min(step, limit - elapsed);
+      seek(p, v, target, speed, dt, opts);
+      elapsed += dt;
+      if (len2(target.x - p.x, target.z - p.z) <= stop) return elapsed;
+    }
+    return Infinity;
+  }
+
+  var maxTime = arrivalTime(maxSpeed, Math.max(seconds, 8));
+  var reachable = maxTime <= seconds + 1e-6;
+  if (!reachable) return { speed: maxSpeed, reachable: false, minTime: maxTime };
+
+  var lo = 0, hi = maxSpeed;
+  for (var i = 0; i < 12; i++) {
+    var mid = (lo + hi) * 0.5;
+    if (arrivalTime(mid, seconds) <= seconds + 1e-6) hi = mid;
+    else lo = mid;
+  }
+  return { speed: hi, reachable: true, minTime: maxTime };
+}
+
 export function stepVelocity(pos, vel, desired, dt, opts) {
   opts = opts || {};
   desired = desired || { x: 0, z: 0, active: false };

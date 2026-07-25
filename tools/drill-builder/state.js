@@ -22,10 +22,11 @@ export const state = {
   includeP2: true,
   includeP4: true,
   positions: {},           // { P1: {x,z}, ... } — raw world coords, no grid quantization
-  script: [],              // [{ hitter, shotType, target, moves?: [{player, to}] }]
+  script: [],              // [{ hitter, shotType, target, landing?, moves?: [{player, to}] }]
   steps: [{ title: 'Setup', desc: '' }],
   expandedMoveRow: null,   // index of the script row whose "moves" editor is open (also what's drawn on the court)
-  placingMoveFor: null     // { entryIndex, moveIndex } while the next court click sets a move's target
+  placingMoveFor: null,    // { entryIndex, moveIndex } while the next court click sets a move's target
+  placingLandingFor: null  // script index while the next court click sets that shot's landing
 };
 
 // P1/P3 are always active (the anchors); P2/P4 follow their checkboxes.
@@ -56,7 +57,7 @@ export function setSlotIncluded(slot, included) {
     // fail validateDrill's "not in this drill's roster" check instead of
     // being cleaned up here where the intent (removing the player) is clear.
     delete state.positions[slot];
-    state.script = state.script.filter(s => s.hitter !== slot && s.target !== slot);
+    state.script = state.script.filter(s => s.hitter !== slot && s.target !== slot && s.receiver !== slot);
     if (state.selectedSlot === slot) state.selectedSlot = 'P1';
     // Splicing `state.script` above can remove or shift the very entry
     // `expandedMoveRow`/`placingMoveFor` point at. Previously neither was
@@ -69,5 +70,6 @@ export function setSlotIncluded(slot, included) {
     // rather than trying to prove which indices are still valid.
     state.expandedMoveRow = null;
     state.placingMoveFor = null;
+    state.placingLandingFor = null;
   }
 }

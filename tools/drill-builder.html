@@ -77,10 +77,11 @@
   .moves-toggle { background: none; border: none; color: var(--accent); font-size: 11px; cursor: pointer; padding: 4px 0; }
   .moves-toggle:hover { text-decoration: underline; }
   .move-row { display: flex; gap: 6px; align-items: center; margin: 4px 0 4px 12px; }
+  .landing-row { display: flex; gap: 6px; align-items: center; margin: 6px 0 2px 12px; }
   .move-row select { flex: 1; }
-  .move-row button.place { font-size: 11px; padding: 4px 8px; }
-  .move-row button.place.armed { background: rgba(240,190,90,.16); border-color: rgba(240,190,90,.5); color: #f0cfa8; }
-  .move-row .to-readout { font-size: 10px; color: var(--text-faint); min-width: 90px; }
+  .move-row button.place, .landing-row button.place { font-size: 11px; padding: 4px 8px; }
+  .move-row button.place.armed, .landing-row button.place.armed { background: rgba(240,190,90,.16); border-color: rgba(240,190,90,.5); color: #f0cfa8; }
+  .move-row .to-readout, .landing-row .to-readout { font-size: 10px; color: var(--text-faint); min-width: 90px; }
   button {
     background: var(--seg-bg); color: var(--text); border: 1px solid var(--seg-border);
     border-radius: var(--btn-radius); padding: 6px 10px; font-size: 12px; cursor: pointer;
@@ -189,11 +190,11 @@
     </div>
 
     <div class="panel">
-      <h2 class="panel-title" title="Shots in order: who hits, what kind, at whom. Each shot always goes to an opposing player, the way a real rally crosses the net.">Script</h2>
+      <h2 class="panel-title" title="Shots in order: who hits, what kind, who receives, and optionally where the ball lands.">Script</h2>
       <div id="scriptList"></div>
       <div class="row">
         <button id="addShot">+ Add shot</button>
-        <button id="dupShot" title="Mirrors the hitter/target of the last shot and copies its type and movement cues">&#10697; Duplicate last</button>
+        <button id="dupShot" title="Mirrors the hitter/receiver of the last shot and copies its type, landing, and movement cues">&#10697; Duplicate last</button>
       </div>
       <h2 class="panel-title spaced" title="Shown in-game as on-screen narration; not read by the engine.">Narration steps</h2>
       <div id="stepsList"></div>
@@ -220,8 +221,9 @@
       partners on the near side of the net (Team A); P3 &amp; P4 are partners on the far side (Team B) —
       fixed by every game mode, not a per-drill choice. A shot in the Script panel always goes
       from a player to one of the opposing team's active players, the way a real rally shot
-      crosses the net — never sideways to your own partner, so the target dropdown only offers
-      opponents.</p>
+      crosses the net — never sideways to your own partner, so the receiver dropdown only offers
+      opponents. Use "place landing" when the ball should land somewhere other than the receiver's
+      current body position.</p>
     </div>
     <div class="info-section">
       <div class="info-label">Positioning</div>
@@ -229,17 +231,18 @@
       limited to a fixed grid, so serve positions and ATP/around-the-post spots well outside the
       sideline work too. The UI only lets you click on that player's own side of the net (near for
       P1/P2, far for P3/P4) — a click on the wrong side snaps to the nearest legal spot instead of being
-      ignored. Wherever you place a script target within their own side, the engine guarantees they're
-      the one who receives that shot. This positioning is Setup-only, before the rep begins.</p>
+      ignored. Wherever you place a receiver within their own side, the engine guarantees they're
+      the one who receives that shot; a separate landing marker controls the ball path when needed.
+      This positioning is Setup-only, before the rep begins.</p>
     </div>
     <div class="info-section">
-      <div class="info-label">Movement cues</div>
-      <p>Each shot in the script can also carry "moves" — telling any player
+      <div class="info-label">Player directives</div>
+      <p>Each shot in the script can also carry player directives — telling any player
       (the hitter recovering, or a partner poaching/shadowing) to head toward a spot the instant that
-      shot fires. Expand "moves" under a shot row, add a cue, pick who it's for, then click "place on
-      court" and click the target spot. Cues are directions, not guarantees — real AI movement (the
-      same physics-driven steering used everywhere else) carries the player there, and ball
-      responsibility always takes priority if that player needs to actually play the next shot.</p>
+      shot fires. Expand "Directives" under a shot row, add a directive, pick who it's for, choose the
+      behavior/timing labels, then click "place on court" and click the target spot. Directives are
+      directions, not guarantees — real AI movement carries the player there, and ball responsibility
+      always takes priority if that player needs to actually play the next shot.</p>
     </div>
   </div>
 </div>

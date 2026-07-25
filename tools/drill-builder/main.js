@@ -131,6 +131,8 @@ document.getElementById('addShot').addEventListener('click', () => {
   // always defaulting to the same P1->P3 pair regardless of context.
   const hitter = last ? last.target : 'P1';
   const target = last ? last.hitter : opponentsOf(hitter)[0];
+  state.placingMoveFor = null;
+  state.placingLandingFor = null;
   state.script.push({ hitter, shotType: 'drive', target });
   renderScript(onChange);
   onChange();
@@ -144,9 +146,12 @@ document.getElementById('dupShot').addEventListener('click', () => {
   // re-authoring a long alternating pattern by hand (add shot, re-pick
   // type, re-place every move) is the exact tedium this button removes.
   const entry = { hitter: last.target, shotType: last.shotType, target: last.hitter };
+  if (last.landing) entry.landing = Object.assign({}, last.landing);
   if (last.moves && last.moves.length) {
     entry.moves = last.moves.map(mv => Object.assign({}, mv, mv.to ? { to: Object.assign({}, mv.to) } : {}));
   }
+  state.placingMoveFor = null;
+  state.placingLandingFor = null;
   state.script.push(entry);
   renderScript(onChange);
   onChange();
@@ -173,11 +178,22 @@ function buildDrill() {
     startPositions: Object.assign({}, state.positions),
     script: state.script.map(s => {
       const copy = Object.assign({}, s);
-      if (copy.moves && copy.moves.length) {
-        copy.moves = copy.moves.map(m => Object.assign({}, m));
-      } else {
-        delete copy.moves;
+      if (copy.landing) {
+        copy.receiver = copy.target;
+        copy.landing = Object.assign({}, copy.landing);
       }
+      if (copy.moves && copy.moves.length) {
+        copy.players = Object.assign({}, copy.players || {});
+        copy.moves.forEach(m => {
+          const dir = {
+            behavior: m.behavior || 'move',
+            arriveBy: m.arriveBy || 'none'
+          };
+          if (m.to) dir.to = Object.assign({}, m.to);
+          copy.players[m.player] = dir;
+        });
+      }
+      delete copy.moves;
       return copy;
     }),
     steps: state.steps.filter(s => s.title || s.desc)

@@ -172,6 +172,7 @@ export function Game(opts) {
   this.drillData = null;
   this.drillForcedShot = null;
   this.drillForcedMoves = {};
+  this.drillWarnings = [];
   this.drillScriptIndex = 0;
   this.drillHitCount = 0;
   this.drillEndGrace = 0;
@@ -1272,7 +1273,9 @@ Game.prototype._moveCPU = function (p, dt) {
     }
   }
 
-  var spd = p.ai.cfg.speed;
+  var spd = forcedMove && !forcedMoveHitter && forcedMove.deadline
+    ? forcedMove.deadline.speed
+    : p.ai.cfg.speed;
   var beforeX = p.vel.x, beforeZ = p.vel.z;
   Movement.seek(p.pos, p.vel, { x: tx, z: tz }, spd, dt, {
     accel: MOVEMENT.CPU_ACCEL,
@@ -1926,7 +1929,7 @@ Game.prototype._cpuHit = function (p) {
   if (firedScriptedShot) {
     var firingBeat = this.drillData.script[this.drillScriptIndex];
     shot = DrillDirector.getScriptedShot(this, this.drillData, this.drillScriptIndex, p);
-    DrillDirector.armMovesForBeat(this, firingBeat);
+    DrillDirector.armMovesForBeat(this, firingBeat, this.drillScriptIndex);
     this.drillScriptIndex++;
     DrillDirector.armNextScriptedShot(this, this.drillData);
   } else {

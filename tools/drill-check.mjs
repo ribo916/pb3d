@@ -132,7 +132,65 @@ async function sawSwingDuringReplay(page) {
   await page.close();
 }
 
-// ---- 2) Shipped drills end-to-end, including swing animation in the LOOP ----
+// ---- 2) v2 landing + operational arriveBy deadlines ----
+{
+  const { page, errors } = await newPage();
+  const drill = {
+    id: 'drill-check-v2-landing', name: 'Check V2 Landing', players: 4, desc: '', goal: '', tags: [],
+    startPositions: {
+      P1: { x: 1.5, z: 4.0 }, P2: { x: -1.5, z: 3.2 },
+      P3: { x: -1.5, z: -4.0 }, P4: { x: 1.5, z: -3.2 }
+    },
+    script: [
+      {
+        hitter: 'P1', receiver: 'P3', shotType: 'drop', landing: { x: -0.5, z: -3.0 },
+        players: {
+          P2: { to: { x: -1.0, z: 3.2 }, behavior: 'shadow', arriveBy: 'contact' },
+          P4: { to: { x: -4.4, z: -6.5 }, behavior: 'retreat', arriveBy: 'bounce' }
+        }
+      },
+      { hitter: 'P3', target: 'P1', shotType: 'dink' }
+    ],
+    steps: [{ title: 'Setup', desc: '' }]
+  };
+  await page.goto(base, { waitUntil: 'networkidle' });
+  await page.evaluate((d) => sessionStorage.setItem('pb3dWipDrill', JSON.stringify(d)), drill);
+  await page.goto(base + '?testDrill=1', { waitUntil: 'networkidle' });
+  await page.waitForFunction(() => window.__game && window.__game.players && window.__game.players.length >= 4, { timeout: 15000 });
+
+  const observed = await page.waitForFunction(() => {
+    const g = window.__game;
+    if (!g || g.drillHitCount !== 1 || !g.ball.flight || !g.ball.flight.landing) return false;
+    return {
+      landing: { x: g.ball.flight.landing.x, z: g.ball.flight.landing.z },
+      receiver: g.drillForcedShot && g.drillForcedShot.hitter && g.drillForcedShot.hitter.drillSlot,
+      p2Deadline: g.drillForcedMoves.P2 && g.drillForcedMoves.P2.deadline,
+      p4Deadline: g.drillForcedMoves.P4 && g.drillForcedMoves.P4.deadline,
+      warnings: g.drillWarnings.slice()
+    };
+  }, { timeout: 15000 }).then(h => h.jsonValue()).catch(() => null);
+  check(!!observed, 'v2 landing drill: never observed first scripted flight');
+  if (observed) {
+    check(Math.abs(observed.landing.x - drill.script[0].landing.x) < 0.25,
+      'v2 landing drill: first flight landed near x=' + observed.landing.x.toFixed(2) + ', expected explicit x=' + drill.script[0].landing.x);
+    check(Math.abs(observed.landing.z - drill.script[0].landing.z) < 0.25,
+      'v2 landing drill: first flight landed near z=' + observed.landing.z.toFixed(2) + ', expected explicit z=' + drill.script[0].landing.z);
+    check(observed.receiver === 'P3',
+      'v2 landing drill: next receiver/hitter was ' + observed.receiver + ', expected P3');
+    check(observed.p2Deadline && observed.p2Deadline.reachable,
+      'v2 deadline drill: reachable contact directive did not receive an operational seek plan');
+    check(observed.p4Deadline && !observed.p4Deadline.reachable,
+      'v2 deadline drill: impossible bounce directive was not marked unreachable');
+    check(observed.warnings.some(w => /P4: arriveBy bounce is unreachable/.test(w)),
+      'v2 deadline drill: unreachable directive did not emit an authoring warning');
+  }
+  const snap = await playToReplay(page, 30000);
+  check(!!snap && snap.replaying, 'v2 landing drill: never reached looped replay within 30s');
+  check(errors.length === 0, 'v2 landing drill: page/console errors: ' + JSON.stringify(errors));
+  await page.close();
+}
+
+// ---- 3) Shipped drills end-to-end, including swing animation in the LOOP ----
 for (const id of ['drill-drip', 'drill-dink-rally', 'drill-1v1-test', 'drill-2v1-test']) {
   const { page, errors } = await newPage();
   await page.goto(base + '?drill=' + id, { waitUntil: 'networkidle' });
@@ -150,12 +208,9 @@ for (const id of ['drill-drip', 'drill-dink-rally', 'drill-1v1-test', 'drill-2v1
     check(snap.youVisible === false, id + ': the "YOU" ring marker was visible (should always be hidden in drill mode)');
   }
 
-  // The opener (script[0]) is fired directly by fireOpeningShot, a "table-
-  // setting injection" that deliberately never calls mesh.swing() (nothing
-  // realistically "swings" for it, per drillDirector.js) — only script[1+],
-  // fired through _cpuHit, ever produces a swing event. A 1-shot drill
-  // (drill-1v1-test/2v1-test) therefore has ZERO swing events in its
-  // entire recorded rep, by design; only check drills with a real second+ shot.
+  // One-shot drills have a very short recorded swing window, so keep the
+  // replay swing assertion focused on multi-shot drills where at least one
+  // forced response goes through _cpuHit as well as the direct opener.
   if (scriptLength > 1) {
     const sawSwing = await sawSwingDuringReplay(page);
     check(sawSwing, id + ': no swing animation observed during the LOOPED replay (regression: _tickDrillReplay must consume swing events)');
@@ -172,5 +227,5 @@ if (problems.length) {
   console.error('\nFAILED:\n' + problems.map(p => '  - ' + p).join('\n'));
   process.exitCode = 1;
 } else {
-  console.log('OK — drill-mode live checks passed: 4-corner hold, all 4 shipped drills complete + loop + animate + hide the YOU marker.');
+  console.log('OK — drill-mode live checks passed: 4-corner hold, v2 landing/deadlines, all 4 shipped drills complete + loop + animate + hide the YOU marker.');
 }

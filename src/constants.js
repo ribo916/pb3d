@@ -308,6 +308,10 @@ export const PRACTICE = {
 export const DRILL = {
   SETUP_HOLD: 1.2,       // seconds to hold the starting formation before the feed fires
   REP_PAUSE: 1.5,        // seconds to pause after the live rep ends before entering the replay loop
+  // `arriveBy: bounce` uses the current solver flight time directly.
+  // Sparse/legacy flights without trajectory samples need a small post-bounce
+  // fallback allowance when estimating the next paddle contact.
+  CONTACT_AFTER_BOUNCE: 0.35,
   // Paddle contacts (feed counts as #1) before _checkContacts stops letting
   // anyone return the ball — it then naturally bounces out untouched and
   // real "no-return" fault detection ends the point, so the capping shot's

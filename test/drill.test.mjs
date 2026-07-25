@@ -164,6 +164,24 @@ test('getScriptedShot: clamps a target standing behind the baseline to a safe in
   assert.ok(Math.abs(shot.target.z) > Physics.COURT.HALF_L * 0.8, 'still lands deep, close to where P4 actually stands');
 });
 
+test('getScriptedShot: marks scripted smash shots as smashes for animation and quality handling', () => {
+  const stubGame = stubDrillGame();
+  const drillData = { script: [{ hitter: 'P1', shotType: 'smash', target: 'P3' }] };
+  const shot = getScriptedShot(stubGame, drillData, 0, { team: 'near' });
+  assert.equal(shot.type, 'smash');
+  assert.equal(shot.isSmash, true);
+});
+
+test('getScriptedShot: v2 receiver and landing are separate (receiver owns contact, landing owns ball target)', () => {
+  const stubGame = stubDrillGame();
+  const drillData = { script: [
+    { hitter: 'P1', receiver: 'P3', shotType: 'lob', landing: { x: 1.8, z: -6.2 } }
+  ] };
+  const shot = getScriptedShot(stubGame, drillData, 0, { team: 'near' });
+  assert.equal(shot.target.x, 1.8, 'aims at authored landing x, not P3 body x');
+  assert.equal(shot.target.z, 6.2, 'pre-flipped for near-team _cpuHit while preserving authored far-side landing');
+});
+
 test('armNextScriptedShot: arms drillForcedShot for the next scripted shot, clears it once the script runs out', () => {
   const stubGame = stubDrillGame();
   stubGame.drillScriptIndex = 1;
@@ -178,6 +196,18 @@ test('armNextScriptedShot: arms drillForcedShot for the next scripted shot, clea
   stubGame.drillScriptIndex = 2; // beyond the script
   armNextScriptedShot(stubGame, drillData);
   assert.equal(stubGame.drillForcedShot, null, 'clears once the script runs out');
+});
+
+test('armNextScriptedShot: v2 receiver is resolved separately from landing', () => {
+  const stubGame = stubDrillGame();
+  stubGame.drillScriptIndex = 0;
+  stubGame.drillForcedShot = null;
+  const drillData = { script: [
+    { hitter: 'P1', receiver: 'P3', shotType: 'lob', landing: { x: 1.8, z: -6.2 } }
+  ] };
+  armNextScriptedShot(stubGame, drillData);
+  assert.equal(stubGame.drillForcedShot.hitter, stubGame.players[0]);
+  assert.equal(stubGame.drillForcedShot.receiver, stubGame.players[2]);
 });
 
 /* ---------------------------- validateDrill: roster/script shape ---------------------------- */
@@ -288,13 +318,99 @@ test('validateDrill: catches a startPositions value that fails to resolve (malfo
   assert.ok(errors.some(e => /P1 has an invalid position/.test(e)));
 });
 
-test('validateDrill: two active players at the exact same position are flagged', () => {
+test('validateDrill: two active players too close together are flagged', () => {
   const drill = {
-    startPositions: { P1: { x: 0, z: 3 }, P3: { x: 0, z: 3 } },
+    startPositions: { P1: { x: 0, z: 3 }, P2: { x: 0.2, z: 3.1 }, P3: { x: 0, z: -3 } },
     script: [{ hitter: 'P1', shotType: 'drive', target: 'P3' }]
   };
   const errors = validateDrill(drill);
-  assert.ok(errors.some(e => /exact same position/.test(e)));
+  assert.ok(errors.some(e => /too close together/.test(e)));
+});
+
+test('validateDrill: catches a start position on the wrong side of the net', () => {
+  const drill = {
+    startPositions: { P1: { x: 0, z: -3 }, P3: { x: 0, z: -3 } },
+    script: [{ hitter: 'P1', shotType: 'drive', target: 'P3' }]
+  };
+  const errors = validateDrill(drill);
+  assert.ok(errors.some(e => /P1 is on the wrong side/.test(e)));
+});
+
+test('validateDrill: catches a players count that disagrees with startPositions', () => {
+  const drill = {
+    players: 4,
+    startPositions: { P1: { x: 1.5, z: 7.5 }, P3: { x: -1.5, z: -7.5 } },
+    script: [{ hitter: 'P1', shotType: 'drive', target: 'P3' }]
+  };
+  const errors = validateDrill(drill);
+  assert.ok(errors.some(e => /players: says 4/.test(e)));
+});
+
+test('validateDrill: catches a broken receiver chain where the next hitter is not the previous target', () => {
+  const drill = {
+    startPositions: { P1: { x: 1.5, z: 7.5 }, P2: { x: -1.5, z: 4 }, P3: { x: -1.5, z: -7.5 }, P4: { x: 1.5, z: -4 } },
+    script: [
+      { hitter: 'P1', shotType: 'drive', target: 'P3' },
+      { hitter: 'P4', shotType: 'dink', target: 'P1' }
+    ]
+  };
+  const errors = validateDrill(drill);
+  assert.ok(errors.some(e => /does not match shot 1 hitter/.test(e)));
+});
+
+test('validateDrill: accepts v2 receiver plus explicit landing on receiver side', () => {
+  const drill = {
+    startPositions: { P1: { x: 1.5, z: 6.5 }, P3: { x: -1.5, z: -6.5 }, P4: { x: 1.5, z: -4 } },
+    script: [
+      { hitter: 'P1', receiver: 'P4', shotType: 'lob', landing: { x: 2.4, z: -6.2 } },
+      { hitter: 'P4', receiver: 'P1', shotType: 'drop', landing: { x: 1.2, z: 2.4 } }
+    ]
+  };
+  assert.deepEqual(validateDrill(drill), []);
+});
+
+test('validateDrill: catches v2 landing on the wrong side of the net', () => {
+  const drill = {
+    startPositions: { P1: { x: 1.5, z: 6.5 }, P3: { x: -1.5, z: -6.5 } },
+    script: [
+      { hitter: 'P1', receiver: 'P3', shotType: 'lob', landing: { x: 0, z: 4 } }
+    ]
+  };
+  const errors = validateDrill(drill);
+  assert.ok(errors.some(e => /landing is on the wrong side/.test(e)));
+});
+
+test('validateDrill: catches malformed v2 landing coords', () => {
+  const drill = {
+    startPositions: { P1: { x: 1.5, z: 6.5 }, P3: { x: -1.5, z: -6.5 } },
+    script: [
+      { hitter: 'P1', receiver: 'P3', shotType: 'lob', landing: 'Z99' }
+    ]
+  };
+  const errors = validateDrill(drill);
+  assert.ok(errors.some(e => /landing has an invalid position/.test(e)));
+});
+
+test('validateDrill: catches v2 landing outside the court', () => {
+  const drill = {
+    startPositions: { P1: { x: 1.5, z: 6.5 }, P3: { x: -1.5, z: -6.5 } },
+    script: [
+      { hitter: 'P1', receiver: 'P3', shotType: 'lob', landing: { x: 4, z: -6 } }
+    ]
+  };
+  const errors = validateDrill(drill);
+  assert.ok(errors.some(e => /must be inside the court/.test(e)));
+});
+
+test('validateDrill: catches v2 target/receiver disagreement', () => {
+  const drill = {
+    startPositions: { P1: { x: 1.5, z: 6.5 }, P3: { x: -1.5, z: -6.5 }, P4: { x: 1.5, z: -4 } },
+    script: [
+      { hitter: 'P1', target: 'P3', receiver: 'P4', shotType: 'lob', landing: { x: 2.4, z: -6.2 } }
+    ]
+  };
+  const errors = validateDrill(drill);
+  assert.ok(errors.some(e => /target and receiver disagree/.test(e)));
 });
 
 test('validateDrill: does not throw on a non-array script or non-array steps (defensive)', () => {
@@ -347,6 +463,31 @@ test('normalizeDrill: resolves a grid-coord moves[].to the same way startPositio
   assert.deepEqual(moves[1].to, { x: -1.2, z: 3.0 }, 'raw {x,z} passes through unchanged');
 });
 
+test('normalizeDrill: resolves a grid-coord script landing', () => {
+  const drill = normalizeDrill({
+    startPositions: { P1: 'F10', P3: 'F1' },
+    script: [
+      { hitter: 'P1', receiver: 'P3', shotType: 'lob', landing: 'G2' }
+    ]
+  });
+  assert.deepEqual(drill.script[0].landing, gridToWorld('G2'));
+});
+
+test('normalizeDrill: resolves v2 players directive targets', () => {
+  const drill = normalizeDrill({
+    startPositions: { P1: 'F10', P3: 'F1' },
+    script: [
+      { hitter: 'P1', target: 'P3', shotType: 'drive', players: {
+        P1: { to: 'F8', behavior: 'recover', arriveBy: 'bounce' },
+        P3: { behavior: 'hold' }
+      } }
+    ]
+  });
+  assert.deepEqual(drill.script[0].players.P1.to, gridToWorld('F8'));
+  assert.equal(drill.script[0].players.P1.behavior, 'recover');
+  assert.equal(drill.script[0].players.P3.behavior, 'hold');
+});
+
 test('normalizeDrill: a beat with no moves array is left untouched', () => {
   const drill = normalizeDrill({
     startPositions: { P1: 'F10', P3: 'F1' },
@@ -378,11 +519,73 @@ test('validateDrill: catches a moves[].to that is missing or non-numeric', () =>
 test('validateDrill: catches a moves[].to wildly outside the court', () => {
   const drill = {
     startPositions: { P1: { x: 1.5, z: 7.5 }, P3: { x: -1.5, z: -7.5 } },
-    script: [{ hitter: 'P1', shotType: 'drive', target: 'P3', moves: [{ player: 'P1', to: { x: 40, z: 0 } }] }]
+    script: [{ hitter: 'P1', shotType: 'drive', target: 'P3', moves: [{ player: 'P1', to: { x: 40, z: 2 } }] }]
   };
   const errors = validateDrill(drill);
   assert.equal(errors.length, 1);
   assert.match(errors[0], /unreasonably far outside the court/);
+});
+
+test('validateDrill: catches duplicate moves for the same player on one shot', () => {
+  const drill = {
+    startPositions: { P1: { x: 1.5, z: 7.5 }, P3: { x: -1.5, z: -7.5 } },
+    script: [{ hitter: 'P1', shotType: 'drive', target: 'P3', moves: [
+      { player: 'P1', to: { x: 0, z: 2.0 } },
+      { player: 'P1', to: { x: 1, z: 2.0 } }
+    ] }]
+  };
+  const errors = validateDrill(drill);
+  assert.ok(errors.some(e => /already has a move cue/.test(e)));
+});
+
+test('validateDrill: catches a move target on the wrong side of the net', () => {
+  const drill = {
+    startPositions: { P1: { x: 1.5, z: 7.5 }, P3: { x: -1.5, z: -7.5 } },
+    script: [{ hitter: 'P1', shotType: 'drive', target: 'P3', moves: [{ player: 'P1', to: { x: 0, z: -2 } }] }]
+  };
+  const errors = validateDrill(drill);
+  assert.ok(errors.some(e => /wrong side of the net/.test(e)));
+});
+
+test('validateDrill: accepts v2 players directives with behavior and arriveBy metadata', () => {
+  const drill = {
+    startPositions: { P1: { x: 1.5, z: 7.5 }, P2: { x: -0.5, z: 2.0 }, P3: { x: -1.5, z: -7.5 } },
+    script: [{ hitter: 'P1', shotType: 'drive', target: 'P3', players: {
+      P1: { to: { x: 0, z: 2.0 }, behavior: 'recover', arriveBy: 'bounce' },
+      P2: { to: { x: 1.0, z: 1.5 }, behavior: 'shadow', arriveBy: 'contact' },
+      P3: { behavior: 'hold' }
+    } }]
+  };
+  assert.deepEqual(validateDrill(drill), []);
+});
+
+test('validateDrill: catches v2 players directive problems', () => {
+  const drill = {
+    startPositions: { P1: { x: 1.5, z: 7.5 }, P3: { x: -1.5, z: -7.5 } },
+    script: [{ hitter: 'P1', shotType: 'drive', target: 'P3', players: {
+      P2: { to: { x: 0, z: 2.0 } },
+      P1: { to: { x: 0, z: -2.0 }, behavior: 'teleport', arriveBy: 'yesterday' },
+      P3: { behavior: 'shadow' }
+    } }]
+  };
+  const errors = validateDrill(drill);
+  assert.ok(errors.some(e => /player P2: is not in this drill's roster/.test(e)));
+  assert.ok(errors.some(e => /behavior "teleport"/.test(e)));
+  assert.ok(errors.some(e => /arriveBy "yesterday"/.test(e)));
+  assert.ok(errors.some(e => /target is on the wrong side/.test(e)));
+  assert.ok(errors.some(e => /player P3: has no valid `to` position/.test(e)));
+});
+
+test('validateDrill: catches mixing legacy moves and v2 players for the same player', () => {
+  const drill = {
+    startPositions: { P1: { x: 1.5, z: 7.5 }, P3: { x: -1.5, z: -7.5 } },
+    script: [{ hitter: 'P1', shotType: 'drive', target: 'P3',
+      players: { P1: { to: { x: 0, z: 2.0 } } },
+      moves: [{ player: 'P1', to: { x: 1, z: 2.0 } }]
+    }]
+  };
+  const errors = validateDrill(drill);
+  assert.ok(errors.some(e => /also has a v2 players directive/.test(e)));
 });
 
 test('validateDrill: a well-formed moves cue on a non-hitter (partner poach) validates clean', () => {
@@ -403,9 +606,81 @@ test('armMovesForBeat: arms drillForcedMoves for each named player from the beat
     { player: 'P1', to: { x: 0, z: 2.0 } },
     { player: 'P2', to: { x: 1.0, z: 1.5 } }
   ] });
-  assert.deepEqual(stubGame.drillForcedMoves.P1, { x: 0, z: 2.0 });
-  assert.deepEqual(stubGame.drillForcedMoves.P2, { x: 1.0, z: 1.5 });
+  assert.deepEqual(stubGame.drillForcedMoves.P1, { x: 0, z: 2.0, behavior: 'move', arriveBy: null });
+  assert.deepEqual(stubGame.drillForcedMoves.P2, { x: 1.0, z: 1.5, behavior: 'move', arriveBy: null });
   assert.equal(stubGame.drillForcedMoves.P3, undefined, 'a beat that doesn\'t name P3 leaves it alone');
+});
+
+test('armMovesForBeat: v2 players directives arm movement metadata and hold directives', () => {
+  const stubGame = stubDrillGame();
+  stubGame.drillForcedMoves = {};
+  armMovesForBeat(stubGame, { players: {
+    P1: { to: { x: 0, z: 2.0 }, behavior: 'recover', arriveBy: 'bounce' },
+    P3: { behavior: 'hold', arriveBy: 'contact' }
+  } });
+  assert.deepEqual(stubGame.drillForcedMoves.P1, { x: 0, z: 2.0, behavior: 'recover', arriveBy: 'bounce' });
+  assert.deepEqual(stubGame.drillForcedMoves.P3, { x: -1.5, z: -4.0, behavior: 'hold', arriveBy: 'contact' });
+});
+
+function deadlineStub() {
+  const game = stubDrillGame();
+  game.players.forEach(p => {
+    p.vel = { x: 0, z: 0 };
+    p.ai = AI.makeAI('normal');
+  });
+  game.ball = { flight: { T: 1.5, elapsed: 0 } };
+  game.drillWarnings = [];
+  return game;
+}
+
+test('armMovesForBeat: bounce deadlines use solver flight time and plan a reachable Movement.seek speed', () => {
+  const game = deadlineStub();
+  armMovesForBeat(game, { players: {
+    P2: { to: { x: 0.5, z: 2.0 }, behavior: 'shadow', arriveBy: 'bounce' }
+  } }, 0);
+  const deadline = game.drillForcedMoves.P2.deadline;
+  assert.equal(deadline.seconds, 1.5, 'deadline is anchored to ball.flight.T');
+  assert.equal(deadline.reachable, true);
+  assert.ok(deadline.speed > 0 && deadline.speed < game.players[1].ai.cfg.speed,
+    'planner selects the least seek speed needed, below real player top speed');
+  assert.deepEqual(game.drillWarnings, []);
+});
+
+test('armMovesForBeat: contact aliases use the centralized post-bounce contact estimate', () => {
+  for (const arriveBy of ['contact', 'ball-contact', 'next-contact']) {
+    const game = deadlineStub();
+    armMovesForBeat(game, { players: {
+      P2: { to: { x: 0.5, z: 2.0 }, behavior: 'shadow', arriveBy }
+    } }, 1);
+    assert.equal(game.drillForcedMoves.P2.deadline.seconds, 1.85, arriveBy + ' includes the contact allowance');
+  }
+});
+
+test('armMovesForBeat: contact deadlines prefer the first hittable solver sample near landing', () => {
+  const game = deadlineStub();
+  game.ball.flight.landing = { x: 1, z: -4 };
+  game.ball.flight.samples = [
+    { x: 0, y: 3, z: 0, t: 0.4 },
+    { x: 0.5, y: 1.8, z: -3.0, t: 1.1 },
+    { x: 1, y: 0.037, z: -4, t: 1.5 }
+  ];
+  armMovesForBeat(game, { players: {
+    P2: { to: { x: 0.5, z: 2.0 }, behavior: 'shadow', arriveBy: 'contact' }
+  } }, 1);
+  assert.equal(game.drillForcedMoves.P2.deadline.seconds, 1.1);
+});
+
+test('armMovesForBeat: unreachable deadlines keep real max speed and emit one authoring warning', () => {
+  const game = deadlineStub();
+  game.ball.flight.T = 0.1;
+  armMovesForBeat(game, { players: {
+    P2: { to: { x: 4.0, z: 6.0 }, behavior: 'crash', arriveBy: 'bounce' }
+  } }, 2);
+  const deadline = game.drillForcedMoves.P2.deadline;
+  assert.equal(deadline.reachable, false);
+  assert.equal(deadline.speed, game.players[1].ai.cfg.speed, 'unreachable cue runs at real top speed, never teleports');
+  assert.equal(game.drillWarnings.length, 1);
+  assert.match(game.drillWarnings[0], /shot 2 player P2: arriveBy bounce is unreachable/);
 });
 
 test('armMovesForBeat: a later beat naming only P2 leaves an outstanding P1 entry untouched (the persistence rule)', () => {
@@ -417,8 +692,8 @@ test('armMovesForBeat: a later beat naming only P2 leaves an outstanding P1 entr
   armMovesForBeat(stubGame, { hitter: 'P3', shotType: 'drop', target: 'P1', moves: [
     { player: 'P2', to: { x: 1.0, z: 1.5 } }
   ] });
-  assert.deepEqual(stubGame.drillForcedMoves.P1, { x: 0, z: 2.0 }, 'P1\'s cue from the earlier beat still stands');
-  assert.deepEqual(stubGame.drillForcedMoves.P2, { x: 1.0, z: 1.5 });
+  assert.deepEqual(stubGame.drillForcedMoves.P1, { x: 0, z: 2.0, behavior: 'move', arriveBy: null }, 'P1\'s cue from the earlier beat still stands');
+  assert.deepEqual(stubGame.drillForcedMoves.P2, { x: 1.0, z: 1.5, behavior: 'move', arriveBy: null });
 });
 
 test('armMovesForBeat: a beat naming the same player again overwrites the earlier target', () => {
@@ -426,14 +701,14 @@ test('armMovesForBeat: a beat naming the same player again overwrites the earlie
   stubGame.drillForcedMoves = {};
   armMovesForBeat(stubGame, { moves: [{ player: 'P1', to: { x: 0, z: 2.0 } }] });
   armMovesForBeat(stubGame, { moves: [{ player: 'P1', to: { x: -1, z: 3.5 } }] });
-  assert.deepEqual(stubGame.drillForcedMoves.P1, { x: -1, z: 3.5 });
+  assert.deepEqual(stubGame.drillForcedMoves.P1, { x: -1, z: 3.5, behavior: 'move', arriveBy: null });
 });
 
 test('armMovesForBeat: a beat with no moves array is a no-op', () => {
   const stubGame = stubDrillGame();
-  stubGame.drillForcedMoves = { P1: { x: 0, z: 2.0 } };
+  stubGame.drillForcedMoves = { P1: { x: 0, z: 2.0, behavior: 'move', arriveBy: null } };
   armMovesForBeat(stubGame, { hitter: 'P1', shotType: 'drive', target: 'P3' });
-  assert.deepEqual(stubGame.drillForcedMoves.P1, { x: 0, z: 2.0 });
+  assert.deepEqual(stubGame.drillForcedMoves.P1, { x: 0, z: 2.0, behavior: 'move', arriveBy: null });
 });
 
 /* ===================================================================
@@ -555,6 +830,24 @@ test('engine _moveCPU: a moves cue always takes priority over the hold default',
   });
   stub._moveCPU(p1, 0.016);
   assert.deepEqual(p1.move.target, { x: -1.0, z: 5.0 }, 'the cue target wins over holding at the current spot');
+});
+
+test('engine _moveCPU: an operational deadline uses its planned speed through Movement.seek', () => {
+  const p1 = makeStubPlayer('near', 0, 'P1', -2.8, 6.4);
+  const p3 = makeStubPlayer('far', 0, 'P3', -2.54, -6.4);
+  const stub = makeDrillStub([p1, p3], {
+    drillForcedShot: { hitter: p3 },
+    drillForcedMoves: {
+      P1: {
+        x: 0, z: 5.0, behavior: 'recover', arriveBy: 'contact',
+        deadline: { seconds: 2, speed: 1.0, reachable: true, minTime: 1.8 }
+      }
+    }
+  });
+  stub._moveCPU(p1, 0.1);
+  assert.ok(Math.hypot(p1.vel.x, p1.vel.z) <= 1.001,
+    'deadline speed caps the same real seek path instead of setting/interpolating position');
+  assert.ok(p1.pos.x > -2.8 && p1.pos.x < 0, 'player advances physically without teleporting to the target');
 });
 
 test('engine _moveCPU: a stale cue is dropped the instant its player becomes the forced hitter (regression: used to fire one beat late)', () => {
