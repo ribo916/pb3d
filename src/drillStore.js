@@ -201,15 +201,21 @@ export var DEFAULT_DRILLS = [
     // zone their position sits in. Any x/z on your own side of the net now
     // works for any target.
     startPositions: { P1: 'F10', P2: 'D7', P3: 'F1', P4: 'C2' },
+    // P2/P4 carry explicit `moves` cues matching their own `steps` narration
+    // below — off-ball movement in drill mode no longer comes from default
+    // AI drift (see game.js's _moveCPU: a non-forced player holds position
+    // unless cued), so shadowing has to be authored, not assumed.
     script: [
-      { hitter: 'P1', shotType: 'drive', target: 'P3' }, // "return directly down the line"
+      { hitter: 'P1', shotType: 'drive', target: 'P3', // "return directly down the line"
+        moves: [{ player: 'P4', to: 'F3' }] }, // P4 moves in alongside P3, ready to crash
       // Open question flagged for confirmation: described as "a drive that
       // lands at P1's feet" — real `drive` (shots.js) is the flat, fast,
       // driven family; a soft neutralizing drip is closer to `drop`'s
       // profile. Using `drop` here (matches the original neutralize-the-
       // point intent) but this is a guess, not a third assumption to build
       // on silently — confirm or correct.
-      { hitter: 'P3', shotType: 'drop', target: 'P1' }
+      { hitter: 'P3', shotType: 'drop', target: 'P1',
+        moves: [{ player: 'P2', to: 'E7' }] } // P2 shades toward the middle, staying in the lane
     ],
     steps: [
       { title: 'Setup', desc: "P1 is at the baseline about to hit a short return — simulating shot 2 of a rally that came up just short of the kitchen line. P2 shades the middle, ready to poach but respecting P1's down-the-line lane. P3 and P4 start at the baseline, P3 directly across from P1." },

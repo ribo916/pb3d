@@ -1172,7 +1172,17 @@ Game.prototype._moveCPU = function (p, dt) {
   var lane = this._laneSign(p);                    // ±1: this player's side of center
   var incoming = this.ball.live && (this.ball.vel.z * fwd > 0);
   var pred = incoming ? AI.predict(this.ball) : null;
-  var responsible = pred && (this.mode === 'singles' || p.slot === this._responsibleSlot(team, pred.x));
+  // While a drill script beat is pending, _responsibleSlot's x-zone guess
+  // (real-serve-rotation math, keyed off match.scores — always {0,0} in a
+  // drill, per resetRep) is not just unnecessary but actively wrong: a
+  // freeform drill placement (e.g. 4 corners) can make it independently
+  // pick the WRONG teammate as "responsible," sending them chasing across
+  // the court for a ball _checkContacts will only ever award to the actual
+  // drillForcedShot.hitter anyway. Suppressed only while a beat is armed —
+  // once the script runs out (drillForcedShot null), the real zone check
+  // resumes for the genuine undirected free-play tail.
+  var responsible = (this.mode === 'drill' && this.drillForcedShot) ? false :
+    pred && (this.mode === 'singles' || p.slot === this._responsibleSlot(team, pred.x));
   // A drill's armed forced-shot target must actively move to intercept
   // regardless of the x-zone rotation (see the matching override in
   // _checkContacts) — otherwise they'd stand there "not responsible" while
@@ -1199,6 +1209,39 @@ Game.prototype._moveCPU = function (p, dt) {
     distance: function (tx, tz) { return dist2D(tx - p.pos.x, tz - p.pos.z); }
   });
   var tx = strategy.target.x, tz = strategy.target.z, kind = strategy.kind;
+
+  // A player who isn't currently and genuinely fetching the ball (and has no
+  // active `moves` cue) defaults to holding their exact current spot in
+  // drill mode — instead of each strategy's normal free-play positioning
+  // formula (doubles.js's kitchen-advance default, or singles.js's
+  // opponent-mirrored recovery), both tuned for organic free rallies, not a
+  // deliberately positioned drill rep. Applies to doubles-shaped teams too
+  // (2+ players/side), not just solo teams: drillDirector.js's
+  // fireOpeningShot seeds every drill rally as already "open" specifically
+  // so doubles.js's advanceAllowed reads true immediately, which otherwise
+  // pulls EVERY player — including the two scripted hitters between their
+  // own touches — toward the kitchen line by default. DRILLS.md documents
+  // this as the intended contract ("script shadowing explicitly via `moves`
+  // cues, don't rely on default AI") — this just enforces it universally
+  // instead of only for solo teams.
+  //
+  // Gated on `pred && responsible`, not plain `responsible`: `responsible`
+  // is forced true for the armed scripted hitter unconditionally (see
+  // above), even before the ball is actually live and heading their way
+  // (`pred` still null) — without the `pred` half, an armed-but-not-yet-
+  // incoming hitter would fall through to the strategy's default formula
+  // instead of holding. For a solo team this is equivalent to the old plain
+  // `!responsible` gate (responsible there already reduces to exactly
+  // `pred`), so the previously-verified 2-player case is unaffected.
+  //
+  // A `moves` cue (below) always takes priority over this default. Once the
+  // script runs out (drillForcedShot goes null), this no-ops and genuine
+  // undirected AI/physics free-play takes back over, per drillDirector.js's
+  // documented contract.
+  if (this.mode === 'drill' && this.drillForcedShot &&
+      !(pred && responsible) && !(this.drillForcedMoves && this.drillForcedMoves[p.drillSlot])) {
+    tx = p.pos.x; tz = p.pos.z; kind = 'hold';
+  }
 
   // A drill movement cue (game.drillForcedMoves, armed by
   // DrillDirector.armMovesForBeat) overrides the AI-chosen steering target —
@@ -1229,7 +1272,20 @@ Game.prototype._moveCPU = function (p, dt) {
   if (was > MOVEMENT.PLANT_SPEED && dot < MOVEMENT.PLANT_TURN_DOT) {
     p.move.plant = Math.max(p.move.plant || 0, 0.16);
   }
-  this._clampToSide(p.pos, team, this.mode === 'singles' ? null : lane);
+  // Drill mode never restricts x by service lane, for any team size — not
+  // just the lane===0 solo-team sentinel. _laneSign's ±1 lane assignment
+  // comes from Rules.rightSlot, a real-serve-rotation concept keyed off
+  // match score parity; a drill's match.scores is always reset to {0,0}
+  // (resetRep), so that assignment is arbitrary/deterministic-but-
+  // meaningless relative to where the drill actually placed its players.
+  // validateDrill/DRILLS.md explicitly promise "no positional/zone
+  // constraint — anywhere on your own side of the net" for startPositions;
+  // without this, a doubles-shaped drill whose corner placement happens to
+  // conflict with that arbitrary lane assignment gets one partner hard-
+  // clamped clear across the center line every frame (observed: a player
+  // placed at x=-4 snapped to x=-0.7, a 3m+ position jump, independent of
+  // any AI/movement-cue target).
+  this._clampToSide(p.pos, team, (this.mode === 'singles' || this.mode === 'drill') ? null : lane);
   p.move.kind = kind;
   p.move.target.x = tx; p.move.target.z = tz;
   p.move.split = Math.max(0, (p.move.split || 0) - dt);
@@ -1937,6 +1993,13 @@ Game.prototype._cpuHit = function (p) {
  * actually reaches the poacher — same deferral pattern as _checkBlastContact. */
 Game.prototype._checkPoach = function (hitterTeam) {
   if (this.mode === 'singles' || this.mode === 'practice') return;
+  // A real auto-poach would steal the ball from drillDirector.js's named
+  // scripted target, bypassing drillForcedShot/armNextScriptedShot entirely
+  // and desyncing drillScriptIndex from what actually gets hit. Only
+  // suppressed while a scripted beat is still armed — once the script runs
+  // out (drillForcedShot null, genuine free-play tail), real poaching is
+  // allowed again like every other free-play behavior.
+  if (this.mode === 'drill' && this.drillForcedShot) return;
   if (!this.ball.flight) return;
   var path = { samples: this.ball.flight.samples, landing: this.ball.flight.landing };
   var landingX = this.ball.flight.landing.x;

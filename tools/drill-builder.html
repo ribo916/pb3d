@@ -3,42 +3,100 @@
 <head>
 <meta charset="utf-8">
 <title>pb3d Drill Builder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@600;700;800&display=swap" rel="stylesheet">
 <style>
-  :root { color-scheme: dark; }
-  body { font-family: -apple-system, sans-serif; background: #14161a; color: #e8e8ec; margin: 0; padding: 20px; }
-  h1 { font-size: 18px; margin: 0 0 4px; }
-  .sub { color: #888; font-size: 13px; margin-bottom: 20px; max-width: 900px; }
-  .sub b { color: #ccc; }
-  .layout { display: flex; gap: 24px; align-items: flex-start; overflow-x: auto; padding-bottom: 10px; }
-  .panel { background: #1c1f26; border: 1px solid #2c2f38; border-radius: 8px; padding: 16px; flex: 0 0 auto; }
-  label { display: block; font-size: 12px; color: #9aa; margin: 10px 0 4px; }
+  :root {
+    color-scheme: dark;
+    /* ---- theme tokens, mirrored from index.html's body[data-theme="night"] ---- */
+    --bg: radial-gradient(ellipse at 50% 108%, rgba(22,118,90,.30) 0%, transparent 55%), radial-gradient(ellipse at 50% 82%, rgba(12,75,58,.18) 0%, transparent 42%), radial-gradient(circle at 18% 22%, rgba(72,155,255,.13), transparent 28%), radial-gradient(circle at 84% 18%, rgba(126,240,255,.09), transparent 24%), linear-gradient(168deg, #050c14 0%, #07101c 42%, #090f1a 100%);
+    --card-bg: linear-gradient(160deg,rgba(255,255,255,.028),rgba(255,255,255,.008)),rgba(6,13,23,.94);
+    --card-border: rgba(160,224,255,.12); --card-bw: 1px; --card-radius: 20px;
+    --card-shadow: 0 20px 48px rgba(0,0,0,.4), 0 -6px 24px rgba(0,0,0,.14);
+    --text: #fff; --text-soft: rgba(228,242,255,.72); --text-faint: rgba(232,244,255,.45); --label: rgba(200,228,244,.55);
+    --accent: #7ef0ff; --accent-2: #baff52; --accent-contrast: #05111c;
+    --seg-bg: rgba(255,255,255,.03); --seg-border: rgba(255,255,255,.1); --seg-hover: rgba(126,240,255,.18);
+    --btn-radius: 8px;
+    --title-font: "Oswald"; --title-transform: uppercase; --title-weight: 800; --title-spacing: 0.5px;
+    --body-font: -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  body {
+    font-family: var(--body-font); background: var(--bg); background-attachment: fixed;
+    color: var(--text); margin: 0; padding: 24px; min-height: 100vh; box-sizing: border-box;
+  }
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+  .topbar-title { display: flex; align-items: center; gap: 10px; }
+  h1 {
+    font-family: var(--title-font); text-transform: var(--title-transform); font-weight: var(--title-weight);
+    letter-spacing: 2px; font-size: 17px; margin: 0; color: var(--text);
+  }
+  .icon-round {
+    width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--seg-border);
+    background: var(--seg-bg); color: var(--accent); font-size: 12px; font-weight: 700;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;
+  }
+  .icon-round:hover { background: var(--seg-hover); }
+  .status-pill {
+    border-radius: 999px; padding: 6px 16px; font-size: 12px; max-width: 560px;
+  }
+  .status-pill.ok { background: rgba(54,208,111,.12); border: 1px solid rgba(54,208,111,.4); color: #8fd9a8; }
+  .status-pill.err { background: rgba(240,90,90,.12); border: 1px solid rgba(240,90,90,.4); color: #f0a8a8; }
+  .status-pill ul { margin: 4px 0 0; padding-left: 18px; }
+
+  .layout { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
+  .panel {
+    background: var(--card-bg); border: var(--card-bw) solid var(--card-border);
+    border-radius: var(--card-radius); box-shadow: var(--card-shadow);
+    padding: 18px 20px; flex: 0 0 auto;
+  }
+  .court-panel { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .col-right { display: flex; flex-direction: column; gap: 20px; flex: 0 0 380px; }
+  .col-right .panel { width: 100%; box-sizing: border-box; }
+
+  .panel-title {
+    font-family: var(--title-font); text-transform: var(--title-transform); font-weight: var(--title-weight);
+    letter-spacing: var(--title-spacing); font-size: 12px; color: var(--accent); margin: 0 0 12px;
+    cursor: default;
+  }
+  .panel-title.spaced { margin-top: 18px; }
+
+  label { display: block; font-size: 12px; color: var(--label); margin: 10px 0 4px; }
+  label:first-of-type { margin-top: 0; }
   input[type=text], input[type=number], textarea, select {
-    width: 100%; box-sizing: border-box; background: #101216; color: #e8e8ec;
-    border: 1px solid #333844; border-radius: 4px; padding: 6px 8px; font-size: 13px;
+    width: 100%; box-sizing: border-box; background: rgba(255,255,255,.04); color: var(--text);
+    border: 1px solid var(--seg-border); border-radius: 6px; padding: 6px 8px; font-size: 13px;
+    font-family: inherit;
   }
   textarea { min-height: 44px; resize: vertical; }
-  .row { display: flex; gap: 8px; align-items: center; margin: 4px 0; }
+  .row { display: flex; gap: 8px; align-items: center; margin: 4px 0; flex-wrap: wrap; }
   .row select { flex: 1; }
-  .shot-block { border: 1px solid #262a33; border-radius: 6px; padding: 8px; margin: 8px 0; }
-  .moves-toggle { background: none; border: none; color: #7a8cc4; font-size: 11px; cursor: pointer; padding: 4px 0; }
+  .shot-block { border: 1px solid var(--seg-border); border-radius: 6px; padding: 8px; margin: 8px 0; }
+  #scriptList { max-height: 420px; overflow-y: auto; padding-right: 2px; margin: 0 -2px; }
+  #stepsList { max-height: 220px; overflow-y: auto; padding-right: 2px; margin: 0 -2px; }
+  .moves-toggle { background: none; border: none; color: var(--accent); font-size: 11px; cursor: pointer; padding: 4px 0; }
   .moves-toggle:hover { text-decoration: underline; }
   .move-row { display: flex; gap: 6px; align-items: center; margin: 4px 0 4px 12px; }
   .move-row select { flex: 1; }
   .move-row button.place { font-size: 11px; padding: 4px 8px; }
-  .move-row button.place.armed { background: #3a2f1c; border-color: #6a5230; color: #f0cfa8; }
-  .move-row .to-readout { font-size: 10px; color: #777; min-width: 90px; }
-  button { background: #2a2f3a; color: #e8e8ec; border: 1px solid #3a4050; border-radius: 4px;
-    padding: 6px 10px; font-size: 12px; cursor: pointer; }
-  button:hover { background: #343b4a; }
-  button.danger { background: #3a2020; border-color: #5a3030; }
-  button.primary { background: #2a4a3a; border-color: #3a6a50; }
-  .picker-label { font-size: 11px; color: #666; margin: 4px 0; text-align: center; }
+  .move-row button.place.armed { background: rgba(240,190,90,.16); border-color: rgba(240,190,90,.5); color: #f0cfa8; }
+  .move-row .to-readout { font-size: 10px; color: var(--text-faint); min-width: 90px; }
+  button {
+    background: var(--seg-bg); color: var(--text); border: 1px solid var(--seg-border);
+    border-radius: var(--btn-radius); padding: 6px 10px; font-size: 12px; cursor: pointer;
+    font-family: inherit;
+  }
+  button:hover { background: var(--seg-hover); }
+  button.danger { background: rgba(240,90,90,.12); border-color: rgba(240,90,90,.4); }
+  button.primary { background: color-mix(in srgb, var(--accent) 16%, transparent); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  button.primary:hover { background: color-mix(in srgb, var(--accent) 26%, transparent); }
+  .picker-label { font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--text-faint); margin: 2px 0; text-align: center; cursor: default; }
   .player-picker { display: flex; gap: 16px; align-items: center; justify-content: center; }
   .picker-slot { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-  .picker-slot .toggle { display: flex; align-items: center; gap: 4px; font-size: 10px; color: #8a8fa0; }
+  .picker-slot .toggle { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--text-faint); }
   .picker-slot .toggle input { width: auto; margin: 0; }
   .icon-btn {
-    width: 48px; height: 48px; border-radius: 50%; border: 2px solid #33384a;
+    width: 48px; height: 48px; border-radius: 50%; border: 2px solid rgba(255,255,255,.18);
     color: #fff; font-weight: 700; font-size: 15px; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     box-shadow: 0 2px 6px rgba(0,0,0,0.35);
@@ -48,93 +106,156 @@
   .icon-btn:disabled { cursor: not-allowed; opacity: 0.25; box-shadow: none; }
   .icon-btn.active { border-color: #fff; box-shadow: 0 0 0 4px rgba(255,255,255,0.22), 0 2px 6px rgba(0,0,0,0.35); }
   .p1 { background: #d64545; } .p2 { background: #d68a45; } .p3 { background: #4576d6; } .p4 { background: #45b0d6; }
-  svg { background: #0c0e12; border-radius: 6px; cursor: crosshair; }
+  svg { background: rgba(0,0,0,.28); border-radius: var(--btn-radius); cursor: crosshair; }
   .player-dot { pointer-events: none; }
-  .banner { border-radius: 6px; padding: 10px 12px; font-size: 13px; margin-bottom: 14px; max-width: 900px; }
-  .banner.ok { background: #16321f; border: 1px solid #2a5c3a; color: #8fd9a8; }
-  .banner.err { background: #3a1c1c; border: 1px solid #6a2c2c; color: #f0a8a8; }
-  .banner ul { margin: 6px 0 0; padding-left: 18px; }
-  #jsonOut { width: 640px; max-width: 100%; height: 260px; font-family: ui-monospace, monospace; font-size: 12px; }
-  .hint { color: #666; font-size: 11px; margin-top: 4px; }
-  #posReadout { font-family: ui-monospace, monospace; font-size: 11px; color: #9aa; margin-top: 8px; line-height: 1.6; white-space: pre; }
-  #testResult { font-size: 12px; margin-top: 8px; }
+  #jsonOut { width: 100%; height: 280px; box-sizing: border-box; font-family: ui-monospace, monospace; font-size: 12px; }
+  .hint { color: var(--text-faint); font-size: 11px; margin-top: 6px; cursor: default; }
+  #posReadout { font-family: ui-monospace, monospace; font-size: 10px; color: var(--text-faint); margin-top: 4px; line-height: 1.5; white-space: pre; text-align: center; }
+  #testResult { font-size: 12px; }
+
+  .footer-bar {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--seg-border);
+  }
+
+  /* ---- modal shell, mirrored from index.html's #infoModal / .info-panel ---- */
+  #helpModal, #jsonModal {
+    display: none; position: fixed; inset: 0; z-index: 40;
+    background: rgba(6,18,31,0.75); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    align-items: center; justify-content: center; padding: 20px;
+  }
+  #helpModal.active, #jsonModal.active { display: flex; }
+  .info-panel {
+    background: var(--card-bg); border: var(--card-bw) solid var(--card-border);
+    border-radius: var(--card-radius); padding: 26px 28px; max-width: min(560px, 100%);
+    width: 100%; max-height: 85vh; overflow-y: auto; position: relative;
+    font-family: var(--body-font); color: var(--text); box-shadow: var(--card-shadow);
+  }
+  .info-panel h2 {
+    font-size: 17px; font-weight: var(--title-weight); letter-spacing: 3px;
+    font-family: var(--title-font); text-transform: var(--title-transform);
+    color: var(--accent); margin: 0 0 18px; text-align: center;
+  }
+  .info-section { margin-bottom: 14px; }
+  .info-section:last-child { margin-bottom: 0; }
+  .info-label { font-size: 10px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: var(--label); margin-bottom: 7px; }
+  .info-section p { font-size: 13px; line-height: 1.7; color: var(--text-soft); margin: 0; }
+  .info-close {
+    position: absolute; top: 14px; right: 14px; width: 28px; height: 28px;
+    border: none; border-radius: 50%; background: rgba(255,255,255,.08);
+    color: var(--text-soft); font-size: 14px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; font-family: inherit;
+  }
+  .info-close:hover { background: rgba(255,255,255,.16); }
+
+  @media (max-width: 860px) {
+    .layout { flex-direction: column; align-items: center; }
+    .col-right { flex-basis: auto; width: 100%; max-width: 420px; }
+  }
 </style>
 </head>
 <body>
 
-<h1>pb3d Drill Builder</h1>
-<div class="sub">
-  <b>Roster:</b> 2, 3, or 4 players. P1 (near) and P3 (far) are always present — the anchors; check
-  or uncheck "include" under P2/P4 to add or remove them, as long as at least one player ends up on
-  each side. Click a player's icon to select them for placement on the court. P1 &amp; P2 are
-  partners on the near side of the net (Team A); P3 &amp; P4 are partners on the far side (Team B) —
-  fixed by every game mode, not a per-drill choice. A shot in the <b>Script</b> panel always goes
-  from a player to one of the <em>opposing</em> team's active players, the way a real rally shot
-  crosses the net — never sideways to your own partner, so the target dropdown only offers
-  opponents.<br><br>
-  <b>Positioning:</b> click anywhere on or around the court to place the selected player — not
-  limited to a fixed grid, so serve positions and ATP/around-the-post spots well outside the
-  sideline work too. The UI only lets you click on that player's own side of the net (near for
-  P1/P2, far for P3/P4) — a click on the wrong side snaps to the nearest legal spot instead of being
-  ignored. Wherever you place a script target within their own side, the engine guarantees they're
-  the one who receives that shot. This positioning is Setup-only, before the rep begins.<br><br>
-  <b>Movement cues:</b> each shot in the script can also carry "moves" — telling any player
-  (the hitter recovering, or a partner poaching/shadowing) to head toward a spot the instant that
-  shot fires. Expand "moves" under a shot row, add a cue, pick who it's for, then click "place on
-  court" and click the target spot. Cues are directions, not guarantees — real AI movement (the
-  same physics-driven steering used everywhere else) carries the player there, and ball
-  responsibility always takes priority if that player needs to actually play the next shot.
+<div class="topbar">
+  <div class="topbar-title">
+    <h1>pb3d Drill Builder</h1>
+    <button id="helpBtn" class="icon-round" title="How this tool works">?</button>
+  </div>
+  <div id="banner" class="status-pill ok">Place your active players and add at least one shot to validate.</div>
 </div>
 
-<div id="banner" class="banner ok">Place your active players and add at least one shot to the script to validate.</div>
-
 <div class="layout">
-  <div class="panel">
-    <div class="picker-label">P3 / P4 — Far, Team B (top of court)</div>
+  <div class="panel court-panel">
+    <div class="picker-label" title="P3 and P4 are Team B, partners on the far side of the net">Far &middot; Team B</div>
     <div class="player-picker" id="pickerFar"></div>
     <svg id="court" viewBox="-6 -10 12 20" width="420" height="700"></svg>
     <div class="player-picker" id="pickerNear"></div>
-    <div class="picker-label">P1 / P2 — Near, Team A (bottom of court)</div>
+    <div class="picker-label" title="P1 and P2 are Team A, partners on the near side of the net">Near &middot; Team A</div>
     <div id="posReadout"></div>
   </div>
 
-  <div class="panel" style="width:340px;">
-    <label>Name</label>
-    <input type="text" id="fName" value="New Drill">
-    <label>Description</label>
-    <textarea id="fDesc"></textarea>
-    <label>Goal</label>
-    <textarea id="fGoal"></textarea>
-    <label>Tags (comma separated)</label>
-    <input type="text" id="fTags">
-    <label>Shots in this rep</label>
-    <div id="shotCount" class="hint" style="margin-top:0;">0 — add shots in the Script panel</div>
-  </div>
+  <div class="col-right">
+    <div class="panel">
+      <h2 class="panel-title">Drill info</h2>
+      <label>Name</label>
+      <input type="text" id="fName" value="New Drill">
+      <label>Description</label>
+      <textarea id="fDesc"></textarea>
+      <label>Goal</label>
+      <textarea id="fGoal"></textarea>
+      <label>Tags (comma separated)</label>
+      <input type="text" id="fTags">
+      <div id="shotCount" class="hint" title="The rep ends automatically right after the last scripted shot — there's no separate length to configure.">0 shots</div>
+    </div>
 
-  <div class="panel" style="width:340px;">
-    <label style="margin-top:0;">Script (shots in order: who hits, what kind, at whom)</label>
-    <div id="scriptList"></div>
-    <button id="addShot">+ Add shot</button>
-    <button id="dupShot">⧉ Duplicate last shot</button>
-    <label style="margin-top:16px;">Narration steps (shown in-game, not read by the engine)</label>
-    <div id="stepsList"></div>
-    <button id="addStep">+ Add step</button>
+    <div class="panel">
+      <h2 class="panel-title" title="Shots in order: who hits, what kind, at whom. Each shot always goes to an opposing player, the way a real rally crosses the net.">Script</h2>
+      <div id="scriptList"></div>
+      <div class="row">
+        <button id="addShot">+ Add shot</button>
+        <button id="dupShot" title="Mirrors the hitter/target of the last shot and copies its type and movement cues">&#10697; Duplicate last</button>
+      </div>
+      <h2 class="panel-title spaced" title="Shown in-game as on-screen narration; not read by the engine.">Narration steps</h2>
+      <div id="stepsList"></div>
+      <button id="addStep">+ Add step</button>
+    </div>
   </div>
 </div>
 
-<div class="panel" style="margin-top:20px; max-width:680px;">
-  <div class="row">
-    <button class="primary" id="testLive">▶ Test this drill live</button>
-    <button id="genJson">Generate drill JSON</button>
-  </div>
+<div class="footer-bar">
+  <button class="primary" id="testLive" title="Opens the real game and plays this drill exactly as authored — a real live rep, captured and looped as a replay. Nothing is saved; closing that tab loses it.">&#9654; Test this drill live</button>
+  <button id="genJson" title="Opens the pasteable JSON entry for DEFAULT_DRILLS in src/drillStore.js">Generate drill JSON</button>
   <div id="testResult"></div>
-  <div class="hint">
-    "Test live" opens the real game and plays this drill exactly as authored (a real live rep,
-    captured and looped as a replay) — nothing is saved anywhere; refreshing or closing that tab
-    loses it. "Generate JSON" gives you the pasteable entry for <code>DEFAULT_DRILLS</code>
-    (src/drillStore.js) once you're happy with it.
+</div>
+
+<div id="helpModal">
+  <div class="info-panel">
+    <button class="info-close" id="helpClose">&#10005;</button>
+    <h2>How this works</h2>
+    <div class="info-section">
+      <div class="info-label">Roster</div>
+      <p>2, 3, or 4 players. P1 (near) and P3 (far) are always present — the anchors; check
+      or uncheck "include" under P2/P4 to add or remove them, as long as at least one player ends up
+      on each side. Click a player's icon to select them for placement on the court. P1 &amp; P2 are
+      partners on the near side of the net (Team A); P3 &amp; P4 are partners on the far side (Team B) —
+      fixed by every game mode, not a per-drill choice. A shot in the Script panel always goes
+      from a player to one of the opposing team's active players, the way a real rally shot
+      crosses the net — never sideways to your own partner, so the target dropdown only offers
+      opponents.</p>
+    </div>
+    <div class="info-section">
+      <div class="info-label">Positioning</div>
+      <p>Click anywhere on or around the court to place the selected player — not
+      limited to a fixed grid, so serve positions and ATP/around-the-post spots well outside the
+      sideline work too. The UI only lets you click on that player's own side of the net (near for
+      P1/P2, far for P3/P4) — a click on the wrong side snaps to the nearest legal spot instead of being
+      ignored. Wherever you place a script target within their own side, the engine guarantees they're
+      the one who receives that shot. This positioning is Setup-only, before the rep begins.</p>
+    </div>
+    <div class="info-section">
+      <div class="info-label">Movement cues</div>
+      <p>Each shot in the script can also carry "moves" — telling any player
+      (the hitter recovering, or a partner poaching/shadowing) to head toward a spot the instant that
+      shot fires. Expand "moves" under a shot row, add a cue, pick who it's for, then click "place on
+      court" and click the target spot. Cues are directions, not guarantees — real AI movement (the
+      same physics-driven steering used everywhere else) carries the player there, and ball
+      responsibility always takes priority if that player needs to actually play the next shot.</p>
+    </div>
   </div>
-  <textarea id="jsonOut" readonly placeholder="Click 'Generate drill JSON' above." style="margin-top:10px;"></textarea>
+</div>
+
+<div id="jsonModal">
+  <div class="info-panel">
+    <button class="info-close" id="jsonClose">&#10005;</button>
+    <h2>Drill JSON</h2>
+    <div class="info-section">
+      <p>Paste this into <code>DEFAULT_DRILLS</code> (src/drillStore.js).</p>
+    </div>
+    <textarea id="jsonOut" readonly placeholder="Click 'Generate drill JSON' to build this."></textarea>
+    <div class="row" style="margin-top:10px; justify-content:flex-end;">
+      <button id="jsonCopy">Copy to clipboard</button>
+    </div>
+  </div>
 </div>
 
 <script type="module">
@@ -146,6 +267,8 @@ const SHAPE_TYPES = SHOT_TYPES.concat(['smash']); // smash is a real Shots profi
 const ALL_SLOTS = ['P1', 'P2', 'P3', 'P4'];
 const SLOT_CLASS = { P1: 'p1', P2: 'p2', P3: 'p3', P4: 'p4' };
 const SLOT_COLOR = { P1: '#d64545', P2: '#d68a45', P3: '#4576d6', P4: '#45b0d6' };
+// Mirrors src/scene.js COURT_PALETTES.green — keep in sync if that changes.
+const COURT_GREEN = { court: '#1d6a3a', kitchen: '#6fbe78' };
 const state = {
   selectedSlot: 'P1',
   includeP2: true,
@@ -243,13 +366,19 @@ function svgEl(tag, attrs) {
   return el;
 }
 
-// Court outline + net + kitchen lines + sideline extension hint, for reference.
-svg.appendChild(svgEl('rect', { x: -HALF_W, y: -HALF_L, width: HALF_W * 2, height: HALF_L * 2, fill: 'none', stroke: '#4a5060', 'stroke-width': 0.03 }));
-svg.appendChild(svgEl('line', { x1: -HALF_W, y1: 0, x2: HALF_W, y2: 0, stroke: '#8890a0', 'stroke-width': 0.04 })); // net
-[-KITCHEN, KITCHEN].forEach(z => svg.appendChild(svgEl('line', { x1: -HALF_W, y1: z, x2: HALF_W, y2: z, stroke: '#4a5060', 'stroke-width': 0.02, 'stroke-dasharray': '0.08,0.08' })));
+// Court body + kitchen zones colored to match the real game's green court
+// palette (COURT_PALETTES.green in scene.js), rather than a neutral slate —
+// so the preview reads as an actual pickleball court.
+svg.appendChild(svgEl('rect', { x: -HALF_W, y: -HALF_L, width: HALF_W * 2, height: HALF_L * 2, fill: COURT_GREEN.court, stroke: '#eaf6ee', 'stroke-width': 0.04 }));
+[1, -1].forEach(sign => svg.appendChild(svgEl('rect', {
+  x: -HALF_W, y: sign > 0 ? 0 : -KITCHEN, width: HALF_W * 2, height: KITCHEN,
+  fill: COURT_GREEN.kitchen, opacity: 0.85
+})));
+svg.appendChild(svgEl('line', { x1: -HALF_W, y1: 0, x2: HALF_W, y2: 0, stroke: '#f4fbf6', 'stroke-width': 0.045 })); // net
+[-KITCHEN, KITCHEN].forEach(z => svg.appendChild(svgEl('line', { x1: -HALF_W, y1: z, x2: HALF_W, y2: z, stroke: '#eaf6ee', 'stroke-width': 0.025, 'stroke-dasharray': '0.08,0.08' })));
 // Faint reference grid (visual aid only — clicking anywhere places exactly there, not snapped).
-for (let x = -5; x <= 5; x++) svg.appendChild(svgEl('line', { x1: x, y1: -10, x2: x, y2: 10, stroke: '#22262f', 'stroke-width': 0.01 }));
-for (let z = -9; z <= 9; z += 1.5) svg.appendChild(svgEl('line', { x1: -6, y1: z, x2: 6, y2: z, stroke: '#22262f', 'stroke-width': 0.01 }));
+for (let x = -5; x <= 5; x++) svg.appendChild(svgEl('line', { x1: x, y1: -10, x2: x, y2: 10, stroke: '#ffffff', 'stroke-width': 0.01, opacity: 0.08 }));
+for (let z = -9; z <= 9; z += 1.5) svg.appendChild(svgEl('line', { x1: -6, y1: z, x2: 6, y2: z, stroke: '#ffffff', 'stroke-width': 0.01, opacity: 0.08 }));
 
 const playerGroup = svgEl('g', { class: 'player-dot' });
 svg.appendChild(playerGroup);
@@ -360,7 +489,7 @@ function renderScript() {
     row.appendChild(typeSelect);
     row.appendChild(targetSelect);
     const rm = document.createElement('button');
-    rm.textContent = '✕'; rm.className = 'danger';
+    rm.textContent = '✕'; rm.className = 'danger'; rm.title = 'Remove this shot';
     rm.addEventListener('click', () => {
       state.script.splice(i, 1);
       if (state.expandedMoveRow === i) state.expandedMoveRow = null;
@@ -373,7 +502,8 @@ function renderScript() {
     const expanded = state.expandedMoveRow === i;
     const toggle = document.createElement('button');
     toggle.className = 'moves-toggle';
-    toggle.textContent = (expanded ? '▾' : '▸') + ' moves (' + moves.length + ') — who heads where the instant this shot fires';
+    toggle.title = 'Who heads where the instant this shot fires — expand to add a cue';
+    toggle.textContent = (expanded ? '▾' : '▸') + ' Moves (' + moves.length + ')';
     toggle.addEventListener('click', () => {
       state.expandedMoveRow = expanded ? null : i;
       state.placingMoveFor = null;
@@ -402,7 +532,7 @@ function renderScript() {
         readout.textContent = mv.to ? ('x=' + mv.to.x.toFixed(2) + ', z=' + mv.to.z.toFixed(2)) : 'not placed';
         mrow.appendChild(readout);
         const rmMove = document.createElement('button');
-        rmMove.textContent = '✕'; rmMove.className = 'danger';
+        rmMove.textContent = '✕'; rmMove.className = 'danger'; rmMove.title = 'Remove this cue';
         rmMove.addEventListener('click', () => {
           moves.splice(mi, 1);
           if (state.placingMoveFor && state.placingMoveFor.entryIndex === i && state.placingMoveFor.moveIndex === mi) state.placingMoveFor = null;
@@ -503,26 +633,26 @@ function revalidate() {
   // script editor rather than authored independently.
   const n = state.script.length;
   document.getElementById('shotCount').textContent = n
-    ? n + ' scripted shot' + (n === 1 ? '' : 's') + ' — the rep ends right after the last one'
-    : '0 — add shots in the Script panel';
+    ? n + ' scripted shot' + (n === 1 ? '' : 's')
+    : '0 shots';
   const missing = activeSlots().filter(s => !state.positions[s]);
   if (missing.length) {
-    banner.className = 'banner err';
+    banner.className = 'status-pill err';
     banner.textContent = 'Missing positions for: ' + missing.join(', ');
     return;
   }
   if (!state.script.length) {
-    banner.className = 'banner err';
+    banner.className = 'status-pill err';
     banner.textContent = 'Add at least one shot to the script (the opener).';
     return;
   }
   const errors = validateDrill({ startPositions: state.positions, script: state.script });
   if (errors.length) {
-    banner.className = 'banner err';
+    banner.className = 'status-pill err';
     banner.innerHTML = '<strong>' + errors.length + ' validation error(s):</strong><ul>' +
       errors.map(e => '<li>' + escapeHtml(e) + '</li>').join('') + '</ul>';
   } else {
-    banner.className = 'banner ok';
+    banner.className = 'status-pill ok';
     banner.textContent = 'Valid.';
   }
 }
@@ -552,10 +682,6 @@ function buildDrill() {
   };
 }
 
-document.getElementById('genJson').addEventListener('click', () => {
-  document.getElementById('jsonOut').value = JSON.stringify(buildDrill(), null, 2);
-});
-
 document.getElementById('testLive').addEventListener('click', () => {
   const missing = activeSlots().filter(s => !state.positions[s]);
   const result = document.getElementById('testResult');
@@ -571,6 +697,25 @@ document.getElementById('testLive').addEventListener('click', () => {
 });
 
 renderPlayers();
+
+// ---- help & JSON modals ----
+const helpModal = document.getElementById('helpModal');
+document.getElementById('helpBtn').addEventListener('click', () => helpModal.classList.add('active'));
+document.getElementById('helpClose').addEventListener('click', () => helpModal.classList.remove('active'));
+helpModal.addEventListener('click', (e) => { if (e.target === helpModal) helpModal.classList.remove('active'); });
+
+const jsonModal = document.getElementById('jsonModal');
+document.getElementById('jsonClose').addEventListener('click', () => jsonModal.classList.remove('active'));
+jsonModal.addEventListener('click', (e) => { if (e.target === jsonModal) jsonModal.classList.remove('active'); });
+document.getElementById('genJson').addEventListener('click', () => {
+  document.getElementById('jsonOut').value = JSON.stringify(buildDrill(), null, 2);
+  jsonModal.classList.add('active');
+});
+document.getElementById('jsonCopy').addEventListener('click', () => {
+  const ta = document.getElementById('jsonOut');
+  ta.select();
+  if (navigator.clipboard) navigator.clipboard.writeText(ta.value);
+});
 </script>
 </body>
 </html>
