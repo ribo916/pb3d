@@ -4,6 +4,11 @@ import { fileURLToPath, URL } from 'node:url';
 const resolvePath = (p) => fileURLToPath(new URL(p, import.meta.url));
 
 export default defineConfig({
+  server: {
+    proxy: {
+      '/api': 'http://localhost:3001'
+    }
+  },
   build: {
     outDir: 'dist',
     emptyOutDir: true,

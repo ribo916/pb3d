@@ -5,7 +5,7 @@
 // rendering lives in court-svg.js, the script/steps editors in
 // script-editor.js, shared state in state.js.
 
-import { validateDrill, TEAM_OF, DEFAULT_DRILLS } from '../../src/drillStore.js';
+import { validateDrill, TEAM_OF, DEFAULT_DRILLS, createDrill } from '../../src/drillStore.js';
 import {
   state, activeSlots, opponentsOf, isIncluded, setSlotIncluded,
   ALL_SLOTS, SLOT_CLASS, ANCHOR_SLOTS
@@ -231,6 +231,32 @@ document.getElementById('testLive').addEventListener('click', () => {
   window.open(window.location.origin + '/?testDrill=1', '_blank');
   result.textContent = 'Opened in a new tab — this builder tab is untouched, so you can keep editing.';
   result.style.color = '#8fd9a8';
+});
+
+// This builder has no "load an existing drill" path (it always starts from
+// a blank state), so it only ever creates a new drill via the API — editing
+// or deleting an already-saved one is the in-app Drills screen's job
+// (src/drillAdmin.js), which shares this same createDrill/updateDrill/
+// deleteDrill store rather than a forked save path.
+document.getElementById('saveServer').addEventListener('click', () => {
+  const problems = drillProblems();
+  const result = document.getElementById('testResult');
+  if (problems.length) {
+    result.textContent = 'Fix validation issues above before saving.';
+    result.style.color = '#f0a8a8';
+    return;
+  }
+  result.textContent = 'Saving…';
+  result.style.color = '';
+  createDrill(buildDrill()).then(saved => {
+    if (!saved.ok) {
+      result.textContent = (saved.errors || ['save failed']).join('; ');
+      result.style.color = '#f0a8a8';
+      return;
+    }
+    result.textContent = 'Saved "' + saved.drill.name + '" — find it in the app\'s Drills list.';
+    result.style.color = '#8fd9a8';
+  });
 });
 
 // ---- help & JSON modals ----

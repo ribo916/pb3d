@@ -392,32 +392,47 @@ covered by regression tests in `test/drill.test.mjs`'s "Engine" section.
 
 ---
 
-## What's still missing (phase 2+)
+## Persistence + in-app manage UI (landed)
 
-1. **No create/edit/delete in the shipped app.** `tools/drill-builder.html`
-   covers *authoring* (place players, build the script, validate, test
-   live, generate JSON) but is a standalone dev tool with a copy-paste
-   handoff, not integrated into pb3d's own UI, and has no save/load.
-2. **No persistence layer.** Real deployment target is Vercel (see design
-   history above) — a Vercel-functions + Postgres approach (mirroring
-   `pickleball-drills` almost exactly) is the natural default. This is what
-   would let the builder tool actually save instead of just generating
-   pasteable JSON.
-3. **Only four real drills exist** (Drip Practice, Cross-Court Dink Rally,
-   plus the two minimal 2/3-player test drills). The `script` schema isn't
-   shape-limited — a serve-practice drill, a poaching drill, etc. are just
-   a different shot sequence, no `drillDirector.js` changes needed. Content
-   is the bottleneck, not the engine.
-4. **No user-selectable cast.** Roster size is flexible (2/3/4 players) but
+Drill data now lives in Neon Postgres (`pb3d_drills` table, `db/schema.sql`)
+behind a Vercel serverless function (`api/drills.js`), same Neon project as
+the sibling `pickleball-drills` repo but its own dedicated table (one row per
+drill, not the sibling's single-blob `kv_store` pattern — pb3d's own
+create/edit/delete needs atomic single-row writes, not a whole-array
+read-modify-write). `src/drillStore.js`'s `loadDrills()` fetches `/api/drills`
+for real now, falling back to the bundled `DEFAULT_DRILLS` on any failure
+(no `.env.local`, network error, DB down) — local dev with no database still
+works. New `createDrill`/`updateDrill`/`deleteDrill` exports back both the
+in-app editor and the standalone builder tool.
+
+**In-app create/edit/delete**: a new `#scrDrillEdit` flow screen
+(`src/drillAdmin.js`) reuses `tools/drill-builder/{state,court-svg,
+script-editor}.js` rather than re-implementing court placement/script editing
+— those modules' render functions took an additive optional target-element
+argument so the same code can point at this screen's elements instead of the
+standalone tool's ids. Reachable via "+ New Drill" on the Drills library
+screen and a per-card edit (✎) button. **Scope trim**: narration/"steps"
+editing stays a standalone-builder-only feature for now (a new in-app drill
+keeps the default single "Setup" step) — this screen covers the roster+script
+data the "no create/edit/delete" gap was actually about.
+
+`tools/drill-builder.html` stays as the desktop/power-user authoring surface
+(more room than a mobile flow screen) and now has a real "Save to server"
+button (create-only — it has no load-an-existing-drill path, so edit/delete
+of an already-saved drill is the in-app screen's job) alongside the existing
+Generate JSON / Test Live.
+
+## What's still missing (phase 3+)
+
+1. **Only four seeded drills exist** (Drip Practice, Cross-Court Dink Rally,
+   plus the two minimal 2/3-player test drills) — now just the initial seed
+   of a live, editable table, not a hard limit. The `script` schema isn't
+   shape-limited — a serve-practice drill, a poaching drill, etc. are just a
+   different shot sequence, no `drillDirector.js` changes needed.
+2. **No user-selectable cast.** Roster size is flexible (2/3/4 players) but
    which character plays which slot is still fixed (`DRILL_ROSTER` in
    `characters.js`).
-5. **Launch config (venue/palette/time-of-day) is hardcoded** — always
+3. **Launch config (venue/palette/time-of-day) is hardcoded** — always
    park/blue/day, regardless of any prior flow picks.
-
-## What to decide before writing more code
-
-- **Persistence** (gap #2) — gates everything under "administer," and gates
-  whether the builder tool becomes a real save flow or stays copy-paste.
-- **Whether/how the builder tool integrates into pb3d's own UI** (or stays
-  a separate dev page) — and whether a real admin flow reuses it, extends
-  it, or replaces it once persistence exists.
+4. **No narration/"steps" editing in the in-app screen** (see scope trim
+   above) — still standalone-builder-only.

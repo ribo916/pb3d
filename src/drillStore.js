@@ -477,9 +477,28 @@ for (var _i = 0; _i < DEFAULT_DRILLS.length; _i++) {
   DEFAULT_DRILLS[_i] = normalizeDrill(DEFAULT_DRILLS[_i]);
 }
 
+// Fetches the live table via /api/drills. Any failure — network error,
+// non-2xx, a non-JSON response (e.g. plain `vite`-only dev with no
+// server.dev.js/proxy running, which 404s with an HTML body, not JSON) —
+// falls back to the bundled DEFAULT_DRILLS, so the app keeps working with no
+// database at all. Caches the result in `_drills` so subsequent calls (and
+// getDrillById) reflect the live list without refetching.
 export function loadDrills() {
   if (_drills) return Promise.resolve(_drills.slice());
-  return Promise.resolve(DEFAULT_DRILLS.slice());
+  return fetch('/api/drills')
+    .then(function (res) {
+      var ct = res.headers.get('content-type') || '';
+      if (!res.ok || ct.indexOf('application/json') === -1) return null;
+      return res.json();
+    })
+    .then(function (body) {
+      if (!body || !Array.isArray(body.drills)) return DEFAULT_DRILLS.slice();
+      _drills = body.drills.map(normalizeDrill);
+      return _drills.slice();
+    })
+    .catch(function () {
+      return DEFAULT_DRILLS.slice();
+    });
 }
 
 export function getDrillById(id) {
@@ -488,4 +507,70 @@ export function getDrillById(id) {
     if (drills[i].id === id) return drills[i];
   }
   return null;
+}
+
+function cacheUpsert(drill) {
+  var list = (_drills || DEFAULT_DRILLS).slice();
+  var idx = list.findIndex(function (d) { return d.id === drill.id; });
+  if (idx === -1) list.push(drill); else list[idx] = drill;
+  _drills = list;
+}
+
+function cacheRemove(id) {
+  _drills = (_drills || DEFAULT_DRILLS).filter(function (d) { return d.id !== id; });
+}
+
+// createDrill/updateDrill/deleteDrill are the save-path counterparts to
+// loadDrills(), used by both the in-app manage UI and tools/drill-builder.
+// Client-side validateDrill runs first so obviously-invalid input never
+// makes a network round trip; the server (api/drills.js) re-validates the
+// same way as the real backstop, since a client can always be bypassed.
+export function createDrill(drill) {
+  var normalized = normalizeDrill(drill);
+  var errors = validateDrill(normalized);
+  if (errors.length) return Promise.resolve({ ok: false, errors: errors });
+  return fetch('/api/drills', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(normalized)
+  }).then(function (res) {
+    return res.json().catch(function () { return {}; }).then(function (body) {
+      if (!res.ok) return { ok: false, errors: body.errors || [body.error || 'save failed'] };
+      cacheUpsert(body);
+      return { ok: true, drill: body };
+    });
+  }).catch(function () {
+    return { ok: false, errors: ['network error — could not reach the server'] };
+  });
+}
+
+export function updateDrill(drill) {
+  var normalized = normalizeDrill(drill);
+  var errors = validateDrill(normalized);
+  if (errors.length) return Promise.resolve({ ok: false, errors: errors });
+  return fetch('/api/drills?id=' + encodeURIComponent(normalized.id), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(normalized)
+  }).then(function (res) {
+    return res.json().catch(function () { return {}; }).then(function (body) {
+      if (!res.ok) return { ok: false, errors: body.errors || [body.error || 'save failed'] };
+      cacheUpsert(body);
+      return { ok: true, drill: body };
+    });
+  }).catch(function () {
+    return { ok: false, errors: ['network error — could not reach the server'] };
+  });
+}
+
+export function deleteDrill(id) {
+  return fetch('/api/drills?id=' + encodeURIComponent(id), { method: 'DELETE' })
+    .then(function (res) {
+      if (!res.ok) return { ok: false, errors: ['delete failed'] };
+      cacheRemove(id);
+      return { ok: true };
+    })
+    .catch(function () {
+      return { ok: false, errors: ['network error — could not reach the server'] };
+    });
 }

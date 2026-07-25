@@ -179,8 +179,11 @@ export function attachCourtClicks(svg, onChange) {
 
 // Renders start-position dots (all active players) plus — only for the
 // script row currently expanded, to avoid unreadable clutter across a
-// multi-shot script — that beat's movement-cue markers.
-export function renderPlayers(playerGroup) {
+// multi-shot script — that beat's movement-cue markers. `posReadoutEl`
+// defaults to the standalone builder's #posReadout so its own call sites
+// don't need to change; the in-app editor (src/drillAdmin.js) passes its own
+// element instead, since a single document can't reuse that id twice.
+export function renderPlayers(playerGroup, posReadoutEl) {
   playerGroup.innerHTML = '';
   const lines = [];
   const active = activeSlots();
@@ -194,7 +197,7 @@ export function renderPlayers(playerGroup) {
     playerGroup.appendChild(label);
     lines.push(slot + ': x=' + p.x.toFixed(2) + ', z=' + p.z.toFixed(2));
   });
-  document.getElementById('posReadout').textContent = lines.join('\n');
+  (posReadoutEl || document.getElementById('posReadout')).textContent = lines.join('\n');
 
   // Hollow/dashed ring + arrow glyph, distinct from the solid filled
   // start-position dot above, so "cue" reads differently from "starts

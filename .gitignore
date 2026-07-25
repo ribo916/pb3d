@@ -2,6 +2,8 @@ tools/shots/
 tools/.cache/
 node_modules/
 dist/
+.env.local
+.env*.local
 .claude/settings.local.json
 .claude/settings.json
 # The local-clips/ archive (~104MB of alternate mocap takes + raw sport FBX)

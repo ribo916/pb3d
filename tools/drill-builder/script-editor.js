@@ -79,10 +79,13 @@ function renderDirectionSummary(container, moves) {
 
 // `onChange` re-renders the court + validation banner after any mutation
 // that doesn't itself need a full re-render of THIS panel (most edits);
-// this function re-renders itself (renderScript(onChange)) whenever the
+// this function re-renders itself (renderScript(onChange, scriptListEl)) whenever the
 // row/option structure changes (add/remove shot or move, hitter change).
-export function renderScript(onChange) {
-  const scriptList = document.getElementById('scriptList');
+// `scriptListEl` defaults to the standalone builder's #scriptList; the
+// in-app editor (src/drillAdmin.js) passes its own element since a single
+// document can't reuse that id twice.
+export function renderScript(onChange, scriptListEl) {
+  const scriptList = scriptListEl || document.getElementById('scriptList');
   scriptList.innerHTML = '';
   state.script.forEach((entry, i) => {
     const block = document.createElement('div');
@@ -99,7 +102,7 @@ export function renderScript(onChange) {
       entry.hitter = v;
       // Target must stay an opponent of the (possibly new) hitter.
       if (!opponentsOf(v).includes(entry.target)) entry.target = opponentsOf(v)[0];
-      renderScript(onChange);
+      renderScript(onChange, scriptListEl);
       onChange();
     });
     const typeSelect = select(SHAPE_TYPES, entry.shotType, v => { entry.shotType = v; onChange(); });
@@ -120,7 +123,7 @@ export function renderScript(onChange) {
       state.expandedMoveRow = null;
       state.placingMoveFor = null;
       state.placingLandingFor = null;
-      renderScript(onChange); onChange();
+      renderScript(onChange, scriptListEl); onChange();
     });
     row.appendChild(rm);
     block.appendChild(row);
@@ -136,7 +139,7 @@ export function renderScript(onChange) {
       state.placingLandingFor = landingArmed ? null : i;
       state.placingMoveFor = null;
       state.expandedMoveRow = i;
-      renderScript(onChange);
+      renderScript(onChange, scriptListEl);
       onChange();
     });
     landingRow.appendChild(landingBtn);
@@ -151,7 +154,7 @@ export function renderScript(onChange) {
       clearLanding.addEventListener('click', () => {
         delete entry.landing;
         if (state.placingLandingFor === i) state.placingLandingFor = null;
-        renderScript(onChange);
+        renderScript(onChange, scriptListEl);
         onChange();
       });
       landingRow.appendChild(clearLanding);
@@ -173,7 +176,7 @@ export function renderScript(onChange) {
       state.expandedMoveRow = expanded ? null : i;
       state.placingMoveFor = null;
       state.placingLandingFor = null;
-      renderScript(onChange);
+      renderScript(onChange, scriptListEl);
       onChange();
     });
     block.appendChild(toggle);
@@ -184,14 +187,14 @@ export function renderScript(onChange) {
         mrow.className = 'move-row';
         const playerSelect = select(activeSlots(), mv.player, v => {
           mv.player = v;
-          renderScript(onChange);
+          renderScript(onChange, scriptListEl);
           onChange();
         });
         mrow.appendChild(field('Player', playerSelect));
         const behaviorSelect = select(PLAYER_BEHAVIORS, mv.behavior || 'move', v => {
           mv.behavior = v;
           if (v === 'hold') state.placingMoveFor = null;
-          renderScript(onChange);
+          renderScript(onChange, scriptListEl);
           onChange();
         });
         behaviorSelect.title = 'Coaching label: explains why this player moves';
@@ -202,7 +205,7 @@ export function renderScript(onChange) {
         if (canonicalArrive !== mv.arriveBy) mv.arriveBy = canonicalArrive;
         const arriveSelect = select(ARRIVE_BY, canonicalArrive, v => {
           mv.arriveBy = v;
-          renderScript(onChange);
+          renderScript(onChange, scriptListEl);
           onChange();
         });
         arriveSelect.title = 'When this player should reach the destination';
@@ -217,7 +220,7 @@ export function renderScript(onChange) {
         placeBtn.addEventListener('click', () => {
           state.placingMoveFor = armed ? null : { entryIndex: i, moveIndex: mi };
           state.placingLandingFor = null;
-          renderScript(onChange);
+          renderScript(onChange, scriptListEl);
         });
         mrow.appendChild(placeBtn);
         const readout = document.createElement('span');
@@ -237,7 +240,7 @@ export function renderScript(onChange) {
           if (state.placingMoveFor && state.placingMoveFor.entryIndex === i && state.placingMoveFor.moveIndex >= mi) {
             state.placingMoveFor = null;
           }
-          renderScript(onChange); onChange();
+          renderScript(onChange, scriptListEl); onChange();
         });
         mrow.appendChild(rmMove);
         const explainer = document.createElement('div');
@@ -259,7 +262,7 @@ export function renderScript(onChange) {
         // Default to the hitter's own post-contact recovery — the most
         // common cue — the author can retarget the select to any active slot.
         entry.moves.push({ player: entry.hitter, to: null, behavior: 'recover', arriveBy: 'none' });
-        renderScript(onChange);
+        renderScript(onChange, scriptListEl);
       });
       block.appendChild(addMove);
     }

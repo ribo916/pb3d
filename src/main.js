@@ -12,6 +12,7 @@ import { CHARACTERS, DEFAULT_ROSTER, DRILL_ROSTER, getCharacter, resolveSlotChar
 import { makeCharacterPreview } from './characterPreview.js';
 import { normalizeMode } from './modes.js';
 import { loadDrills, normalizeDrill, activeSlotsOf } from './drillStore.js';
+import { openNewDrill, openEditDrill } from './drillAdmin.js';
 import { SLOT_INFO } from './drillDirector.js';
 import * as Power from './power.js';
 import * as AI from './ai.js';
@@ -972,6 +973,7 @@ function renderDrillLibrary() {
       }).join('');
       var steps = d.steps ? d.steps.length : 0;
       return '<div class="drill-card" data-drill-id="' + d.id + '">' +
+        '<button class="hud-icon-btn drill-card-edit-btn" data-drill-edit="' + d.id + '" title="Edit" type="button">✎</button>' +
         '<div class="drill-card-name">' + escapeHtml(d.name) + '</div>' +
         '<div class="drill-card-steps">' + steps + ' step' + (steps !== 1 ? 's' : '') + '</div>' +
         '<div class="drill-card-desc">' + escapeHtml(d.desc || '') + '</div>' +
@@ -981,7 +983,24 @@ function renderDrillLibrary() {
   });
 }
 
+$('newDrillBtn').addEventListener('click', function () {
+  loadDrills().then(function (drills) {
+    openNewDrill(drills);
+    goToFlow('drillEdit');
+  });
+});
+
 $('drillCardList').addEventListener('click', function (e) {
+  var editBtn = e.target.closest('[data-drill-edit]');
+  if (editBtn) {
+    e.stopPropagation();
+    var editId = editBtn.getAttribute('data-drill-edit');
+    loadDrills().then(function (drills) {
+      var drill = drills.filter(function (d) { return d.id === editId; })[0];
+      if (drill) { openEditDrill(drill, drills); goToFlow('drillEdit'); }
+    });
+    return;
+  }
   var card = e.target.closest('[data-drill-id]');
   if (!card) return;
   var id = card.getAttribute('data-drill-id');
@@ -990,6 +1009,12 @@ $('drillCardList').addEventListener('click', function (e) {
     if (drill) startDrillView(drill);
   });
 });
+
+// drillAdmin.js calls these after a successful save/delete (rather than
+// importing renderDrillLibrary/goToFlow itself, to avoid a circular import
+// between main.js and drillAdmin.js).
+window.pb3dOnDrillSaved = function () { goToFlow('drills'); };
+window.pb3dOnDrillDeleted = function () { goToFlow('drills'); };
 
 function escapeHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');

@@ -822,11 +822,12 @@
     .drill-lib-title { flex: 1; font-size: clamp(24px, 7vw, 34px); text-align: left; }
     .drill-cards { padding: 0 14px max(20px, env(safe-area-inset-bottom,0px));
       display: flex; flex-direction: column; gap: 12px; }
-    .drill-card { background: var(--card-bg, rgba(255,255,255,.05));
+    .drill-card { position: relative; background: var(--card-bg, rgba(255,255,255,.05));
       border: var(--card-bw,1px) solid var(--card-border, rgba(255,255,255,.1));
       border-radius: var(--card-radius, 16px); box-shadow: var(--card-shadow, none);
       padding: 16px; cursor: pointer; transition: opacity .15s; color: var(--text, #fff); }
     .drill-card:active { opacity: 0.7; }
+    .drill-card-edit-btn { position: absolute; top: 10px; right: 10px; width: 32px; height: 32px; font-size: 14px; }
     .drill-card-name { font-size: 16px; font-weight: 800; margin-bottom: 4px; }
     .drill-card-steps { font-size: 11px; opacity: 0.5; font-weight: 700;
       letter-spacing: 0.5px; margin-bottom: 4px; }
@@ -1658,6 +1659,77 @@
     body.touch-device #joy { display: block; }
     #joyKnob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px;
       border-radius: 50%; background: rgba(255,255,255,0.35); }
+
+    /* ---- in-app drill editor (create/edit/delete) — adapted from
+       tools/drill-builder.html's own stylesheet, which uses these exact same
+       theme tokens (--card-bg/--accent/--seg-bg/etc. already defined above
+       per palette), scoped under #scrDrillEdit so nothing here leaks onto
+       other screens. ---- */
+    #scrDrillEdit { overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y;
+      align-items: stretch; justify-content: flex-start;
+      padding: max(24px, env(safe-area-inset-top,16px)) 14px max(20px, env(safe-area-inset-bottom,0px)); }
+    #scrDrillEdit .de-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+    #scrDrillEdit .de-title { flex: 1; font-size: clamp(20px, 6vw, 28px); text-align: left; }
+    #scrDrillEdit .status-pill { border-radius: 999px; padding: 6px 16px; font-size: 12px; margin-bottom: 14px; }
+    #scrDrillEdit .status-pill.ok { background: rgba(54,208,111,.12); border: 1px solid rgba(54,208,111,.4); color: #2f9e57; }
+    #scrDrillEdit .status-pill.err { background: rgba(240,90,90,.12); border: 1px solid rgba(240,90,90,.4); color: #c94a4a; }
+    #scrDrillEdit .status-pill ul { margin: 4px 0 0; padding-left: 18px; }
+    #scrDrillEdit .panel { background: var(--card-bg); border: var(--card-bw) solid var(--card-border);
+      border-radius: var(--card-radius); box-shadow: var(--card-shadow); padding: 16px 18px; margin-bottom: 16px; }
+    #scrDrillEdit .panel-title { font-family: var(--title-font); text-transform: var(--title-transform);
+      font-weight: var(--title-weight); letter-spacing: var(--title-spacing); font-size: 12px; color: var(--accent); margin: 0 0 12px; }
+    #scrDrillEdit .info-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+    #scrDrillEdit label { display: block; font-size: 12px; color: var(--label); margin: 8px 0 4px; }
+    #scrDrillEdit label:first-of-type { margin-top: 0; }
+    #scrDrillEdit input[type=text], #scrDrillEdit textarea, #scrDrillEdit select {
+      width: 100%; box-sizing: border-box; background: var(--seg-bg); color: var(--text);
+      border: 1px solid var(--seg-border); border-radius: 6px; padding: 6px 8px; font-size: 13px; font-family: inherit; }
+    #scrDrillEdit textarea { min-height: 44px; resize: vertical; }
+    #scrDrillEdit .row { display: flex; gap: 8px; align-items: end; margin: 4px 0; flex-wrap: wrap; }
+    #scrDrillEdit .row select { flex: 1; }
+    #scrDrillEdit .court-panel { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    #scrDrillEdit .court-wrap { width: min(100%, 420px); padding: 8px; box-sizing: border-box; border-radius: 16px;
+      background: linear-gradient(180deg, rgba(69,118,214,.10), rgba(69,176,214,.05) 50%, rgba(214,69,69,.08));
+      border: 1px solid var(--seg-border); }
+    #scrDrillEdit .court-wrap svg { display: block; width: 100%; height: auto; background: rgba(0,0,0,.15); border-radius: 8px; cursor: crosshair; }
+    #scrDrillEdit .picker-label { font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--text-faint); margin: 2px 0; }
+    #scrDrillEdit .player-picker { display: flex; gap: 16px; align-items: center; justify-content: center; }
+    #scrDrillEdit .picker-slot { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    #scrDrillEdit .picker-slot .toggle { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--text-faint); }
+    #scrDrillEdit .picker-slot .toggle input { width: auto; margin: 0; }
+    #scrDrillEdit .icon-btn { width: 42px; height: 42px; border-radius: 50%; border: 2px solid rgba(255,255,255,.18);
+      color: #fff; font-weight: 700; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    #scrDrillEdit .icon-btn:disabled { cursor: not-allowed; opacity: .25; }
+    #scrDrillEdit .icon-btn.active { border-color: #fff; box-shadow: 0 0 0 4px rgba(255,255,255,.22); }
+    #scrDrillEdit .p1 { background: #d64545; } #scrDrillEdit .p2 { background: #d68a45; }
+    #scrDrillEdit .p3 { background: #4576d6; } #scrDrillEdit .p4 { background: #45b0d6; }
+    #scrDrillEdit #dePosReadout { font-family: ui-monospace, monospace; font-size: 10px; color: var(--text-faint);
+      margin-top: 4px; line-height: 1.5; white-space: pre; text-align: center; }
+    #scrDrillEdit .shot-block { border: 1px solid var(--seg-border); border-radius: 10px; padding: 10px; margin: 8px 0; }
+    #scrDrillEdit .shot-number { font: 700 10px var(--title-font); letter-spacing: 1px; color: var(--text-faint); text-transform: uppercase; width: 100%; }
+    #scrDrillEdit .directive-field { flex: 1 1 0; min-width: 0; }
+    #scrDrillEdit .directive-field label { margin: 0 0 4px; font-size: 9px; text-transform: uppercase; letter-spacing: .5px; }
+    #scrDrillEdit .directive-summary { display: flex; flex-wrap: wrap; gap: 5px; margin: 3px 0 5px 8px; min-height: 18px; }
+    #scrDrillEdit .directive-chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 7px; border-radius: 999px;
+      background: var(--seg-bg); border: 1px solid var(--seg-border); color: var(--text-soft); font-size: 10px; }
+    #scrDrillEdit .directive-chip strong { color: var(--text); }
+    #scrDrillEdit .directive-empty { color: var(--text-faint); font-size: 10px; padding: 2px 0; }
+    #scrDrillEdit .move-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: end; margin: 8px 0 8px 8px; padding: 9px;
+      border-radius: 8px; background: var(--seg-bg); }
+    #scrDrillEdit .move-row select { flex: 1 1 90px; }
+    #scrDrillEdit .move-row button.place.armed, #scrDrillEdit .landing-row button.place.armed {
+      background: rgba(240,190,90,.16); border-color: rgba(240,190,90,.5); color: #a87a1e; }
+    #scrDrillEdit .to-readout { font-size: 10px; color: var(--text-faint); }
+    #scrDrillEdit .landing-row { display: flex; gap: 6px; align-items: center; margin: 6px 0 2px 8px; flex-wrap: wrap; }
+    #scrDrillEdit .directive-explainer { flex-basis: 100%; font-size: 10px; color: var(--text-faint); line-height: 1.4; }
+    #scrDrillEdit .moves-toggle { background: none; border: none; color: var(--accent); font-size: 11px; cursor: pointer; padding: 6px 0 3px; }
+    #scrDrillEdit button { background: var(--seg-bg); color: var(--text); border: 1px solid var(--seg-border);
+      border-radius: var(--btn-radius); padding: 7px 12px; font-size: 12px; cursor: pointer; font-family: inherit; }
+    #scrDrillEdit button.danger { background: rgba(240,90,90,.12); border-color: rgba(240,90,90,.4); }
+    #scrDrillEdit button.primary { background: color-mix(in srgb, var(--accent) 16%, transparent); border-color: var(--accent); color: var(--accent); font-weight: 700; }
+    #scrDrillEdit button:disabled { opacity: .4; cursor: not-allowed; }
+    #scrDrillEdit .de-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
+    #scrDrillEdit .de-status { font-size: 12px; }
   </style>
 </head>
 <body>
@@ -2021,9 +2093,56 @@
       <div class="drill-lib-header">
         <button class="hud-icon-btn" data-flow-back="start" type="button" style="font-size:18px;width:40px;height:40px;">←</button>
         <div class="drill-lib-title flow-title">Drills</div>
+        <button id="newDrillBtn" class="hud-icon-btn" title="New Drill" type="button" style="font-size:20px;width:40px;height:40px;">+</button>
       </div>
       <div class="drill-cards" id="drillCardList">
         <!-- populated by main.js -->
+      </div>
+    </section>
+
+    <!-- 01c · Drill Editor (create/edit/delete) -->
+    <section id="scrDrillEdit" class="flow-screen">
+      <div class="de-header">
+        <button class="hud-icon-btn" data-flow-back="drills" type="button" style="font-size:18px;width:40px;height:40px;">←</button>
+        <div class="de-title flow-title" id="deScreenTitle">New Drill</div>
+      </div>
+      <div id="deBanner" class="status-pill ok">Place your active players and add at least one shot to validate.</div>
+
+      <div class="panel">
+        <h2 class="panel-title">Drill info</h2>
+        <div class="info-grid">
+          <div><label for="deFName">Name</label><input type="text" id="deFName" value="New Drill"></div>
+          <div><label for="deFDesc">Description</label><textarea id="deFDesc" placeholder="What happens in this drill?"></textarea></div>
+          <div><label for="deFGoal">Goal</label><textarea id="deFGoal" placeholder="What should players learn or notice?"></textarea></div>
+          <div><label for="deFTags">Tags</label><input type="text" id="deFTags" placeholder="dink, recovery, doubles"></div>
+        </div>
+      </div>
+
+      <div class="panel court-panel">
+        <div class="picker-label" title="P3 and P4 are Team B, partners on the far side of the net">Far · Team B</div>
+        <div class="player-picker" id="dePickerFar"></div>
+        <div class="court-wrap">
+          <svg id="deCourt" viewBox="-6 -10 12 20" role="img" aria-label="Interactive pickleball court placement grid"></svg>
+        </div>
+        <div class="player-picker" id="dePickerNear"></div>
+        <div class="picker-label" title="P1 and P2 are Team A, partners on the near side of the net">Near · Team A</div>
+        <div id="dePosReadout"></div>
+      </div>
+
+      <div class="panel">
+        <h2 class="panel-title" id="deShotCount">0 shots</h2>
+        <div id="deScriptList"></div>
+        <div class="row" style="margin-top:8px">
+          <button id="deAddShot" type="button">+ Add shot</button>
+          <button id="deDupShot" type="button" title="Mirrors the hitter/receiver of the last shot">⟲ Duplicate last</button>
+        </div>
+      </div>
+
+      <div class="de-actions">
+        <button class="primary" id="deSaveBtn" type="button">Save</button>
+        <button class="danger" id="deDeleteBtn" type="button" style="display:none">Delete</button>
+        <button id="deTestLiveBtn" type="button" title="Play this drill live in a new tab without saving">▶ Test Live</button>
+        <div id="deStatus" class="de-status"></div>
       </div>
     </section>
 
