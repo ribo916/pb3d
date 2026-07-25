@@ -291,6 +291,17 @@ out the state machine and replay-loop transport.
   - Player icons: P1/P2 (near) below the court, P3/P4 (far) above it —
     matching where those teams actually render on the court, not an
     arbitrary choice. Circular, color-coded to match the court dots.
+  - Drill metadata sits in a full-width header above the authoring
+    workspace. On desktop the court and Script panels are side by
+    side; on narrow/mobile screens they stack into one readable column.
+    The Script panel mirrors the rendered court panel's height and only its
+    shot list scrolls, keeping the primary two-column workspace aligned.
+    Add/Duplicate/Narration actions stay in a fixed row at the top of the
+    Script panel. Narration opens from there in a dedicated modal
+    rather than consuming permanent workspace height.
+  - The placement apron outside the court has subtle near/far team color,
+    stronger reference-grid lines, and coordinate labels so wide serve/ATP
+    positions remain legible instead of floating in an indistinct dark box.
   - P1/P3 are always present, no control to remove them. P2/P4 each have an
     explicit **checkbox** ("include") — unambiguous add/remove, separate
     from the icon's job (select for placement). Unchecking strips that
@@ -301,7 +312,10 @@ out the state machine and replay-loop transport.
     the wrong side snaps to the nearest legal spot at the net line instead
     of placing there or being ignored.
   - Script editor: ordered hitter/shotType/target rows; the target dropdown
-    only ever offers the hitter's opponents.
+    only ever offers the hitter's opponents. Player directives are presented
+    as plain-language "player directions" with labeled Who / Coaching label /
+    Arrive by fields, an always-visible summary chip, and a persistent legend
+    explaining that behavior is descriptive while `arriveBy` controls pace.
   - Live `validateDrill` banner.
   - **"Generate drill JSON"** — paste-ready `DEFAULT_DRILLS` entry.
   - **"▶ Test this drill live"** — stages the drill in `sessionStorage` and

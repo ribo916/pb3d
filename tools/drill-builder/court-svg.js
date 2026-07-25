@@ -14,6 +14,8 @@ import { state, activeSlots, SLOT_COLOR } from './state.js';
 
 const HALF_W = COURT.HALF_W, HALF_L = COURT.HALF_L, KITCHEN = COURT.KITCHEN;
 const MIN_NET_GAP = 0.3;
+const PLACEMENT_X = HALF_W + 2.45;
+const PLACEMENT_Z = HALF_L + 2.2;
 // Mirrors src/scene.js COURT_PALETTES.green — keep in sync if that changes.
 const COURT_GREEN = { court: '#1d6a3a', kitchen: '#6fbe78' };
 
@@ -32,9 +34,16 @@ function clampToOwnSide(team, z) {
   return team === 'near' ? Math.max(z, MIN_NET_GAP) : Math.min(z, -MIN_NET_GAP);
 }
 
-function clampCourtPoint(p, team) {
+function clampLandingPoint(p, team) {
   p.x = Math.max(-HALF_W, Math.min(HALF_W, p.x));
   p.z = Math.max(-HALF_L, Math.min(HALF_L, p.z));
+  p.z = clampToOwnSide(team, p.z);
+  return p;
+}
+
+function clampPlacementPoint(p, team) {
+  p.x = Math.max(-PLACEMENT_X, Math.min(PLACEMENT_X, p.x));
+  p.z = Math.max(-PLACEMENT_Z, Math.min(PLACEMENT_Z, p.z));
   p.z = clampToOwnSide(team, p.z);
   return p;
 }
@@ -44,6 +53,26 @@ function clampCourtPoint(p, team) {
 // so the preview reads as an actual pickleball court. Draws once; returns
 // the <g> layer subsequent renderPlayers() calls should target.
 export function buildCourt(svg) {
+  // Colored placement apron: makes the legal off-court authoring space read
+  // as intentional and gives the reference grid enough contrast to remain
+  // visible beyond the sidelines/baselines.
+  svg.appendChild(svgEl('rect', {
+    x: -6, y: -10, width: 12, height: 20, rx: 0.28,
+    fill: '#0a2029'
+  }));
+  svg.appendChild(svgEl('rect', {
+    x: -6, y: -10, width: 12, height: 10,
+    fill: '#132b40', opacity: 0.72
+  }));
+  svg.appendChild(svgEl('rect', {
+    x: -6, y: 0, width: 12, height: 10,
+    fill: '#30232a', opacity: 0.58
+  }));
+  svg.appendChild(svgEl('rect', {
+    x: -HALF_W - 0.34, y: -HALF_L - 0.34,
+    width: HALF_W * 2 + 0.68, height: HALF_L * 2 + 0.68,
+    fill: 'none', stroke: '#7ef0ff', 'stroke-width': 0.055, opacity: 0.22, rx: 0.08
+  }));
   svg.appendChild(svgEl('rect', { x: -HALF_W, y: -HALF_L, width: HALF_W * 2, height: HALF_L * 2, fill: COURT_GREEN.court, stroke: '#eaf6ee', 'stroke-width': 0.04 }));
   [1, -1].forEach(sign => svg.appendChild(svgEl('rect', {
     x: -HALF_W, y: sign > 0 ? 0 : -KITCHEN, width: HALF_W * 2, height: KITCHEN,
@@ -51,9 +80,48 @@ export function buildCourt(svg) {
   })));
   svg.appendChild(svgEl('line', { x1: -HALF_W, y1: 0, x2: HALF_W, y2: 0, stroke: '#f4fbf6', 'stroke-width': 0.045 })); // net
   [-KITCHEN, KITCHEN].forEach(z => svg.appendChild(svgEl('line', { x1: -HALF_W, y1: z, x2: HALF_W, y2: z, stroke: '#eaf6ee', 'stroke-width': 0.025, 'stroke-dasharray': '0.08,0.08' })));
-  // Faint reference grid (visual aid only — clicking anywhere places exactly there, not snapped).
-  for (let x = -5; x <= 5; x++) svg.appendChild(svgEl('line', { x1: x, y1: -10, x2: x, y2: 10, stroke: '#ffffff', 'stroke-width': 0.01, opacity: 0.08 }));
-  for (let z = -9; z <= 9; z += 1.5) svg.appendChild(svgEl('line', { x1: -6, y1: z, x2: 6, y2: z, stroke: '#ffffff', 'stroke-width': 0.01, opacity: 0.08 }));
+  // Reference grid (visual aid only — clicking places exactly there, never
+  // snaps). Stronger in the colored apron, still subtle over the court.
+  for (let x = -5; x <= 5; x++) {
+    svg.appendChild(svgEl('line', {
+      x1: x, y1: -10, x2: x, y2: 10, stroke: '#d9f5ff',
+      'stroke-width': x === 0 ? 0.025 : 0.016, opacity: x === 0 ? 0.25 : 0.18
+    }));
+    if (x !== 0) {
+      const label = svgEl('text', {
+        x, y: -9.55, 'text-anchor': 'middle', 'font-size': 0.22,
+        fill: '#d9f5ff', opacity: 0.55
+      });
+      label.textContent = x;
+      svg.appendChild(label);
+    }
+  }
+  for (let z = -9; z <= 9; z += 1.5) {
+    svg.appendChild(svgEl('line', {
+      x1: -6, y1: z, x2: 6, y2: z, stroke: '#d9f5ff',
+      'stroke-width': 0.016, opacity: 0.18
+    }));
+    if (Math.abs(z) > 0.1) {
+      const label = svgEl('text', {
+        x: -5.65, y: z + 0.08, 'text-anchor': 'start', 'font-size': 0.2,
+        fill: '#d9f5ff', opacity: 0.52
+      });
+      label.textContent = z.toFixed(1);
+      svg.appendChild(label);
+    }
+  }
+  [
+    { y: -8.85, text: 'FAR PLACEMENT AREA', fill: '#91bfff' },
+    { y: 9.15, text: 'NEAR PLACEMENT AREA', fill: '#ffb0a6' }
+  ].forEach(item => {
+    const label = svgEl('text', {
+      x: 0, y: item.y, 'text-anchor': 'middle', 'font-size': 0.24,
+      'font-family': 'sans-serif', 'font-weight': 700, 'letter-spacing': 0.06,
+      fill: item.fill, opacity: 0.58
+    });
+    label.textContent = item.text;
+    svg.appendChild(label);
+  });
 
   const playerGroup = svgEl('g', { class: 'player-dot' });
   svg.appendChild(playerGroup);
@@ -78,7 +146,7 @@ export function attachCourtClicks(svg, onChange) {
       state.placingLandingFor = null;
       if (entry) {
         const receiverTeam = TEAM_OF[entry.target || entry.receiver];
-        entry.landing = clampCourtPoint(p, receiverTeam);
+        entry.landing = clampLandingPoint(p, receiverTeam);
       }
       onChange();
       return;
@@ -99,12 +167,12 @@ export function attachCourtClicks(svg, onChange) {
       // throwing and leaving placingMoveFor armed forever.
       if (entry && entry.moves && entry.moves[moveIndex]) {
         const mv = entry.moves[moveIndex];
-        mv.to = clampCourtPoint(p, TEAM_OF[mv.player]);
+        mv.to = clampPlacementPoint(p, TEAM_OF[mv.player]);
       }
       onChange();
       return;
     }
-    state.positions[state.selectedSlot] = clampCourtPoint(p, TEAM_OF[state.selectedSlot]);
+    state.positions[state.selectedSlot] = clampPlacementPoint(p, TEAM_OF[state.selectedSlot]);
     onChange();
   });
 }

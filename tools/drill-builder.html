@@ -25,7 +25,8 @@
     font-family: var(--body-font); background: var(--bg); background-attachment: fixed;
     color: var(--text); margin: 0; padding: 24px; min-height: 100vh; box-sizing: border-box;
   }
-  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+  .page-shell { width: min(1440px, 100%); margin: 0 auto; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; flex-wrap: wrap; }
   .topbar-title { display: flex; align-items: center; gap: 10px; }
   h1 {
     font-family: var(--title-font); text-transform: var(--title-transform); font-weight: var(--title-weight);
@@ -44,15 +45,34 @@
   .status-pill.err { background: rgba(240,90,90,.12); border: 1px solid rgba(240,90,90,.4); color: #f0a8a8; }
   .status-pill ul { margin: 4px 0 0; padding-left: 18px; }
 
-  .layout { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
+  .drill-info-panel { margin-bottom: 20px; }
+  .info-grid {
+    display: grid; grid-template-columns: minmax(180px,.8fr) minmax(260px,1.3fr) minmax(260px,1.3fr) minmax(180px,.8fr);
+    gap: 12px;
+  }
+  .field label { margin-top: 0; }
+  .field textarea { min-height: 62px; }
+  .info-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; }
+  .layout { display: grid; grid-template-columns: minmax(430px, 1.05fr) minmax(420px, .95fr); gap: 24px; align-items: start; }
   .panel {
     background: var(--card-bg); border: var(--card-bw) solid var(--card-border);
     border-radius: var(--card-radius); box-shadow: var(--card-shadow);
-    padding: 18px 20px; flex: 0 0 auto;
+    padding: 18px 20px;
   }
-  .court-panel { display: flex; flex-direction: column; align-items: center; gap: 8px; }
-  .col-right { display: flex; flex-direction: column; gap: 20px; flex: 0 0 380px; }
+  .court-panel { display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 0; }
+  .court-wrap {
+    width: min(100%, 500px); padding: 10px; box-sizing: border-box; border-radius: 18px;
+    background: linear-gradient(180deg, rgba(69,118,214,.10), rgba(69,176,214,.05) 50%, rgba(214,69,69,.08));
+    border: 1px solid rgba(126,240,255,.16);
+    box-shadow: inset 0 0 35px rgba(126,240,255,.035), 0 12px 28px rgba(0,0,0,.22);
+  }
+  .court-wrap svg { display: block; width: 100%; height: auto; }
+  .col-right { min-width: 0; }
   .col-right .panel { width: 100%; box-sizing: border-box; }
+  .script-panel {
+    display: flex; flex-direction: column; min-height: 0; overflow: hidden;
+    height: var(--court-panel-height, auto);
+  }
 
   .panel-title {
     font-family: var(--title-font); text-transform: var(--title-transform); font-weight: var(--title-weight);
@@ -71,12 +91,44 @@
   textarea { min-height: 44px; resize: vertical; }
   .row { display: flex; gap: 8px; align-items: center; margin: 4px 0; flex-wrap: wrap; }
   .row select { flex: 1; }
-  .shot-block { border: 1px solid var(--seg-border); border-radius: 6px; padding: 8px; margin: 8px 0; }
-  #scriptList { max-height: 420px; overflow-y: auto; padding-right: 2px; margin: 0 -2px; }
-  #stepsList { max-height: 220px; overflow-y: auto; padding-right: 2px; margin: 0 -2px; }
-  .moves-toggle { background: none; border: none; color: var(--accent); font-size: 11px; cursor: pointer; padding: 4px 0; }
+  .shot-block { border: 1px solid var(--seg-border); border-radius: 10px; padding: 10px; margin: 8px 0; background: rgba(255,255,255,.012); }
+  .shot-number { font: 700 10px var(--title-font); letter-spacing: 1px; color: var(--text-faint); text-transform: uppercase; width: 100%; }
+  .shot-fields { align-items: end; flex-wrap: nowrap; }
+  .shot-fields .directive-field { flex: 1 1 0; }
+  #scriptList {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 6px; margin: 0 -6px 0 -2px;
+    scrollbar-color: rgba(126,240,255,.4) rgba(255,255,255,.035);
+  }
+  #stepsList { max-height: 60vh; overflow-y: auto; padding-right: 6px; margin: 0 -6px 0 -2px; }
+  .script-actions {
+    flex: 0 0 auto; padding-bottom: 10px; margin: -2px 0 12px;
+    border-bottom: 1px solid var(--seg-border);
+  }
+  .directive-guide {
+    border: 1px solid rgba(126,240,255,.16); background: rgba(126,240,255,.045);
+    border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; color: var(--text-soft);
+    font-size: 11px; line-height: 1.5;
+  }
+  .directive-guide strong { color: var(--accent); }
+  .directive-guide .guide-formula { color: #fff; font-weight: 650; margin-bottom: 3px; }
+  .moves-toggle { background: none; border: none; color: var(--accent); font-size: 11px; cursor: pointer; padding: 6px 0 3px; }
   .moves-toggle:hover { text-decoration: underline; }
-  .move-row { display: flex; gap: 6px; align-items: center; margin: 4px 0 4px 12px; }
+  .directive-summary { display: flex; flex-wrap: wrap; gap: 5px; margin: 3px 0 5px 12px; min-height: 20px; }
+  .directive-chip {
+    display: inline-flex; align-items: center; gap: 5px; padding: 4px 7px; border-radius: 999px;
+    background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.09);
+    color: var(--text-soft); font-size: 10px;
+  }
+  .directive-chip strong { color: #fff; }
+  .directive-empty { color: var(--text-faint); font-size: 10px; padding: 2px 0; }
+  .move-row {
+    display: grid; grid-template-columns: .72fr 1.25fr 1.2fr auto minmax(92px,auto) auto;
+    gap: 6px; align-items: end; margin: 8px 0 8px 12px; padding: 9px;
+    border-radius: 8px; background: rgba(255,255,255,.025);
+  }
+  .directive-field { min-width: 0; }
+  .directive-field label { margin: 0 0 4px; font-size: 9px; text-transform: uppercase; letter-spacing: .7px; }
+  .directive-explainer { grid-column: 1 / -1; font-size: 10px; color: var(--text-faint); line-height: 1.45; }
   .landing-row { display: flex; gap: 6px; align-items: center; margin: 6px 0 2px 12px; }
   .move-row select { flex: 1; }
   .move-row button.place, .landing-row button.place { font-size: 11px; padding: 4px 8px; }
@@ -107,7 +159,7 @@
   .icon-btn:disabled { cursor: not-allowed; opacity: 0.25; box-shadow: none; }
   .icon-btn.active { border-color: #fff; box-shadow: 0 0 0 4px rgba(255,255,255,0.22), 0 2px 6px rgba(0,0,0,0.35); }
   .p1 { background: #d64545; } .p2 { background: #d68a45; } .p3 { background: #4576d6; } .p4 { background: #45b0d6; }
-  svg { background: rgba(0,0,0,.28); border-radius: var(--btn-radius); cursor: crosshair; }
+  svg { background: rgba(0,0,0,.28); border-radius: 10px; cursor: crosshair; }
   .player-dot { pointer-events: none; }
   #jsonOut { width: 100%; height: 280px; box-sizing: border-box; font-family: ui-monospace, monospace; font-size: 12px; }
   .hint { color: var(--text-faint); font-size: 11px; margin-top: 6px; cursor: default; }
@@ -120,12 +172,12 @@
   }
 
   /* ---- modal shell, mirrored from index.html's #infoModal / .info-panel ---- */
-  #helpModal, #jsonModal {
+  #helpModal, #jsonModal, #narrationModal {
     display: none; position: fixed; inset: 0; z-index: 40;
     background: rgba(6,18,31,0.75); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
     align-items: center; justify-content: center; padding: 20px;
   }
-  #helpModal.active, #jsonModal.active { display: flex; }
+  #helpModal.active, #jsonModal.active, #narrationModal.active { display: flex; }
   .info-panel {
     background: var(--card-bg); border: var(--card-bw) solid var(--card-border);
     border-radius: var(--card-radius); padding: 26px 28px; max-width: min(560px, 100%);
@@ -148,15 +200,41 @@
     display: flex; align-items: center; justify-content: center; font-family: inherit;
   }
   .info-close:hover { background: rgba(255,255,255,.16); }
+  .narration-panel { max-width: min(680px, 100%); }
+  .narration-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
 
-  @media (max-width: 860px) {
-    .layout { flex-direction: column; align-items: center; }
-    .col-right { flex-basis: auto; width: 100%; max-width: 420px; }
+  @media (max-width: 1040px) {
+    .info-grid { grid-template-columns: 1fr 1fr; }
+    .layout { grid-template-columns: minmax(360px,.9fr) minmax(380px,1.1fr); gap: 16px; }
+    .move-row { grid-template-columns: 1fr 1fr; }
+    .directive-explainer { grid-column: 1 / -1; }
+  }
+  @media (max-width: 760px) {
+    body { padding: 12px; }
+    .topbar { align-items: flex-start; }
+    .status-pill { width: 100%; max-width: none; box-sizing: border-box; }
+    .info-grid, .layout { grid-template-columns: 1fr; }
+    .panel { padding: 15px; border-radius: 16px; }
+    .court-panel { order: 0; }
+    .col-right { order: 1; }
+    .court-wrap { width: min(100%, 440px); padding: 7px; }
+    .footer-bar { position: sticky; bottom: 0; z-index: 10; padding: 12px; margin: 18px -12px -12px;
+      background: rgba(5,12,20,.94); backdrop-filter: blur(10px); }
+  }
+  @media (max-width: 460px) {
+    .info-grid { gap: 8px; }
+    .move-row { grid-template-columns: 1fr; margin-left: 0; }
+    .directive-explainer { grid-column: 1; }
+    .landing-row, .directive-summary { margin-left: 0; }
+    .shot-fields { flex-wrap: wrap; }
+    .shot-fields .directive-field { flex-basis: 28%; }
+    .row select { min-width: 88px; }
   }
 </style>
 </head>
 <body>
 
+<main class="page-shell">
 <div class="topbar">
   <div class="topbar-title">
     <h1>pb3d Drill Builder</h1>
@@ -165,40 +243,58 @@
   <div id="banner" class="status-pill ok">Place your active players and add at least one shot to validate.</div>
 </div>
 
+<section class="panel drill-info-panel" aria-labelledby="drillInfoTitle">
+  <h2 class="panel-title" id="drillInfoTitle">Drill info</h2>
+  <div class="info-grid">
+    <div class="field">
+      <label for="fName">Name</label>
+      <input type="text" id="fName" value="New Drill">
+    </div>
+    <div class="field">
+      <label for="fDesc">Description</label>
+      <textarea id="fDesc" placeholder="What happens in this drill?"></textarea>
+    </div>
+    <div class="field">
+      <label for="fGoal">Goal</label>
+      <textarea id="fGoal" placeholder="What should players learn or notice?"></textarea>
+    </div>
+    <div class="field">
+      <label for="fTags">Tags</label>
+      <input type="text" id="fTags" placeholder="dink, recovery, doubles">
+    </div>
+  </div>
+  <div class="info-meta">
+    <div id="shotCount" class="hint" title="The rep ends automatically right after the last scripted shot — there's no separate length to configure.">0 shots</div>
+    <div class="hint">Build the setup below, then test it as live gameplay.</div>
+  </div>
+</section>
+
 <div class="layout">
   <div class="panel court-panel">
     <div class="picker-label" title="P3 and P4 are Team B, partners on the far side of the net">Far &middot; Team B</div>
     <div class="player-picker" id="pickerFar"></div>
-    <svg id="court" viewBox="-6 -10 12 20" width="420" height="700"></svg>
+    <div class="court-wrap">
+      <svg id="court" viewBox="-6 -10 12 20" role="img" aria-label="Interactive pickleball court placement grid"></svg>
+    </div>
     <div class="player-picker" id="pickerNear"></div>
     <div class="picker-label" title="P1 and P2 are Team A, partners on the near side of the net">Near &middot; Team A</div>
     <div id="posReadout"></div>
   </div>
 
   <div class="col-right">
-    <div class="panel">
-      <h2 class="panel-title">Drill info</h2>
-      <label>Name</label>
-      <input type="text" id="fName" value="New Drill">
-      <label>Description</label>
-      <textarea id="fDesc"></textarea>
-      <label>Goal</label>
-      <textarea id="fGoal"></textarea>
-      <label>Tags (comma separated)</label>
-      <input type="text" id="fTags">
-      <div id="shotCount" class="hint" title="The rep ends automatically right after the last scripted shot — there's no separate length to configure.">0 shots</div>
-    </div>
-
-    <div class="panel">
+    <div class="panel script-panel">
       <h2 class="panel-title" title="Shots in order: who hits, what kind, who receives, and optionally where the ball lands.">Script</h2>
-      <div id="scriptList"></div>
-      <div class="row">
+      <div class="row script-actions">
         <button id="addShot">+ Add shot</button>
         <button id="dupShot" title="Mirrors the hitter/receiver of the last shot and copies its type, landing, and movement cues">&#10697; Duplicate last</button>
+        <button id="openNarration" title="Edit the coaching notes shown with the drill">Narration (1)</button>
       </div>
-      <h2 class="panel-title spaced" title="Shown in-game as on-screen narration; not read by the engine.">Narration steps</h2>
-      <div id="stepsList"></div>
-      <button id="addStep">+ Add step</button>
+      <div class="directive-guide">
+        <div class="guide-formula">Player direction = who moves + coaching label + destination + deadline</div>
+        <strong>Coaching label</strong> explains why they move; it does not teleport or change their physics.
+        <strong>Arrive by</strong> controls the pace: no deadline, by this shot’s bounce, or by the next paddle contact.
+      </div>
+      <div id="scriptList"></div>
     </div>
   </div>
 </div>
@@ -208,6 +304,7 @@
   <button id="genJson" title="Opens the pasteable JSON entry for DEFAULT_DRILLS in src/drillStore.js">Generate drill JSON</button>
   <div id="testResult"></div>
 </div>
+</main>
 
 <div id="helpModal">
   <div class="info-panel">
@@ -237,12 +334,13 @@
     </div>
     <div class="info-section">
       <div class="info-label">Player directives</div>
-      <p>Each shot in the script can also carry player directives — telling any player
-      (the hitter recovering, or a partner poaching/shadowing) to head toward a spot the instant that
-      shot fires. Expand "Directives" under a shot row, add a directive, pick who it's for, choose the
-      behavior/timing labels, then click "place on court" and click the target spot. Directives are
-      directions, not guarantees — real AI movement carries the player there, and ball responsibility
-      always takes priority if that player needs to actually play the next shot.</p>
+      <p>A player direction says: <strong>who moves, why, where, and by when</strong>.
+      The coaching label (recover, shadow, crash, and so on) documents the intent for coaches and
+      future editing; every label still uses the same real movement physics. “Arrive by” is operational:
+      no deadline lets the player move normally, “ball bounce” paces them to this shot’s bounce, and
+      “next contact” paces them to the next paddle touch. Click “set destination,” then click the court.
+      The chosen direction remains summarized under the shot even when its editor is collapsed.
+      Ball responsibility still takes priority if that player must play the next shot.</p>
     </div>
   </div>
 </div>
@@ -257,6 +355,21 @@
     <textarea id="jsonOut" readonly placeholder="Click 'Generate drill JSON' to build this."></textarea>
     <div class="row" style="margin-top:10px; justify-content:flex-end;">
       <button id="jsonCopy">Copy to clipboard</button>
+    </div>
+  </div>
+</div>
+
+<div id="narrationModal" role="dialog" aria-modal="true" aria-labelledby="narrationTitle">
+  <div class="info-panel narration-panel">
+    <button class="info-close" id="narrationClose" aria-label="Close narration editor">&#10005;</button>
+    <h2 id="narrationTitle">Narration steps</h2>
+    <div class="info-section">
+      <p>These are the coaching notes shown with the drill. They explain the sequence but do not control player movement or ball physics.</p>
+    </div>
+    <div id="stepsList"></div>
+    <div class="narration-actions">
+      <button id="addStep">+ Add step</button>
+      <button class="primary" id="narrationDone">Done</button>
     </div>
   </div>
 </div>

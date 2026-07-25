@@ -7,18 +7,74 @@ import { TYPES as SHOT_TYPES } from '../../src/shots.js';
 import { state, activeSlots, opponentsOf } from './state.js';
 
 const SHAPE_TYPES = SHOT_TYPES.concat(['smash']); // smash is a real Shots profile, not in the auto-classified TYPES list
-const PLAYER_BEHAVIORS = ['move', 'recover', 'shadow', 'crash', 'retreat', 'switch', 'chase', 'hold'];
-const ARRIVE_BY = ['none', 'bounce', 'contact', 'ball-contact', 'next-contact'];
+const PLAYER_BEHAVIORS = [
+  { value: 'move', label: 'Move', desc: 'General repositioning.' },
+  { value: 'recover', label: 'Recover', desc: 'Return to a useful base position after the shot.' },
+  { value: 'shadow', label: 'Shadow partner', desc: 'Move with a partner to preserve team spacing.' },
+  { value: 'crash', label: 'Crash forward', desc: 'Close quickly toward the kitchen or attack position.' },
+  { value: 'retreat', label: 'Retreat', desc: 'Give ground toward the baseline.' },
+  { value: 'switch', label: 'Switch sides', desc: 'Cross over to exchange coverage with a partner.' },
+  { value: 'chase', label: 'Chase', desc: 'Pursue a wide or displaced ball position.' },
+  { value: 'hold', label: 'Hold position', desc: 'Stay where the player is when this shot fires.' }
+];
+const ARRIVE_BY = [
+  { value: 'none', label: 'No deadline' },
+  { value: 'bounce', label: 'By this shot’s bounce' },
+  { value: 'next-contact', label: 'By next paddle contact' }
+];
+
+function optionValue(option) { return typeof option === 'string' ? option : option.value; }
+function optionLabel(option) { return typeof option === 'string' ? option : option.label; }
+function behaviorInfo(value) {
+  return PLAYER_BEHAVIORS.find(option => option.value === value) || PLAYER_BEHAVIORS[0];
+}
+function arriveLabel(value) {
+  const canonical = value === 'contact' || value === 'ball-contact' ? 'next-contact' : value;
+  const option = ARRIVE_BY.find(item => item.value === canonical) || ARRIVE_BY[0];
+  return option.label;
+}
 
 function select(options, value, onChange) {
   const s = document.createElement('select');
   options.forEach(o => {
     const opt = document.createElement('option');
-    opt.value = o; opt.textContent = o; if (o === value) opt.selected = true;
+    opt.value = optionValue(o); opt.textContent = optionLabel(o); if (opt.value === value) opt.selected = true;
     s.appendChild(opt);
   });
   s.addEventListener('change', () => onChange(s.value));
   return s;
+}
+
+function field(labelText, control) {
+  const wrap = document.createElement('div');
+  wrap.className = 'directive-field';
+  const label = document.createElement('label');
+  label.textContent = labelText;
+  wrap.appendChild(label);
+  wrap.appendChild(control);
+  return wrap;
+}
+
+function renderDirectionSummary(container, moves) {
+  container.innerHTML = '';
+  if (!moves.length) {
+    const empty = document.createElement('span');
+    empty.className = 'directive-empty';
+    empty.textContent = 'No extra player movement on this shot.';
+    container.appendChild(empty);
+    return;
+  }
+  moves.forEach(mv => {
+    const chip = document.createElement('span');
+    chip.className = 'directive-chip';
+    const behavior = behaviorInfo(mv.behavior || 'move').label;
+    const destination = (mv.behavior || 'move') === 'hold'
+      ? 'current position'
+      : (mv.to ? ('x ' + mv.to.x.toFixed(1) + ', z ' + mv.to.z.toFixed(1)) : 'destination needed');
+    chip.innerHTML = '<strong>' + mv.player + '</strong> · ' + behavior + ' → ' +
+      destination + ' · ' + arriveLabel(mv.arriveBy || 'none');
+    container.appendChild(chip);
+  });
 }
 
 // `onChange` re-renders the court + validation banner after any mutation
@@ -32,8 +88,13 @@ export function renderScript(onChange) {
     const block = document.createElement('div');
     block.className = 'shot-block';
 
+    const number = document.createElement('div');
+    number.className = 'shot-number';
+    number.textContent = 'Shot ' + (i + 1);
+    block.appendChild(number);
+
     const row = document.createElement('div');
-    row.className = 'row';
+    row.className = 'row shot-fields';
     const hitterSelect = select(activeSlots(), entry.hitter, v => {
       entry.hitter = v;
       // Target must stay an opponent of the (possibly new) hitter.
@@ -45,9 +106,9 @@ export function renderScript(onChange) {
     // Target options are ALWAYS just the two opponents of the current hitter
     // — a shot can't be aimed at your own partner, so it's never offered.
     const targetSelect = select(opponentsOf(entry.hitter), entry.target, v => { entry.target = v; onChange(); });
-    row.appendChild(hitterSelect);
-    row.appendChild(typeSelect);
-    row.appendChild(targetSelect);
+    row.appendChild(field('Hitter', hitterSelect));
+    row.appendChild(field('Shot', typeSelect));
+    row.appendChild(field('Receiver', targetSelect));
     const rm = document.createElement('button');
     rm.textContent = '✕'; rm.className = 'danger'; rm.title = 'Remove this shot';
     rm.addEventListener('click', () => {
@@ -99,10 +160,15 @@ export function renderScript(onChange) {
 
     const moves = entry.moves || [];
     const expanded = state.expandedMoveRow === i;
+    const summary = document.createElement('div');
+    summary.className = 'directive-summary';
+    renderDirectionSummary(summary, moves);
+    block.appendChild(summary);
+
     const toggle = document.createElement('button');
     toggle.className = 'moves-toggle';
     toggle.title = 'Who heads where the instant this shot fires — expand to add a player directive';
-    toggle.textContent = (expanded ? '▾' : '▸') + ' Directives (' + moves.length + ')';
+    toggle.textContent = (expanded ? '▾' : '▸') + (moves.length ? ' Edit player directions' : ' Add player direction');
     toggle.addEventListener('click', () => {
       state.expandedMoveRow = expanded ? null : i;
       state.placingMoveFor = null;
@@ -116,18 +182,38 @@ export function renderScript(onChange) {
       moves.forEach((mv, mi) => {
         const mrow = document.createElement('div');
         mrow.className = 'move-row';
-        const playerSelect = select(activeSlots(), mv.player, v => { mv.player = v; onChange(); });
-        mrow.appendChild(playerSelect);
-        const behaviorSelect = select(PLAYER_BEHAVIORS, mv.behavior || 'move', v => { mv.behavior = v; onChange(); });
-        behaviorSelect.title = 'Intent label for this player directive';
-        mrow.appendChild(behaviorSelect);
-        const arriveSelect = select(ARRIVE_BY, mv.arriveBy || 'none', v => { mv.arriveBy = v; onChange(); });
-        arriveSelect.title = 'Timing anchor metadata; movement still uses current real steering';
-        mrow.appendChild(arriveSelect);
+        const playerSelect = select(activeSlots(), mv.player, v => {
+          mv.player = v;
+          renderScript(onChange);
+          onChange();
+        });
+        mrow.appendChild(field('Player', playerSelect));
+        const behaviorSelect = select(PLAYER_BEHAVIORS, mv.behavior || 'move', v => {
+          mv.behavior = v;
+          if (v === 'hold') state.placingMoveFor = null;
+          renderScript(onChange);
+          onChange();
+        });
+        behaviorSelect.title = 'Coaching label: explains why this player moves';
+        mrow.appendChild(field('Coaching label', behaviorSelect));
+        const canonicalArrive = mv.arriveBy === 'contact' || mv.arriveBy === 'ball-contact'
+          ? 'next-contact'
+          : (mv.arriveBy || 'none');
+        if (canonicalArrive !== mv.arriveBy) mv.arriveBy = canonicalArrive;
+        const arriveSelect = select(ARRIVE_BY, canonicalArrive, v => {
+          mv.arriveBy = v;
+          renderScript(onChange);
+          onChange();
+        });
+        arriveSelect.title = 'When this player should reach the destination';
+        mrow.appendChild(field('Arrive by', arriveSelect));
         const placeBtn = document.createElement('button');
         const armed = state.placingMoveFor && state.placingMoveFor.entryIndex === i && state.placingMoveFor.moveIndex === mi;
+        const holds = (mv.behavior || 'move') === 'hold';
         placeBtn.className = 'place' + (armed ? ' armed' : '');
-        placeBtn.textContent = armed ? 'click the court…' : (mv.to ? 'move target' : 'place on court');
+        placeBtn.textContent = holds ? 'holds here' : (armed ? 'click the court…' : (mv.to ? 'move target' : 'set destination'));
+        placeBtn.disabled = holds;
+        placeBtn.title = holds ? 'Hold uses the player’s position when this shot fires' : 'Choose where this player should move';
         placeBtn.addEventListener('click', () => {
           state.placingMoveFor = armed ? null : { entryIndex: i, moveIndex: mi };
           state.placingLandingFor = null;
@@ -136,7 +222,9 @@ export function renderScript(onChange) {
         mrow.appendChild(placeBtn);
         const readout = document.createElement('span');
         readout.className = 'to-readout';
-        readout.textContent = mv.to ? ('x=' + mv.to.x.toFixed(2) + ', z=' + mv.to.z.toFixed(2)) : 'not placed';
+        readout.textContent = holds
+          ? 'current position'
+          : (mv.to ? ('x=' + mv.to.x.toFixed(2) + ', z=' + mv.to.z.toFixed(2)) : 'destination needed');
         mrow.appendChild(readout);
         const rmMove = document.createElement('button');
         rmMove.textContent = '✕'; rmMove.className = 'danger'; rmMove.title = 'Remove this cue';
@@ -152,6 +240,15 @@ export function renderScript(onChange) {
           renderScript(onChange); onChange();
         });
         mrow.appendChild(rmMove);
+        const explainer = document.createElement('div');
+        explainer.className = 'directive-explainer';
+        explainer.textContent = behaviorInfo(mv.behavior || 'move').desc + ' ' +
+          (canonicalArrive === 'none'
+            ? 'The player moves at their normal pace.'
+            : (canonicalArrive === 'bounce'
+              ? 'The player is paced to arrive when this shot bounces.'
+              : 'The player is paced to arrive by the next paddle contact.'));
+        mrow.appendChild(explainer);
         block.appendChild(mrow);
       });
       const addMove = document.createElement('button');
@@ -189,4 +286,8 @@ export function renderSteps() {
     wrap.appendChild(title); wrap.appendChild(desc); wrap.appendChild(rm);
     stepsList.appendChild(wrap);
   });
+  const openNarration = document.getElementById('openNarration');
+  if (openNarration) {
+    openNarration.textContent = 'Narration (' + state.steps.length + ')';
+  }
 }

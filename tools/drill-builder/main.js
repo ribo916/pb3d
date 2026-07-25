@@ -17,6 +17,19 @@ const svg = document.getElementById('court');
 const playerGroup = buildCourt(svg);
 function renderPlayers() { renderCourtPlayers(playerGroup); }
 
+// The court defines the authoring workspace's visual height. Mirror that
+// measured height onto the Script panel so only its shot list scrolls, rather
+// than letting a long script stretch the whole page.
+const courtPanel = document.querySelector('.court-panel');
+function syncScriptPanelHeight() {
+  document.documentElement.style.setProperty('--court-panel-height', courtPanel.getBoundingClientRect().height + 'px');
+}
+if (window.ResizeObserver) {
+  new ResizeObserver(syncScriptPanelHeight).observe(courtPanel);
+} else {
+  window.addEventListener('resize', syncScriptPanelHeight);
+}
+
 function onChange() { renderPlayers(); revalidate(); }
 attachCourtClicks(svg, () => { renderScript(onChange); onChange(); });
 
@@ -74,6 +87,12 @@ function renderPicker() {
   });
 }
 renderPicker();
+
+// Keep the top-level status current while the author edits drill metadata,
+// especially the name-derived id used by duplicate-id validation.
+['fName', 'fDesc', 'fGoal', 'fTags'].forEach(id => {
+  document.getElementById(id).addEventListener('input', revalidate);
+});
 
 // ---- validation ----
 // Single source of truth for "is this drill authorable right now" — the
@@ -238,4 +257,17 @@ document.getElementById('jsonCopy').addEventListener('click', () => {
   const ta = document.getElementById('jsonOut');
   ta.select();
   if (navigator.clipboard) navigator.clipboard.writeText(ta.value);
+});
+
+const narrationModal = document.getElementById('narrationModal');
+function closeNarration() { narrationModal.classList.remove('active'); }
+document.getElementById('openNarration').addEventListener('click', () => {
+  renderSteps();
+  narrationModal.classList.add('active');
+});
+document.getElementById('narrationClose').addEventListener('click', closeNarration);
+document.getElementById('narrationDone').addEventListener('click', closeNarration);
+narrationModal.addEventListener('click', e => { if (e.target === narrationModal) closeNarration(); });
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && narrationModal.classList.contains('active')) closeNarration();
 });
