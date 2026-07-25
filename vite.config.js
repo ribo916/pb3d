@@ -10,7 +10,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolvePath('./index.html'),
-        characterPreview: resolvePath('./character-preview/index.html')
+        characterPreview: resolvePath('./character-preview/index.html'),
+        drillBuilder: resolvePath('./tools/drill-builder.html')
       }
     }
   }

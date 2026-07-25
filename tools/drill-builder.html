@@ -95,15 +95,17 @@
   .shot-number { font: 700 10px var(--title-font); letter-spacing: 1px; color: var(--text-faint); text-transform: uppercase; width: 100%; }
   .shot-fields { align-items: end; flex-wrap: nowrap; }
   .shot-fields .directive-field { flex: 1 1 0; }
-  #scriptList {
+  .script-scroll {
     flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 6px; margin: 0 -6px 0 -2px;
     scrollbar-color: rgba(126,240,255,.4) rgba(255,255,255,.035);
   }
+  #scriptList { min-height: 0; }
   #stepsList { max-height: 60vh; overflow-y: auto; padding-right: 6px; margin: 0 -6px 0 -2px; }
   .script-actions {
-    flex: 0 0 auto; padding-bottom: 10px; margin: -2px 0 12px;
-    border-bottom: 1px solid var(--seg-border);
+    flex: 0 0 auto; padding-top: 10px; margin: 2px 0 0;
+    border-top: 1px solid var(--seg-border);
   }
+  .script-tools { flex: 0 0 auto; justify-content: flex-end; margin: -2px 0 12px; }
   .directive-guide {
     border: 1px solid rgba(126,240,255,.16); background: rgba(126,240,255,.045);
     border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; color: var(--text-soft);
@@ -284,9 +286,7 @@
   <div class="col-right">
     <div class="panel script-panel">
       <h2 class="panel-title" title="Shots in order: who hits, what kind, who receives, and optionally where the ball lands.">Script</h2>
-      <div class="row script-actions">
-        <button id="addShot">+ Add shot</button>
-        <button id="dupShot" title="Mirrors the hitter/receiver of the last shot and copies its type, landing, and movement cues">&#10697; Duplicate last</button>
+      <div class="row script-tools">
         <button id="openNarration" title="Edit the coaching notes shown with the drill">Narration (1)</button>
       </div>
       <div class="directive-guide">
@@ -294,7 +294,13 @@
         <strong>Coaching label</strong> explains why they move; it does not teleport or change their physics.
         <strong>Arrive by</strong> controls the pace: no deadline, by this shot’s bounce, or by the next paddle contact.
       </div>
-      <div id="scriptList"></div>
+      <div class="script-scroll">
+        <div id="scriptList"></div>
+        <div class="row script-actions">
+          <button id="addShot">+ Add shot</button>
+          <button id="dupShot" title="Mirrors the hitter/receiver of the last shot and copies its type, landing, and movement cues">&#10697; Duplicate last</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>

@@ -589,15 +589,18 @@
 
     /* 01 · Start */
     #scrStart { justify-content: center; gap: 14px; }
-    /* TEMP debug icon — top-left of the title screen only. */
-    #flowDebugBtn {
+    /* Development/admin utilities — top-left of the title screen only. */
+    #flowUtilityLinks {
       position: absolute; top: max(12px, env(safe-area-inset-top, 0px)); left: 14px;
+      display: flex; gap: 8px;
+    }
+    .flow-utility-link {
       width: 34px; height: 34px; border-radius: 9px;
       display: flex; align-items: center; justify-content: center;
       font-size: 20px; text-decoration: none; line-height: 1; opacity: 0.75;
       border: 1px solid var(--seg-border); background: var(--seg-bg);
     }
-    #flowDebugBtn:hover { opacity: 1; }
+    .flow-utility-link:hover { opacity: 1; }
     #startPreviewWrap {
       position: relative; width: min(360px, 74vw); aspect-ratio: 3 / 4;
       display: flex; align-items: flex-end; justify-content: center;
@@ -1954,9 +1957,15 @@
 
     <!-- 01 · Start -->
     <section id="scrStart" class="flow-screen active">
-      <!-- TEMP debug: opens the character-preview viewer (all-character animation check) -->
-      <a id="flowDebugBtn" href="/character-preview/" target="_blank" rel="noopener"
-         title="Character preview (debug)" onclick="event.stopPropagation()">🐞</a>
+      <div id="flowUtilityLinks">
+        <!-- TEMP debug: opens the character-preview viewer (all-character animation check) -->
+        <a id="flowDebugBtn" class="flow-utility-link" href="/character-preview/" target="_blank" rel="noopener"
+           title="Character preview (debug)" aria-label="Open character preview debug page"
+           onclick="event.stopPropagation()">🐞</a>
+        <a id="flowAdminBtn" class="flow-utility-link" href="/tools/drill-builder.html" target="_blank" rel="noopener"
+           title="Open drill admin" aria-label="Open drill admin page"
+           onclick="event.stopPropagation()">⚙</a>
+      </div>
       <div class="bg-pill">
         <span class="theme-pill-label">Background</span>
         <button type="button" class="bg-pill-toggle" id="bgPillToggle" aria-haspopup="true" aria-expanded="false">
