@@ -11,8 +11,8 @@ import * as Practice from '../src/practice.js';
 import * as SinglesStrategy from '../src/strategies/singles.js';
 import * as DoublesStrategy from '../src/strategies/doubles.js';
 import { normalizeMode } from '../src/modes.js';
-import { DEFAULT_DRILLS, getDrillById } from '../src/drillStore.js';
-import { dropShotTarget } from '../src/drillDirector.js';
+import { DEFAULT_DRILLS, getDrillById, validateDrill, activeSlotsOf } from '../src/drillStore.js';
+import { getScriptedShot, armNextScriptedShot } from '../src/drillDirector.js';
 import { buildMusicCatalog, sanitizeMusicState } from '../src/audio.js';
 import * as Power from '../src/power.js';
 import { makePlayback } from '../src/replay.js';
@@ -1202,27 +1202,192 @@ test('v2 predict forward-sim (post-bounce) lands within 0.3m of a fine sim', () 
 });
 
 /* ---------------------------- drill mode ---------------------------- */
-test('DEFAULT_DRILLS: phase 1 ships exactly drill-drip', () => {
-  assert.equal(DEFAULT_DRILLS.length, 1);
-  assert.equal(DEFAULT_DRILLS[0].id, 'drill-drip');
+test('DEFAULT_DRILLS: ships drill-drip, drill-dink-rally, and the 1v1/2v1 test drills, each with a non-empty script', () => {
+  assert.equal(DEFAULT_DRILLS.length, 4);
+  const ids = DEFAULT_DRILLS.map(d => d.id);
+  assert.ok(ids.includes('drill-drip'));
+  assert.ok(ids.includes('drill-dink-rally'));
+  assert.ok(ids.includes('drill-1v1-test'));
+  assert.ok(ids.includes('drill-2v1-test'));
+  for (const drill of DEFAULT_DRILLS) {
+    assert.ok(Array.isArray(drill.script) && drill.script.length > 0, drill.id + ' carries a non-empty script');
+  }
 });
 
-test('drill-drip: Setup positions all 4 players (the only step the director reads)', () => {
+test('DEFAULT_DRILLS: every shipped drill validates clean, including the 2/3-player test drills', () => {
+  for (const drill of DEFAULT_DRILLS) {
+    const errors = validateDrill(drill);
+    assert.deepEqual(errors, [], drill.id + ' should have zero validation errors: ' + errors.join('; '));
+  }
+});
+
+test('activeSlotsOf: 1v1/2v1 test drills report the right roster size and slots', () => {
+  assert.deepEqual(activeSlotsOf(getDrillById('drill-1v1-test')), ['P1', 'P3']);
+  assert.deepEqual(activeSlotsOf(getDrillById('drill-2v1-test')), ['P1', 'P2', 'P3']);
+  assert.deepEqual(activeSlotsOf(getDrillById('drill-drip')), ['P1', 'P2', 'P3', 'P4']);
+});
+
+test('drill-drip: startPositions resolved for all 4 players (the only field the director reads)', () => {
   const drill = getDrillById('drill-drip');
   assert.ok(drill, 'drill-drip exists');
-  const positions = drill.steps[0].positions;
+  const positions = drill.startPositions;
   for (const slot of ['P1', 'P2', 'P3', 'P4']) {
     assert.ok(positions[slot] && typeof positions[slot].x === 'number' && typeof positions[slot].z === 'number',
       slot + ' has a resolved world position');
   }
 });
 
-test('dropShotTarget: aims at P1\'s feet (P1 is always the near-side player)', () => {
-  const shot = dropShotTarget({ x: 1.5, z: 7.5 }, 2.13, 6.7);
+test('drill-dink-rally: startPositions resolved for all 4 players', () => {
+  const drill = getDrillById('drill-dink-rally');
+  assert.ok(drill, 'drill-dink-rally exists');
+  const positions = drill.startPositions;
+  for (const slot of ['P1', 'P2', 'P3', 'P4']) {
+    assert.ok(positions[slot] && typeof positions[slot].x === 'number' && typeof positions[slot].z === 'number',
+      slot + ' has a resolved world position');
+  }
+});
+
+test('drill steps carry no positions field (pure narration, decoupled from startPositions)', () => {
+  for (const drill of DEFAULT_DRILLS) {
+    for (const step of drill.steps) {
+      assert.equal(step.positions, undefined, drill.id + ' step "' + step.title + '" should not carry positions');
+    }
+  }
+});
+
+// Stub 4-player roster shared by the getScriptedShot/armNextScriptedShot
+// tests below. Mid-court z values (not the baseline) so these tests
+// exercise plain targeting, not the out-of-bounds clamp (that gets its own
+// test). .drillSlot tags match how game.js's _initWorld now tags each real
+// player — resolvePlayer (drillDirector.js) looks players up by this tag,
+// not by array index, so these stubs need it too.
+function stubDrillGame() {
+  return { players: [
+    { pos: { x: -1.5, z: 4.0 }, drillSlot: 'P1' },
+    { pos: { x: 0, z: 2 }, drillSlot: 'P2' },
+    { pos: { x: -1.5, z: -4.0 }, drillSlot: 'P3' },
+    { pos: { x: 1.5, z: -6.7 }, drillSlot: 'P4' }
+  ] };
+}
+
+test('getScriptedShot: aims at the named target\'s live position (far-team hitter needs no z-flip)', () => {
+  const stubGame = stubDrillGame();
+  const drillData = { script: [
+    { hitter: 'P1', shotType: 'drive', target: 'P3' },
+    { hitter: 'P3', shotType: 'drop', target: 'P1' }
+  ] };
+  const shot = getScriptedShot(stubGame, drillData, 1, { team: 'far' });
   assert.equal(shot.type, 'drop');
-  assert.equal(shot.target.x, 1.5, 'aims at P1\'s x');
-  assert.equal(shot.target.z, 7.5, 'aims at P1\'s (near-side, positive) z');
+  assert.equal(shot.target.x, -1.5, 'aims at P1\'s x');
+  assert.equal(shot.target.z, 4.0, 'aims at P1\'s real (near-side, positive) z');
   assert.ok(shot.apex > 0 && shot.margin > 0, 'carries a real physical envelope from Shots.specV2');
+});
+
+test('getScriptedShot: near-team hitter gets target.z pre-flipped so it still lands at the target\'s real z', () => {
+  const stubGame = stubDrillGame();
+  const drillData = { script: [{ hitter: 'P4', shotType: 'lob', target: 'P3' }] };
+  const shot = getScriptedShot(stubGame, drillData, 0, { team: 'near' });
+  // _cpuHit later computes tgtZ = (hitter.team==='near') ? -shot.target.z : shot.target.z.
+  // For this to land at P3's real z (-4.0), shot.target.z must be +4.0 so the flip cancels out.
+  assert.equal(shot.target.z, 4.0);
+});
+
+test('getScriptedShot: returns null past the end of the script', () => {
+  const stubGame = stubDrillGame();
+  const drillData = { script: [{ hitter: 'P1', shotType: 'drive', target: 'P3' }] };
+  assert.equal(getScriptedShot(stubGame, drillData, 1, { team: 'near' }), null);
+});
+
+test('getScriptedShot: clamps a target standing behind the baseline to a safe in-bounds landing depth', () => {
+  // Grid rows 1/10 (drillStore.js) resolve to z=±7.5, deliberately just
+  // behind the real baseline (HALF_L=6.706) to match a natural standing
+  // position — aiming a shot's LANDING point exactly there (as the opener,
+  // script[0], would before the target has moved) sends it out of bounds.
+  const stubGame = { players: [
+    { pos: { x: 1.5, z: 7.5 }, drillSlot: 'P1' },
+    { pos: { x: 0, z: 2 }, drillSlot: 'P2' },
+    { pos: { x: -1.5, z: -6.706 }, drillSlot: 'P3' },
+    { pos: { x: 1.5, z: -7.5 }, drillSlot: 'P4' }  // standing just behind the far baseline
+  ] };
+  const drillData = { script: [{ hitter: 'P1', shotType: 'drive', target: 'P4' }] };
+  const shot = getScriptedShot(stubGame, drillData, 0, { team: 'near' });
+  assert.ok(Math.abs(shot.target.z) < Physics.COURT.HALF_L, 'clamped landing sits inside the real baseline');
+  assert.ok(Math.abs(shot.target.z) > Physics.COURT.HALF_L * 0.8, 'still lands deep, close to where P4 actually stands');
+});
+
+test('armNextScriptedShot: arms drillForcedShot for the next scripted shot, clears it once the script runs out', () => {
+  const stubGame = stubDrillGame();
+  stubGame.drillScriptIndex = 1;
+  stubGame.drillForcedShot = null;
+  const drillData = { script: [
+    { hitter: 'P1', shotType: 'drive', target: 'P3' },
+    { hitter: 'P3', shotType: 'drop', target: 'P1' }
+  ] };
+  armNextScriptedShot(stubGame, drillData);
+  assert.equal(stubGame.drillForcedShot.hitter, stubGame.players[2], 'arms P3 (script[1].hitter)');
+
+  stubGame.drillScriptIndex = 2; // beyond the script
+  armNextScriptedShot(stubGame, drillData);
+  assert.equal(stubGame.drillForcedShot, null, 'clears once the script runs out');
+});
+
+test('validateDrill: a P1<->P3 back-and-forth validates cleanly at any x position (no zone constraint)', () => {
+  // Both P1 and P3 authored at the SAME x (a real down-the-line lane) and
+  // targeted in both directions — this used to be rejected by a since-
+  // removed zone-sign check (P1 and P3's x-zones are opposite, so a shared
+  // column could never satisfy both). Fixed at the source: game.js's
+  // _checkContacts/_moveCPU now override the engine's x-zone contact
+  // assignment whenever a drillForcedShot is armed, so a scripted target
+  // always receives it regardless of position. P4 included so P3's team
+  // has a real partner (2-player team) — exactly the case that used to fail.
+  const drill = {
+    startPositions: { P1: { x: 1.5, z: 7.5 }, P2: { x: -0.5, z: 2.0 }, P3: { x: 1.5, z: -7.5 }, P4: { x: -1.5, z: -6.7 } },
+    script: [
+      { hitter: 'P1', shotType: 'drive', target: 'P3' },
+      { hitter: 'P3', shotType: 'drop', target: 'P1' }
+    ]
+  };
+  assert.deepEqual(validateDrill(drill), []);
+});
+
+test('validateDrill: catches a shot aimed at your own partner (same team) instead of an opponent', () => {
+  const brokenDrill = {
+    // P3 included so the roster itself is otherwise valid (a far-side
+    // player exists) — isolates this test to just the same-team check.
+    startPositions: { P1: { x: 1.5, z: 7.5 }, P2: { x: -0.5, z: 2.0 }, P3: { x: -1.5, z: -7.5 } },
+    script: [{ hitter: 'P1', shotType: 'drive', target: 'P2' }] // P1/P2 are both near-team partners
+  };
+  const errors = validateDrill(brokenDrill);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /partners/);
+});
+
+test('validateDrill: catches a missing side (no near or no far player)', () => {
+  const noFar = { startPositions: { P1: { x: 1.5, z: 7.5 } }, script: [] };
+  const errorsNoFar = validateDrill(noFar);
+  assert.ok(errorsNoFar.some(e => /no far-side player/.test(e)));
+
+  const noNear = { startPositions: { P3: { x: -1.5, z: -7.5 } }, script: [] };
+  const errorsNoNear = validateDrill(noNear);
+  assert.ok(errorsNoNear.some(e => /no near-side player/.test(e)));
+});
+
+test('validateDrill: catches P2 without P1, and P4 without P3 (anchor rule)', () => {
+  const p2NoP1 = { startPositions: { P2: { x: -0.5, z: 2.0 }, P3: { x: -1.5, z: -7.5 } }, script: [] };
+  assert.ok(validateDrill(p2NoP1).some(e => /P2 is present without P1/.test(e)));
+
+  const p4NoP3 = { startPositions: { P1: { x: 1.5, z: 7.5 }, P4: { x: 1.5, z: -6.7 } }, script: [] };
+  assert.ok(validateDrill(p4NoP3).some(e => /P4 is present without P3/.test(e)));
+});
+
+test('validateDrill: catches a script entry referencing a slot absent from the roster', () => {
+  const drill = {
+    startPositions: { P1: { x: 1.5, z: 7.5 }, P3: { x: -1.5, z: -7.5 } }, // no P4
+    script: [{ hitter: 'P1', shotType: 'drive', target: 'P4' }]
+  };
+  const errors = validateDrill(drill);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /not in this drill's roster/);
 });
 
 console.log('\n' + passed + ' assertions passed.');

@@ -1,293 +1,327 @@
-# DRILLS.md — Drill Mode (in progress)
+# DRILLS.md — Drill Mode
 
-> Status doc for building a **Drill Mode** into this game: browse a drill
-> library and watch a drill play out as **real, live simulated gameplay**
-> (real AI, real physics ball, real fault detection) — bounded to a fixed
-> handful of hits, captured, and then looped as a real, pausable,
-> rewindable, scrubbable replay, like a coaching demo reel — so a group of
-> friends can look up "how does that drill go again" on a phone at the
-> park. "The drill is the drill": a distinct start, starting positions, and
-> end, not open-ended AI play. Drill creation/editing (phase 2) is not
-> started yet.
-
-This went through four iterations before landing on the current design:
-
-1. **Pass 1** (`src/choreography.js`): players seek-walked toward authored
-   positions, step by step, click-through. Rejected — wrong interaction
-   model (user wanted continuous auto-play, not manual stepping).
-2. **Pass 2** (`src/drillTimeline.js`): a compiler turned authored steps
-   into a keyframe timeline played back through `replay.js`'s
-   `makePlayback` (the same engine instant replay uses) — smooth,
-   scrubbable, camera-switchable. Rejected after testing: **"There is no
-   ball and players are literally sliding into place."** Root-caused to a
-   real bug, not a taste issue: `Game.prototype._syncMeshes`
-   (`src/game.js`) computes a player's body-facing angle from
-   `base (fixed, toward the net) + yaw from ball-relative x or lateral
-   vel.x only` — it never turns the body to face forward/backward (z)
-   travel. That's correct for real rally repositioning (short, ball-reactive
-   shuffles) but produces a moonwalk/gliding look for a long, scripted,
-   non-rally straight-line translation — exactly what pass 2 produced and
-   exactly what real gameplay never does.
-3. **Pass 3**: don't fake anything. Run the actual game engine — real AI
-   shot/movement decisions, real physics-simulated ball, real `Rules.js`
-   fault detection — "directed" just enough to reliably enact a specific
-   drill's premise. This is both simpler than another animation system and
-   fixes the facing bug at its root, since real AI-driven movement is
-   exactly what that formula was tuned against. Left running open-ended,
-   though: real AI kept free-playing the rally until a fault happened to
-   occur naturally, which could take many exchanges.
-4. **Pass 4 (current)**: bound the live rep to a fixed number of hits
-   (`DRILL.MAX_SHOTS`), capture it into a real recorder, and loop the
-   *recorded replay* of that one bounded sequence forever — reusing
-   `replay.js`'s `makePlayback` (the same engine instant replay uses) for
-   real pause/rewind/scrub, rather than continuing to re-simulate live
-   indefinitely. "The drill is the drill" — a repeatable, teachable
-   sequence with a distinct start and end, not a live match that happens to
-   be running in the background.
-
-**Correction from an earlier assumption in this doc**: despite
-`wrangler.toml` existing in the repo (a Cloudflare deployment experiment
-that doesn't need to persist), the actual deployment target is **Vercel**,
-same as the sibling `pickleball-drills` repo (Vercel serverless functions +
-Neon Postgres). Matters for the phase-2 persistence decision, not this pass.
+> Browse a drill library and watch a drill play out as **real, live
+> simulated gameplay** (real AI, real physics ball, real fault detection) —
+> bounded to a fixed handful of hits, captured, and then looped as a real,
+> pausable, rewindable, scrubbable replay, like a coaching demo reel — so a
+> group of friends can look up "how does that drill go again" on a phone at
+> the park. "The drill is the drill": a distinct start, positions, and end,
+> not open-ended AI play. This file documents current state; read it in
+> full before touching drill-mode code.
 
 ---
 
-## Current status (read this first)
+## Design history (why it's built this way)
 
-**Everything below is uncommitted** — working tree only, on `master`, no
-commits made. `git status`: modified `index.html`, `src/characters.js`,
-`src/constants.js`, `src/game.js`, `src/hud.js`, `src/main.js`,
-`src/modes.js`, `test/logic.test.mjs`; new `src/drillDirector.js`,
-`src/drillStore.js`, this file. Nothing staged.
+Four passes before the live-simulation approach landed:
 
-**What works, verified live** (not just by reading code — see the
-"Verified live" paragraph below for the exact evidence): open the drill
-library, tap Drip Practice, and within ~30ms `#drillBar` appears at the
-bottom (`● LOADING` → `● LIVE` once the game finishes constructing) with
-Steps already populated and Exit already working. The Setup formation
-holds, the scripted feed fires, P3's forced drop lands, real AI free-plays
-for a couple more exchanges, the rep caps at exactly 4 hits, shows
-"REP COMPLETE," and hands off to a real recorded replay loop (`🔁 REPLAY`,
-play/pause + scrub + time) that repeats forever. `#hud` (score, music,
-camera/pause/info icons) is **fully hidden** the entire time — `#drillBar`
-is the only UI. `node test/logic.test.mjs` passes 98/98.
+1. **Players seek-walked to authored positions, step by step, click-through**
+   (`src/choreography.js`, retired). Rejected — wrong interaction model
+   (continuous auto-play was wanted, not manual stepping).
+2. **A keyframe timeline compiled from authored steps**, played back through
+   `replay.js`'s `makePlayback` (`src/drillTimeline.js`, retired). Rejected:
+   "There is no ball and players are literally sliding into place." Root
+   cause: `Game.prototype._syncMeshes`'s facing-angle formula only reacts to
+   ball-relative/lateral movement, never scripted forward/backward travel —
+   correct for real rally repositioning, wrong for a long scripted
+   straight-line walk. **This is why player movement is never scripted in
+   the current design, only ball contacts** — real AI-driven movement is
+   exactly what that facing formula is tuned against.
+3. **Run the real engine, directed just enough to enact a premise**, left
+   open-ended. Fixed the sliding bug at the root, but real AI free-played
+   until a fault happened to occur naturally — could take many exchanges.
+4. **Bound the live rep to a fixed hit count, capture it, loop the replay**
+   forever instead of re-simulating indefinitely — the current design.
 
-**Nothing else has been asked for or built yet**: no create/edit/delete, no
-persistence, no second drill, no venue/roster customization. See "What's
-still missing" at the bottom for the full list — that's the natural next
-conversation (most likely: pick a persistence approach, since that gates
-everything under "administer drills").
+**Schema evolution**: an initial `type`-keyed `SHAPES` dispatch table (one
+hardcoded "shape" per drill) was replaced by a general `script` — an ordered
+list of scripted shots — after it became clear two shapes wasn't enough and
+hand-authoring kept producing geometrically wrong drills from prose
+descriptions. (Called `script`, not `beats` — "beat" is screenwriting/music
+jargon that caused real confusion when read cold.)
 
-**If starting a fresh conversation from here**: read this whole file before
-touching drill-mode code — it also documents *why* three earlier designs
-were rejected and reworked (fake position animation → sliding-player bug;
-open-ended AI play → "plays forever" complaint; the actual fix history is
-in "Known issues" below), so the same mistakes don't get repeated.
+**A real bug, not a hard limit**: for a while, a `script` target had to be
+authored on a specific fixed "responsibility zone" (positive/negative world-x
+depending on slot) or the engine would silently hand the return to their
+partner instead. This produced confusing failures — `P1 drive P3` then
+`P3 drive P1`, an obviously reasonable back-and-forth, failed validation for
+a reason with no sensible authoring-side explanation — and forced Drip
+Practice into an unintuitive `P1`↔`P4` pairing instead of the natural
+`P1`↔`P3`. Root-caused and fixed (see Architecture below): the constraint
+doesn't exist anymore. Drip Practice uses its natural `P1`↔`P3` pairing.
+
+**Roster evolution**: fixed 4-player (2v2) only, then generalized to 2, 3,
+or 4 players (1-2 per side, P1/P3 always the anchor).
+
+**Deployment target**: despite `wrangler.toml` existing in the repo (a
+Cloudflare experiment that doesn't need to persist), the real target is
+**Vercel** — same as the sibling `pickleball-drills` repo (Vercel serverless
+functions + Neon Postgres). Matters for the still-open persistence gap, not
+current gameplay.
 
 ---
 
-## Architecture
+## Architecture (current state)
 
 Drill mode is a `mode: 'drill'` `Game`, layered onto the state machine
-exactly the way `mode === 'practice'` already is — **not** a bypassed
-custom state. This is what makes camera cycling, instant replay, and mesh
-sync all work with zero drill-specific code: nothing early-returns before
-`update()`'s tail (`_syncMeshes`, `updateCamera`, `this.recorder.record(...)`
-all run unconditionally regardless of mode).
+exactly the way `mode === 'practice'` already is — not a bypassed custom
+state. Nothing early-returns before `update()`'s tail (`_syncMeshes`,
+`updateCamera`, `this.recorder.record(...)` all run unconditionally
+regardless of mode), which is what makes camera cycling, instant replay, and
+mesh sync all work with zero drill-specific code.
 
-- **`src/drillDirector.js`** (new, mutates a `Game` instance — same
-  layering as `src/practice.js` staying pure while `game.js` does the
-  actual mutation) — the "director." Scripts the *minimum* needed to
-  establish a drill's premise, confirmed by the user's own call ("minimal
-  scripting, let AI free-play after the opening"), and bounds the live rep
-  to a fixed sequence before capturing and looping it:
-  - `resetRep(game, drillData)` — snaps all 4 players to the drill's Setup
-    formation, resets `match.scores`/`gameOver` (so a long session can
-    never trip a real game-over) and the drill's own hit counter, arms the
-    Setup-hold timer, and starts a **fresh** `makeRecorder(DRILL.RECORD_WINDOW_SEC)`
-    (replacing `game.recorder`) so the eventual capture starts exactly at
-    Setup — not a real match's rolling ~10s trailing window, which isn't
-    the right shape for "capture one bounded rep from its true start."
-  - `fireFeed(game, drillData)` — after the hold, seeds a synthetic
-    `match.rally` object directly (bypassing `Rules.startRally()`, since
-    P1's feed isn't a legal serve — it's framed as *the return itself*,
-    pre-seeding `shots:1` so the serve-box legality check never fires, and
-    `doubleBounceOpen:true` so future volleys aren't fault-locked), fires
-    a real physics shot via the same `Game.prototype._executeShotV2` the
-    practice-mode ball machine uses (counts as hit #1), then arms exactly
-    one forced response. `match.server = 'far'` is load-bearing, not
-    arbitrary: it makes `strategies/doubles.js`'s existing net-advance
-    logic fire P3/P4 to the kitchen specifically after the 3rd shot (the
-    drill's own "Resolution" step), and makes P1/P2 advance immediately
-    once the feed lands (matching "the moment the ball leaves P1's paddle,
-    P1 starts moving forward toward NVZ") — both for free, zero extra
-    scripting.
-  - `dropShotTarget(p1Pos, KITCHEN, HALF_L)` — the one forced-shot decision:
-    P3's next contact must be a `'drop'` at P1's feet. Pure, same
-    `{target,apex,spin,type,margin}` shape `AI.chooseShot()` returns, so
-    every downstream consumer in `_cpuHit` treats it identically to a real
-    AI shot. Deliberately **not** forced to "clean" quality — the real
-    stability-based apex degradation stays active, so a late/stretched P3
-    arrival can organically produce the drill's own documented "Popup: P2
-    attacks" branch. That variability falls out of the existing pipeline
-    for free; nothing needs to be scripted for it.
-  - After the one forced shot, the director does nothing further *until the
-    cap* — real `_tickRally`/`_checkContacts`/`_cpuHit`/`_moveCPU` handle
-    everything else, unmodified, up to `DRILL.MAX_SHOTS` (4) total paddle
-    contacts.
-  - `enterReplayLoop(game)` — once the bounded rep ends (cap or an earlier
-    genuine fault), snapshots the fresh recorder's window and hands it to
-    `makePlayback`, looped by `Game.prototype._tickDrillReplay` (holds
-    briefly on the final frame, then `seek(0)`+`play()`).
-- **`src/game.js`** — `mode:'drill'` roster branch in `_initWorld` (all 4
-  slots AI-driven, including `players[0]` — first time this game has a
-  fully AI roster without the `tools/play.mjs`-style post-construction
-  hack), `_updateHuman` gated off for drill mode (it would otherwise fight
-  `_moveCPU`'s steering every frame), `_cpuHit`'s one-line forced-shot
-  interception (`if (this.drillForcedShot && ...hitter===p) shot =
-  DrillDirector.dropShotTarget(...)`) plus its hit-count increment,
-  `_checkContacts`'s cap guard (stops processing any hit once
-  `drillHitCount >= DRILL.MAX_SHOTS`, so the ball bounces out untouched and
-  real "no-return" fault detection ends the point for free), `_endPoint`'s
-  drill branch (shows "REP COMPLETE" when the cap was reached, or the real
-  fault label for an earlier genuine one — never `_resultMessage()`'s "You
-  score!"/"Opponent WINS," meaningless with no human — resets scores, then
-  `_tickDrill`'s `STATE.POINT` branch calls `DrillDirector.enterReplayLoop`
-  instead of re-simulating a fresh rep), and `_tickDrill`/`_tickDrillReplay`/
-  `startDrill`/`cycleCamera`/`drillToggle`/`drillSeek`/`drillReplayInfo`.
-- **`src/main.js`** — `startDrillView()` shows `#drillBar` (`● LOADING`,
-  Steps pre-populated, Exit already working) and sets `drilling=true`
-  *before* the async `preloadAssetPack()`/`Game` construction, so there's
-  no blank gap on a real device — then launches `mode:'drill'` with the
-  fixed `DRILL_ROSTER`, `superMode:'off'`, `'normal'` difficulty (so the
-  scripted cast looks competent rather than fault-prone), no
-  `game.setInput()` (no player to drive) and no `game.hud` (`#hud` — score,
-  music picker, camera/pause/info icons — stays fully hidden the entire
-  session; there's no score and no need for a second control surface).
-  `#drillBar` is the only UI: `● LOADING` → `● LIVE` (no transport
-  controls yet — nothing recorded) during the bounded live rep, then
-  `🔁 REPLAY` plus a play/pause + scrub + time transport row once
-  `enterReplayLoop` hands off — `updateDrillBar()` toggles the transport
-  row's visibility off `game.drillReplayInfo()` being non-null.
-- **`src/characters.js`** — `DRILL_ROSTER`: fixed cast, not user-selectable
-  — Owen (P1) + Nina (P2) vs. AJ (P3) + Leo (P4), every drill, every time.
-- **`src/drillStore.js`** — one drill for phase 1, **Drip Practice**
-  (Cross-Court Dink Rally dropped entirely, per the user's call). Only
-  step 0's `positions` (the Setup formation) is read by the engine now;
-  steps 1+ carry `title`/`desc` only, shown in the Steps modal as a
-  description of what the drill's own AI/physics naturally produce — not a
-  script the engine follows.
+### Schema (`src/drillStore.js`)
 
-**Verified live** (headless Playwright, direct `game.state`/`game.match`/
-`game.drillPlayback` polling — screenshot-interleaved timing was found
-unreliable under headless SwiftShader software rendering in an earlier
-pass, so state polling is the trustworthy signal here): tap a drill card →
-`#drillBar` shows `● LOADING` within 30ms even under throttled network,
-before `game` exists → Setup hold → scripted feed → forced drop shot
-correctly consumed by P3 (P4 originally grabbed it in first-draft testing —
-see Known issues below) → real AI free-play with natural walk/run
-animation (the original "sliding" bug is gone) → `drillHitCount` climbs
-1→2→3→4 and **stops exactly at 4** (two real bugs found and fixed getting
-here — see Known issues) → "REP COMPLETE" → `enterReplayLoop` captures a
-real ~9s window → `#drillBar` flips to `🔁 REPLAY` with a working transport
-row → playhead advances 0→duration, holds briefly, **loops back to 0** and
-plays again → pause button and scrub-to-0 both work mid-replay → `#hud`'s
-computed `display` is confirmed `none` throughout the entire session.
-`node test/logic.test.mjs`: 98/98, including coverage of `dropShotTarget`
-(pure) and the drill roster shape.
+```js
+{
+  id, name, desc, goal, tags, players,   // players is a display count, informational
+  startPositions: { P1: 'F10', P2: 'D7', P3: 'F1', P4: 'C2' },  // grid coords or raw {x,z}; only present slots are in the roster
+  maxShots: 4,                            // per-drill cap on the live rep; falls back to DRILL.MAX_SHOTS if omitted
+  script: [
+    { hitter: 'P1', shotType: 'drive', target: 'P3' },
+    { hitter: 'P3', shotType: 'drop',  target: 'P1' }
+  ],
+  steps: [{ title, desc }, ...]            // pure on-screen narration, NOT read by the engine
+}
+```
+
+- **Roster is variable**: 2, 3, or 4 players, derived purely from which
+  `P1`-`P4` keys exist in `startPositions` (`activeSlotsOf(drill)`, exported
+  from `drillStore.js`). **P1 (near) and P3 (far) are always present** — the
+  anchors; **P2 and P4 are each independently optional**, as long as at
+  least one player ends up on each side. A solo player is always P1 or P3,
+  never P2/P4 alone — sidesteps a real correctness trap (see below).
+- **Teams are fixed, not a per-drill choice**: P1+P2 are always partners on
+  the near side of the net; P3+P4 always partners on the far side — same as
+  every other game mode, derived from `drillDirector.js`'s `SLOT_INFO` (the
+  single source of truth for the P-slot-to-engine mapping: team, team-slot,
+  character-roster-key).
+- **`script`** is the ordered shot sequence: `script[0]` is the opener,
+  fired directly; `script[1+]` are forced responses, armed one at a time and
+  resolved through the same AI-shot-execution pipeline real free-play uses
+  (so real stability/timing degradation still applies — a forced shot can
+  still pop up). Once the list runs out, everything is genuine undirected
+  AI/physics free-play up to `maxShots`. `shotType` is any of
+  `Shots.TYPES` (`drive`/`drop`/`dink`/`lob`/`speedup`) plus `smash`.
+  `target` is always a player slot on the hitter's OPPOSING team — a shot
+  can't be aimed at your own partner.
+- **`validateDrill(drill)`** (`drillStore.js`) — the only authoring
+  constraints left: roster shape (at least one player per side; P2 can't
+  exist without P1, P4 can't exist without P3; every script `hitter`/
+  `target` must be in the active roster) and same-team targets. Returns a
+  list of human-readable errors; used in `test/logic.test.mjs` and live by
+  the builder tool. **There is no positional/zone constraint** — a script
+  target can be authored anywhere on their own side of the net (see below
+  for why that's safe).
+
+### Director (`src/drillDirector.js`)
+
+- **`SLOT_INFO`** — canonical `{P1: {team, teamSlot, rosterKey}, ...}` table,
+  the single source of truth every other drill-aware module derives from.
+- **`resolvePlayer(game, slotKey)`** — scans `game.players` for a
+  `.drillSlot` tag (stamped on each player at construction), not array-index
+  math — robust to a roster that isn't always 4 entries in a fixed order.
+- **`resetRep(game, drillData)`** — snaps active players to their Setup
+  positions (iterating `Object.keys(startPositions)`, not a hardcoded
+  4-loop), resets `match.scores`/`gameOver` (a long session can never trip
+  a real game-over) and the drill's own counters, arms the Setup-hold timer,
+  starts a fresh recorder sized to capture one bounded rep from its true
+  start.
+- **`fireOpeningShot(game, drillData)`** — fires `script[0]` directly via
+  `_executeShotV2` (a table-setting injection, no timing/stability noise —
+  nothing realistically "swings" for it). Seeds a synthetic `match.rally`
+  already "deep in" (`shots: 4`, `phase: 'open'`) rather than framing it as a
+  serve or return: skips `Rules.onFloor`'s shots===1 serve-fault check on
+  the first bounce, and clears `strategies/doubles.js`'s `advanceAllowed`
+  threshold (>=3) so both teams read as "already at the net" immediately.
+  Targets the named player's **actual live position** (x and z) directly —
+  the chess-like "aim at this player" semantics the schema promises. Then
+  arms `script[1]` via `armNextScriptedShot`.
+- **`getScriptedShot(game, drillData, scriptIndex, hitterPlayer)`** — the
+  forced-shot computation for the current script index; same
+  `{target, apex, spin, type, margin}` shape `AI.chooseShot()` returns.
+- **`armNextScriptedShot(game, drillData)`** — arms `game.drillForcedShot`
+  for the next script entry, or clears it once the list runs out. Same
+  "arm now, resolve later when the ball actually arrives" shape as
+  poaching/the super's blast — chained across an index, not a single flag.
+- **`clampLandingZ(z)`** — a target's authored *standing* position can
+  legitimately sit just behind the real baseline (grid rows 1/10 resolve to
+  `z=±7.5`, past `HALF_L=±6.706`, matching a natural stance); aiming a
+  shot's landing point exactly there before the target has moved (always
+  true for `script[0]`) sent the ball out of bounds. Clamped to
+  `HALF_L*0.92` (same convention `shots.js`'s `aimDepth` uses).
+
+### The responsibility-zone fix (`src/game.js`)
+
+The zone constraint that used to exist was a symptom, not a design choice:
+`_checkContacts` picked who even got *considered* for an incoming contact
+using the engine's general-purpose, score-parity-based x-zone rotation
+(`_responsibleSlot`) — completely unaware a specific forced shot might be
+armed for someone else on that team. A script could aim exactly at its named
+target's authored position and the ball would still be handed to their
+partner. Fixed at the two call sites that actually decide who hits:
+
+- **`_checkContacts`**: right after computing the x-zone-based responsible
+  player, override it — if a `drillForcedShot` is armed for a player on the
+  receiving team, that player is who gets checked (reach, swing timing),
+  full stop. Same shape as the existing human-poach override in the same
+  function.
+- **`_moveCPU`**: the forced-shot target's `responsible` flag is forced
+  `true`, so they actively move to intercept (real movement, not scripted
+  position) instead of standing there "not responsible" while the ball
+  sails past.
+
+Both key off `this.drillForcedShot`, which only exists in drill mode — zero
+risk to singles/doubles/practice. Consequence: a script target can be
+authored anywhere on their own side and will always receive that shot.
+
+### Variable roster (`src/game.js`, `src/main.js`)
+
+- `Game` constructor option `drillActiveSlots` (default all 4) drives
+  `_initWorld`'s `mode==='drill'` roster branch — builds `this.players`
+  from the active slots only, tagging each with `.drillSlot`.
+- `_responsibleSlot`/`_laneSign`'s old `mode==='singles'` special case is
+  generalized to `this._teamPlayers(team).length === 1` — correctly treats
+  a solo drill-mode team the same way real singles mode already worked
+  (full-court coverage, always "responsible"), no other special-casing
+  needed.
+- AI strategy dispatch (`_moveCPU`/`_cpuHit`'s ctx passed to
+  `AI.chooseMovement`/`chooseShot`) is **per-team**, not per-match: a solo
+  team's players use `strategies/singles.js` (full-court coverage) even
+  when the opposing team is a real 2-player `strategies/doubles.js` pair —
+  done by overriding just the `mode` field in the ctx object at those two
+  call sites (`ctx.mode` is read nowhere else). **Known simplification**:
+  `strategies/common.js`'s `loneOpponent()` only ever looks at one of two
+  opponents, so a solo player in a 1-vs-2 drill doesn't get genuinely
+  optimal 1-vs-2 positioning — acceptable, not a crash or a broken drill.
+- `main.js`'s `startDrillView` computes `activeSlotsOf(drill)` and passes it
+  as `drillActiveSlots`; asset preloading only requests characters for
+  active slots.
+
+### Other `game.js` drill-mode pieces (unchanged by the above)
+
+`_updateHuman` gated off for drill mode (would otherwise fight `_moveCPU`'s
+steering every frame — drill mode drives `players[0]` via real AI too).
+`_checkContacts`'s cap guard (stops processing any hit once
+`drillHitCount >= this._drillMaxShots()`, so the ball bounces out untouched
+and real "no-return" fault detection ends the point for free — no cutoff
+timer needed for the common case). `drillEndGrace` is a **backstop only**:
+a low-energy shot (e.g. a drop) can settle after one bounce and never
+produce the second bounce "no-return" needs, which would otherwise strand
+the rep forever — armed once (not re-armed) when the cap is reached, forces
+the point to end if real fault detection doesn't get there first.
+`_endPoint`'s drill branch shows "REP COMPLETE" when the cap was reached, or
+the real fault label otherwise (never `_resultMessage()`'s "You score!" —
+meaningless with no human), resets scores, hands off to
+`DrillDirector.enterReplayLoop`. `_tickDrill`/`_tickDrillReplay`/
+`startDrill`/`cycleCamera`/`drillToggle`/`drillSeek`/`drillReplayInfo` round
+out the state machine and replay-loop transport.
+
+### UI (`src/main.js`, `tools/drill-builder.html`)
+
+- **`main.js`**: `startDrillView()` shows `#drillBar` (`● LOADING`, Steps
+  pre-populated, Exit already working) *before* the async
+  `preloadAssetPack()`/`Game` construction, so there's no blank gap on a
+  real device. `#hud` (score, music, camera/pause/info icons) stays fully
+  hidden the entire session — `#drillBar` is the only UI: `● LOADING` →
+  `● LIVE` during the bounded live rep, then `🔁 REPLAY` plus a play/pause +
+  scrub + time transport row once the rep caps. `?drill=<id>` deep-links
+  straight into the viewer; `?testDrill=1` reads a work-in-progress drill
+  staged in `sessionStorage` by the builder tool and launches it the same
+  way, without it ever being in `DEFAULT_DRILLS`.
+- **`tools/drill-builder.html`** — standalone visual builder (served by
+  `npm run dev`, ES-module imports straight from `src/drillStore.js`/
+  `src/drillDirector.js`/`src/shots.js`/`src/constants.js`, no new build
+  step, purpose-built for this schema rather than ported from the sibling
+  app's own court/creator UI):
+  - Player icons: P1/P2 (near) below the court, P3/P4 (far) above it —
+    matching where those teams actually render on the court, not an
+    arbitrary choice. Circular, color-coded to match the court dots.
+  - P1/P3 are always present, no control to remove them. P2/P4 each have an
+    explicit **checkbox** ("include") — unambiguous add/remove, separate
+    from the icon's job (select for placement). Unchecking strips that
+    slot's position and any script entry referencing it.
+  - Click-anywhere placement (not a coarse fixed grid — extends past the
+    sidelines/baseline so serve and ATP-style positions are placeable), but
+    constrained to the selected player's own side of the net: a click on
+    the wrong side snaps to the nearest legal spot at the net line instead
+    of placing there or being ignored.
+  - Script editor: ordered hitter/shotType/target rows; the target dropdown
+    only ever offers the hitter's opponents.
+  - Live `validateDrill` banner.
+  - **"Generate drill JSON"** — paste-ready `DEFAULT_DRILLS` entry.
+  - **"▶ Test this drill live"** — stages the drill in `sessionStorage` and
+    opens the real game via `?testDrill=1`: a real live rep, capped,
+    captured, and looped, before anything is ever pasted anywhere.
+  - No save/persistence beyond the browser session (still gap #2 below), no
+    drag-and-drop, no editing of already-shipped drills in place.
+
+### Shipped drills (`DEFAULT_DRILLS`, `src/drillStore.js`)
+
+- **`drill-drip`** ("Drip Practice", 4 players, `maxShots: 4`) — P1
+  simulates a short return down the line to P3, who drips back at P1's
+  feet; P1 and P3 share a grid column for a genuine down-the-line lane.
+  P2 shades/poaches, P4 follows P3 in. **Open item, not silently
+  resolved**: the drip shot is authored as `shotType: 'drop'`. Described as
+  "a drive that lands at P1's feet" — real `drive` (`shots.js`) is the
+  flat, fast, driven family; `drop` is the soft, arcing, kitchen-dying
+  family, closer to the original neutralize-the-point intent. Flagged in a
+  comment directly above the script entry — confirm or correct.
+- **`drill-dink-rally`** ("Cross-Court Dink Rally", 4 players,
+  `maxShots: 5`) — P1 opens with a soft dink cross-court to P3 (opposite x,
+  a true diagonal); no forced response — real AI free-plays the rest. P2/P4
+  shadow via ordinary AI positioning, not scripted.
+- **`drill-1v1-test`** (2 players, `maxShots: 3`) and **`drill-2v1-test`**
+  (3 players, near side has a partner, far side doesn't, `maxShots: 3`) —
+  minimal drills tagged `['test']`, shipped specifically to exercise the
+  variable-roster code path in the test suite and be manually launchable
+  from the drill library.
 
 ---
 
-## Known issues found during verification (and how they were fixed)
+## Verified live
 
-- **The scripted feed's target-x landed in the wrong player's zone.**
-  First draft aimed the feed at `P3`'s raw Setup grid coordinate (`F1`,
-  positive x). `Game.prototype._responsibleSlot`'s real contact-assignment
-  logic (`Rules.rightSlot`/`Rules.sideX`) determines who's "responsible"
-  for an incoming ball purely from its x-sign vs. the service-court
-  rotation — which didn't match the grid-authored coordinate's sign, so
-  the real engine handed the return to P4, not P3, and the forced drop
-  shot silently never fired (`drillForcedShot` stayed armed forever,
-  caught by direct state polling). Fixed by deriving the feed's target x
-  from `Rules.sideX('far', side)` — the same function the engine's own
-  responsibility check uses — instead of trusting the authored grid
-  coordinate's sign. **This is a sharp edge worth remembering for phase 2
-  drill authoring**: a step's grid-coordinate positions and the engine's
-  service-court-rotation math are two independent conventions that can
-  silently disagree; anything that "aims" a scripted shot needs to target
-  by the engine's real responsibility logic, not by an authored coordinate.
-- **The bounded-rep cutoff's first design (a decaying grace timer, re-armed
-  on every hit) never actually fired.** `drillHitCount` was observed
-  climbing to 5, 6, 7... instead of stopping at 4 — caught by polling
-  `drillHitCount`/`drillEndGrace` directly. Cause: arming
-  `drillEndGrace = DRILL.END_GRACE` on *every* hit past the cap meant each
-  new (still-real, still-AI-driven) shot reset the countdown before it
-  could expire, since natural shot cadence was faster than the grace
-  period. Fixed by moving the cutoff earlier in the pipeline:
-  `_checkContacts` now refuses to process *any* hit once
-  `drillHitCount >= DRILL.MAX_SHOTS`, so there's nothing left to keep
-  resetting a timer — the capping shot's own flight always completes
-  because nobody returns it.
-- **...but an untouched ball doesn't always fault on its own.**
-  `Rules.onFloor`'s "no-return" rule needs *two* bounces with no contact in
-  between; a low-energy shot (a `'drop'`, tuned to die quickly) can settle
-  after a single bounce and never produce a clean second one, leaving the
-  rep stuck in `STATE.RALLY` forever — caught the same way, `drillHitCount`
-  frozen at 4 with `drillReplaying` never flipping true even after a
-  generous wait. Fixed by keeping `drillEndGrace` as a **backstop only**:
-  armed once (not re-armed — `_checkContacts` guarantees no further hits
-  can occur to reset it), it forces the point to end if real fault
-  detection doesn't get there first. Whichever fires first wins; the timer
-  is a safety net, not the primary mechanism.
-- **Hiding `#hud` exposed a real loading-time gap.** After removing the
-  top HUD entirely (user: "I shouldn't see... any of the controls on top
-  of the screen... all controls are baked into our replay"), the user
-  reported "the replay bar doesn't display until halfway into a rally."
-  `#drillBar`'s own code hadn't changed and displayed correctly in a fast
-  headless test, so this wasn't obvious at first — asked a clarifying
-  question rather than guess, which narrowed it to "the *whole* bar," not
-  just the transport row. Root cause: `#drillBar` only got `.active` added
-  *after* `preloadAssetPack()` (real network/asset time, arbitrarily long
-  on a real device) and `Game` construction both finished — previously
-  masked because `#hud` was visible during that gap; now nothing was.
-  Fixed by moving `drilling=true`/`.active`/the Steps content render to the
-  very start of `startDrillView()`, before the async asset load, with the
-  badge showing `● LOADING` until the game exists — confirmed via a
-  network-throttled test that the bar (and a working Exit button) appear
-  within 30ms of tapping a drill card, well before `game` exists.
+Headless Playwright, direct `game.state`/`game.drillHitCount`/
+`game.drillPlayback` polling (screenshot-interleaved timing is unreliable
+under headless SwiftShader software rendering — state polling is the
+trustworthy signal). All four shipped drills confirmed: correct player
+count, forced shots fire (or don't, per shape) and land where intended, hit
+count climbs and stops exactly at `maxShots`, "REP COMPLETE" hands off to a
+real captured replay that loops forever with working pause/scrub, `#hud`
+stays hidden throughout. `drill-drip` specifically confirmed post-fix: ball
+x at both scripted contacts (P1→P3 and P3→P1) is exactly `1.524` — a true
+shared-column down-the-line exchange. The builder tool's full flow (place
+players via icons+checkboxes, script a back-and-forth, validate, test live)
+is also verified end-to-end. `node test/logic.test.mjs`: 113/113.
 
 ---
 
 ## What's still missing (phase 2+)
 
-1. **No create/edit/delete.** Still the actual point of "administer
-   drills" — entirely unbuilt. `drillStore.js` is a hardcoded module.
-2. **No persistence layer.** Real deployment target is Vercel (see
-   correction above) — a Vercel-functions + Postgres approach (mirroring
-   `pickleball-drills` almost exactly) is now the natural default, unlike
-   the earlier (wrong) assumption that Cloudflare Workers/KV would be
-   needed.
-3. **Only one drill exists** (Drip Practice). Cross-Court Dink Rally was
-   dropped, not migrated — a stationary dinking drill doesn't need the
-   director's "opening feed + forced shot" shape at all; if it comes back,
-   it likely wants a different, simpler drill "type" (e.g. no scripted
-   feed, just a Setup formation and let real dinking AI take over), which
-   argues for the drill schema eventually supporting more than one
-   director "shape," not just Drip Practice's.
-4. **Only 4-player, fixed-roster drills.** `DRILL_ROSTER`/`drillDirector.js`
-   assume exactly P1-P4 with a specific cast; no sub-4 or user-selectable
-   cast support.
+1. **No create/edit/delete in the shipped app.** `tools/drill-builder.html`
+   covers *authoring* (place players, build the script, validate, test
+   live, generate JSON) but is a standalone dev tool with a copy-paste
+   handoff, not integrated into pb3d's own UI, and has no save/load.
+2. **No persistence layer.** Real deployment target is Vercel (see design
+   history above) — a Vercel-functions + Postgres approach (mirroring
+   `pickleball-drills` almost exactly) is the natural default. This is what
+   would let the builder tool actually save instead of just generating
+   pasteable JSON.
+3. **Only four real drills exist** (Drip Practice, Cross-Court Dink Rally,
+   plus the two minimal 2/3-player test drills). The `script` schema isn't
+   shape-limited — a serve-practice drill, a poaching drill, etc. are just
+   a different shot sequence, no `drillDirector.js` changes needed. Content
+   is the bottleneck, not the engine.
+4. **No user-selectable cast.** Roster size is flexible (2/3/4 players) but
+   which character plays which slot is still fixed (`DRILL_ROSTER` in
+   `characters.js`).
 5. **Launch config (venue/palette/time-of-day) is hardcoded** — always
    park/blue/day, regardless of any prior flow picks.
 
 ## What to decide before writing more code
 
-- **Persistence** (gap #2) — gates everything under "administer."
-- **Drill "shape" generalization** (gap #3) — Drip Practice's director
-  (Setup → scripted feed → one forced shot → free-play) is one shape; a
-  stationary dinking drill or a serve-practice drill would need a
-  different one. Worth deciding whether phase 2's authoring model exposes
-  a small set of director "templates" or something more general.
-- **Scope of v1 CRUD** — full authoring UI (roles, tags, notes, a
-  grid-coordinate picker, scripted-beat editor) vs. a trimmed subset.
+- **Persistence** (gap #2) — gates everything under "administer," and gates
+  whether the builder tool becomes a real save flow or stays copy-paste.
+- **Whether/how the builder tool integrates into pb3d's own UI** (or stays
+  a separate dev page) — and whether a real admin flow reuses it, extends
+  it, or replaces it once persistence exists.

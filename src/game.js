@@ -141,6 +141,10 @@ export function Game(opts) {
   this.timeOfDay = this.venue === 'indoor' ? 'day' : (opts.timeOfDay || 'day');
   this.partnerDiff = opts.partnerDiff || null;
   this.roster = opts.roster || {};
+  // Which of P1-P4 actually exist for this drill (2/3/4 players) — read by
+  // _initWorld's mode==='drill' roster branch. P1/P3 are always present in
+  // practice (the anchor slots); P2/P4 are optional.
+  this.drillActiveSlots = opts.drillActiveSlots || ['P1', 'P2', 'P3', 'P4'];
   this.onMatchOver = opts.onMatchOver || null;
   this.isMobile = !!opts.isMobile;
   // 'on' | 'off' — lets a match run classic rules with no power meter.
@@ -167,6 +171,7 @@ export function Game(opts) {
                    supersFired: 0, supersBlasted: 0, supersMissed: 0 };
   this.drillData = null;
   this.drillForcedShot = null;
+  this.drillScriptIndex = 0;
   this.drillHitCount = 0;
   this.drillEndGrace = 0;
   this.drillReplaying = false;
@@ -288,12 +293,16 @@ Game.prototype._initWorld = function () {
       entry('far',  0, false, palettes.farA)
     ];
   } else if (this.mode === 'drill') {
-    this.players = [
-      entry('near', 0, false, palettes.nearYou),
-      entry('near', 1, false, palettes.nearMate),
-      entry('far',  0, false, palettes.farA),
-      entry('far',  1, false, palettes.farB)
-    ];
+    // Variable roster (2/3/4 players) — built from whichever of P1-P4 this
+    // drill declares (drillActiveSlots), not always all four. Each player is
+    // tagged with .drillSlot so drillDirector.js can resolve 'P1'..'P4' back
+    // to the right object regardless of roster size/order.
+    this.players = this.drillActiveSlots.map(function (slotKey) {
+      var info = DrillDirector.SLOT_INFO[slotKey];
+      var p = entry(info.team, info.teamSlot, false, palettes[info.rosterKey]);
+      p.drillSlot = slotKey;
+      return p;
+    });
   } else {
     this.players = [
       entry('near', 0, true,  palettes.nearYou),
@@ -471,15 +480,21 @@ Game.prototype._opponentsFor = function (team) {
 };
 
 // The world-x lane sign a player currently covers (depends on its service court).
+// A team of 1 (real singles mode, or a solo-side drill) covers full width —
+// checked by team size, not match mode, so a solo drill-mode team gets the
+// same "no lane restriction" treatment singles always had.
 Game.prototype._laneSign = function (p) {
-  if (this.mode === 'singles') return 0;
+  if (this._teamPlayers(p.team).length === 1) return 0;
   var side = (p.slot === Rules.rightSlot(this.match, p.team)) ? 'R' : 'L';
   return Rules.sideX(p.team, side);
 };
 
-// The slot on a team responsible for a given x-lane ("yours/mine").
+// The slot on a team responsible for a given x-lane ("yours/mine"). A team
+// of 1 is always responsible for everything on their side — same team-size
+// check as _laneSign above, not a mode check, so it also covers a solo-side
+// drill team correctly (their one player is always team-slot 0 already).
 Game.prototype._responsibleSlot = function (team, atX) {
-  if (this.mode === 'singles') return 0;
+  if (this._teamPlayers(team).length === 1) return 0;
   var sgn = ((atX !== undefined ? atX : this.ball.pos.x) >= 0) ? 1 : -1;
   var pick = 0;
   for (var slot = 0; slot < 2; slot++) {
@@ -722,7 +737,7 @@ Game.prototype._endPoint = function (result) {
     // whatever literal fault reason the untouched ball happened to trigger
     // (typically 'no-return') — an earlier, genuine fault still shows its
     // real reason.
-    var reason = (this.drillHitCount >= DRILL.MAX_SHOTS) ? 'drill-end' : result.reason;
+    var reason = (this.drillHitCount >= this._drillMaxShots()) ? 'drill-end' : result.reason;
     var label = DrillDirector.DRILL_RESULT_LABELS[reason] || (result.scored ? 'Point' : 'Side out');
     this._message(label, 1.0);
     this.match.scores = { near: 0, far: 0 };
@@ -1157,8 +1172,21 @@ Game.prototype._moveCPU = function (p, dt) {
   var incoming = this.ball.live && (this.ball.vel.z * fwd > 0);
   var pred = incoming ? AI.predict(this.ball) : null;
   var responsible = pred && (this.mode === 'singles' || p.slot === this._responsibleSlot(team, pred.x));
+  // A drill's armed forced-shot target must actively move to intercept
+  // regardless of the x-zone rotation (see the matching override in
+  // _checkContacts) — otherwise they'd stand there "not responsible" while
+  // the ball sails past, and the scripted shot would strand the rep.
+  if (this.drillForcedShot && this.drillForcedShot.hitter === p) responsible = true;
+  // Strategy dispatch is per-TEAM, not per-match: a solo drill-mode team
+  // (2/3-player drill) plays singles.js's movement logic (full-court
+  // coverage, no partner/lane assumptions) even though the match's overall
+  // mode is 'drill' and the opposing team may still be a real 2-player
+  // doubles pair running strategies/doubles.js. ctx.mode is ONLY read by
+  // ai.js's strategyForMode() for this dispatch — safe to override locally
+  // without touching this.mode (still 'drill' everywhere else).
+  var stratMode = (this._teamPlayers(team).length === 1) ? 'singles' : this.mode;
   var strategy = AI.chooseMovement(p.ai, this.ball, rally, {
-    mode: this.mode,
+    mode: stratMode,
     player: p,
     lane: lane,
     incoming: incoming,
@@ -1204,7 +1232,7 @@ Game.prototype._checkContacts = function (dt) {
   // real fault detection (Rules.onFloor's "no-return" rule) ends the point
   // for free — no separate forced-cutoff timer needed, and the capping
   // shot's own flight always completes and lands naturally first.
-  if (this.mode === 'drill' && this.drillHitCount >= DRILL.MAX_SHOTS) return;
+  if (this.mode === 'drill' && this.drillHitCount >= this._drillMaxShots()) return;
   if (this.lastHitCooldown > 0) return;
   var rally = this.match.rally;
   if (!rally) return;
@@ -1212,6 +1240,14 @@ Game.prototype._checkContacts = function (dt) {
   var team = (this.ball.pos.z > 0) ? 'near' : 'far';
   if (rally.lastHitter === team) return;            // our own shot still outgoing
   var p = this._player(team, this._responsibleSlot(team));
+  // A drill's forced/scripted shot always goes to its named target, full
+  // stop — not "whichever teammate the real x-zone rotation happens to
+  // assign," which only matches the intended target if they were authored
+  // standing in that specific zone. Overriding here (same shape as the
+  // human-poach override just below) means a script's target can be
+  // authored ANYWHERE on their own side and still reliably receive the
+  // shot; drillStore.js's validateDrill no longer needs a zone check.
+  if (this.drillForcedShot && this.drillForcedShot.hitter.team === team) p = this.drillForcedShot.hitter;
   if (!p) return;
   // Human poach: the human may take a ball assigned to their partner by
   // stepping in front and timing a swing while within reach.
@@ -1788,7 +1824,7 @@ Game.prototype._cpuHit = function (p) {
   // "no-return" needs, which would otherwise strand the rep forever.
   if (this.mode === 'drill') {
     this.drillHitCount++;
-    if (this.drillHitCount >= DRILL.MAX_SHOTS) this.drillEndGrace = DRILL.END_GRACE;
+    if (this.drillHitCount >= this._drillMaxShots()) this.drillEndGrace = DRILL.END_GRACE;
   }
 
   var opponents = this._opponentsFor(p.team);
@@ -1798,11 +1834,14 @@ Game.prototype._cpuHit = function (p) {
   var stabilityIdx = this._computeStability(p);
   var shot;
   if (this.drillForcedShot && this.drillForcedShot.hitter === p) {
-    shot = DrillDirector.dropShotTarget(this.players[0].pos, C.KITCHEN, C.HALF_L);
-    this.drillForcedShot = null;
+    shot = DrillDirector.getScriptedShot(this, this.drillData, this.drillScriptIndex, p);
+    this.drillScriptIndex++;
+    DrillDirector.armNextScriptedShot(this, this.drillData);
   } else {
+    // Same per-team strategy dispatch as _moveCPU — see its comment.
+    var stratMode = (this._teamPlayers(p.team).length === 1) ? 'singles' : this.mode;
     shot = AI.chooseShot(p.ai, this.ball, this.match, false, {
-      mode: this.mode,
+      mode: stratMode,
       opponents: opponents,
       hitterPos: pos,
       hitterTeam: p.team,
@@ -2725,11 +2764,18 @@ Game.prototype.startDrill = function (drillData) {
   DrillDirector.resetRep(this, drillData);
 };
 
+// Most drills share DRILL.MAX_SHOTS; a drill can override with its own
+// maxShots (e.g. a dinking rally that wants more touches than a scripted
+// feed-and-drop drill) without every drill needing to declare one.
+Game.prototype._drillMaxShots = function () {
+  return (this.drillData && this.drillData.maxShots) || DRILL.MAX_SHOTS;
+};
+
 Game.prototype._tickDrill = function (dt) {
   if (this.drillReplaying) { this._tickDrillReplay(dt); return; }
   if (this.state === STATE.SERVE) {
     this.serveDelay -= dt;
-    if (this.serveDelay <= 0) DrillDirector.fireFeed(this, this.drillData);
+    if (this.serveDelay <= 0) DrillDirector.fireOpeningShot(this, this.drillData);
   } else if (this.state === STATE.RALLY) {
     this._tickRally(dt);
     // Backstop only — see the comment where drillEndGrace is armed in

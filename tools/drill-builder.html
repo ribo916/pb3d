@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>pb3d Drill Builder</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: -apple-system, sans-serif; background: #14161a; color: #e8e8ec; margin: 0; padding: 20px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: #888; font-size: 13px; margin-bottom: 20px; max-width: 900px; }
+  .sub b { color: #ccc; }
+  .layout { display: flex; gap: 24px; align-items: flex-start; overflow-x: auto; padding-bottom: 10px; }
+  .panel { background: #1c1f26; border: 1px solid #2c2f38; border-radius: 8px; padding: 16px; flex: 0 0 auto; }
+  label { display: block; font-size: 12px; color: #9aa; margin: 10px 0 4px; }
+  input[type=text], input[type=number], textarea, select {
+    width: 100%; box-sizing: border-box; background: #101216; color: #e8e8ec;
+    border: 1px solid #333844; border-radius: 4px; padding: 6px 8px; font-size: 13px;
+  }
+  textarea { min-height: 44px; resize: vertical; }
+  .row { display: flex; gap: 8px; align-items: center; margin: 4px 0; }
+  .row select { flex: 1; }
+  button { background: #2a2f3a; color: #e8e8ec; border: 1px solid #3a4050; border-radius: 4px;
+    padding: 6px 10px; font-size: 12px; cursor: pointer; }
+  button:hover { background: #343b4a; }
+  button.danger { background: #3a2020; border-color: #5a3030; }
+  button.primary { background: #2a4a3a; border-color: #3a6a50; }
+  .picker-label { font-size: 11px; color: #666; margin: 4px 0; text-align: center; }
+  .player-picker { display: flex; gap: 16px; align-items: center; justify-content: center; }
+  .picker-slot { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .picker-slot .toggle { display: flex; align-items: center; gap: 4px; font-size: 10px; color: #8a8fa0; }
+  .picker-slot .toggle input { width: auto; margin: 0; }
+  .icon-btn {
+    width: 48px; height: 48px; border-radius: 50%; border: 2px solid #33384a;
+    color: #fff; font-weight: 700; font-size: 15px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+    transition: transform 0.1s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+  }
+  .icon-btn:hover:not(:disabled) { transform: scale(1.08); }
+  .icon-btn:disabled { cursor: not-allowed; opacity: 0.25; box-shadow: none; }
+  .icon-btn.active { border-color: #fff; box-shadow: 0 0 0 4px rgba(255,255,255,0.22), 0 2px 6px rgba(0,0,0,0.35); }
+  .p1 { background: #d64545; } .p2 { background: #d68a45; } .p3 { background: #4576d6; } .p4 { background: #45b0d6; }
+  svg { background: #0c0e12; border-radius: 6px; cursor: crosshair; }
+  .player-dot { pointer-events: none; }
+  .banner { border-radius: 6px; padding: 10px 12px; font-size: 13px; margin-bottom: 14px; max-width: 900px; }
+  .banner.ok { background: #16321f; border: 1px solid #2a5c3a; color: #8fd9a8; }
+  .banner.err { background: #3a1c1c; border: 1px solid #6a2c2c; color: #f0a8a8; }
+  .banner ul { margin: 6px 0 0; padding-left: 18px; }
+  #jsonOut { width: 640px; max-width: 100%; height: 260px; font-family: ui-monospace, monospace; font-size: 12px; }
+  .hint { color: #666; font-size: 11px; margin-top: 4px; }
+  #posReadout { font-family: ui-monospace, monospace; font-size: 11px; color: #9aa; margin-top: 8px; line-height: 1.6; white-space: pre; }
+  #testResult { font-size: 12px; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<h1>pb3d Drill Builder</h1>
+<div class="sub">
+  <b>Roster:</b> 2, 3, or 4 players. P1 (near) and P3 (far) are always present — the anchors; check
+  or uncheck "include" under P2/P4 to add or remove them, as long as at least one player ends up on
+  each side. Click a player's icon to select them for placement on the court. P1 &amp; P2 are
+  partners on the near side of the net (Team A); P3 &amp; P4 are partners on the far side (Team B) —
+  fixed by every game mode, not a per-drill choice. A shot in the <b>Script</b> panel always goes
+  from a player to one of the <em>opposing</em> team's active players, the way a real rally shot
+  crosses the net — never sideways to your own partner, so the target dropdown only offers
+  opponents.<br><br>
+  <b>Positioning:</b> click anywhere on or around the court to place the selected player — not
+  limited to a fixed grid, so serve positions and ATP/around-the-post spots well outside the
+  sideline work too. The UI only lets you click on that player's own side of the net (near for
+  P1/P2, far for P3/P4) — a click on the wrong side snaps to the nearest legal spot instead of being
+  ignored. Wherever you place a script target within their own side, the engine guarantees they're
+  the one who receives that shot. Positions here are Setup-only — the engine never scripts movement,
+  only who hits what at whom.
+</div>
+
+<div id="banner" class="banner ok">Place your active players and add at least one shot to the script to validate.</div>
+
+<div class="layout">
+  <div class="panel">
+    <div class="picker-label">P3 / P4 — Far, Team B (top of court)</div>
+    <div class="player-picker" id="pickerFar"></div>
+    <svg id="court" viewBox="-6 -10 12 20" width="420" height="700"></svg>
+    <div class="player-picker" id="pickerNear"></div>
+    <div class="picker-label">P1 / P2 — Near, Team A (bottom of court)</div>
+    <div id="posReadout"></div>
+  </div>
+
+  <div class="panel" style="width:340px;">
+    <label>Name</label>
+    <input type="text" id="fName" value="New Drill">
+    <label>Description</label>
+    <textarea id="fDesc"></textarea>
+    <label>Goal</label>
+    <textarea id="fGoal"></textarea>
+    <label>Tags (comma separated)</label>
+    <input type="text" id="fTags">
+    <label>Max shots (cap on the live rep)</label>
+    <input type="number" id="fMaxShots" value="4" min="1">
+  </div>
+
+  <div class="panel" style="width:340px;">
+    <label style="margin-top:0;">Script (shots in order: who hits, what kind, at whom)</label>
+    <div id="scriptList"></div>
+    <button id="addShot">+ Add shot</button>
+    <label style="margin-top:16px;">Narration steps (shown in-game, not read by the engine)</label>
+    <div id="stepsList"></div>
+    <button id="addStep">+ Add step</button>
+  </div>
+</div>
+
+<div class="panel" style="margin-top:20px; max-width:680px;">
+  <div class="row">
+    <button class="primary" id="testLive">▶ Test this drill live</button>
+    <button id="genJson">Generate drill JSON</button>
+  </div>
+  <div id="testResult"></div>
+  <div class="hint">
+    "Test live" opens the real game and plays this drill exactly as authored (a real live rep,
+    captured and looped as a replay) — nothing is saved anywhere; refreshing or closing that tab
+    loses it. "Generate JSON" gives you the pasteable entry for <code>DEFAULT_DRILLS</code>
+    (src/drillStore.js) once you're happy with it.
+  </div>
+  <textarea id="jsonOut" readonly placeholder="Click 'Generate drill JSON' above." style="margin-top:10px;"></textarea>
+</div>
+
+<script type="module">
+import { validateDrill, TEAM_OF } from '../src/drillStore.js';
+import { TYPES as SHOT_TYPES } from '../src/shots.js';
+import { COURT } from '../src/constants.js';
+
+const SHAPE_TYPES = SHOT_TYPES.concat(['smash']); // smash is a real Shots profile, not in the auto-classified TYPES list
+const ALL_SLOTS = ['P1', 'P2', 'P3', 'P4'];
+const SLOT_CLASS = { P1: 'p1', P2: 'p2', P3: 'p3', P4: 'p4' };
+const SLOT_COLOR = { P1: '#d64545', P2: '#d68a45', P3: '#4576d6', P4: '#45b0d6' };
+const state = {
+  selectedSlot: 'P1',
+  includeP2: true,
+  includeP4: true,
+  positions: {},           // { P1: {x,z}, ... } — raw world coords, no grid quantization
+  script: [],              // [{ hitter, shotType, target }]
+  steps: [{ title: 'Setup', desc: '' }]
+};
+
+// P1/P3 are always active (the anchors); P2/P4 follow their checkboxes.
+// Canonical P1,P2,P3,P4 order, matching drillStore.js's activeSlotsOf.
+function activeSlots() {
+  return ALL_SLOTS.filter(s => s === 'P1' || s === 'P3' || (s === 'P2' && state.includeP2) || (s === 'P4' && state.includeP4));
+}
+function opponentsOf(slot) { return activeSlots().filter(s => TEAM_OF[s] !== TEAM_OF[slot]); }
+
+// ---- player picker ----
+// P1/P3 are anchors: always in the roster, the icon just selects them for
+// placement. P2/P4 are optional: a checkbox is the explicit include/exclude
+// control (unambiguous — no "click means something different depending on
+// state" behavior); their icon selects them for placement, same as the
+// anchors, and is disabled while excluded since there's nothing to place.
+const ANCHOR_SLOTS = { P1: true, P3: true };
+const pickerNear = document.getElementById('pickerNear');
+const pickerFar = document.getElementById('pickerFar');
+
+function isIncluded(slot) {
+  if (ANCHOR_SLOTS[slot]) return true;
+  return slot === 'P2' ? state.includeP2 : state.includeP4;
+}
+
+function renderPicker() {
+  [pickerNear, pickerFar].forEach(el => (el.innerHTML = ''));
+  ALL_SLOTS.forEach(slot => {
+    const included = isIncluded(slot);
+    const selected = slot === state.selectedSlot;
+    const wrap = document.createElement('div');
+    wrap.className = 'picker-slot';
+
+    const b = document.createElement('button');
+    b.textContent = slot;
+    b.className = 'icon-btn ' + SLOT_CLASS[slot] + (selected ? ' active' : '');
+    b.disabled = !included;
+    b.title = ANCHOR_SLOTS[slot] ? slot + ' is always in the roster' : 'Select ' + slot + ' for placement';
+    b.addEventListener('click', () => { state.selectedSlot = slot; renderPicker(); renderPlayers(); revalidate(); });
+    wrap.appendChild(b);
+
+    if (!ANCHOR_SLOTS[slot]) {
+      const toggle = document.createElement('label');
+      toggle.className = 'toggle';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = included;
+      cb.addEventListener('change', () => setSlotIncluded(slot, cb.checked));
+      toggle.appendChild(cb);
+      toggle.appendChild(document.createTextNode('include'));
+      wrap.appendChild(toggle);
+    }
+
+    (TEAM_OF[slot] === 'near' ? pickerNear : pickerFar).appendChild(wrap);
+  });
+}
+
+function setSlotIncluded(slot, included) {
+  if (slot === 'P2') state.includeP2 = included; else state.includeP4 = included;
+  if (included) {
+    // Newly added: select it so the next court click places it, same flow
+    // as any other player — no default position is assigned.
+    state.selectedSlot = slot;
+  } else {
+    // Removed: strip its position and any script entry referencing it
+    // (hitter or target) — an orphaned reference would otherwise silently
+    // fail validateDrill's "not in this drill's roster" check instead of
+    // being cleaned up here where the intent (removing the player) is clear.
+    delete state.positions[slot];
+    state.script = state.script.filter(s => s.hitter !== slot && s.target !== slot);
+    if (state.selectedSlot === slot) state.selectedSlot = 'P1';
+    renderScript();
+  }
+  renderPicker();
+  renderPlayers();
+  revalidate();
+}
+renderPicker();
+
+// ---- court ----
+const svg = document.getElementById('court');
+const HALF_W = COURT.HALF_W, HALF_L = COURT.HALF_L, KITCHEN = COURT.KITCHEN;
+
+function svgEl(tag, attrs) {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  return el;
+}
+
+// Court outline + net + kitchen lines + sideline extension hint, for reference.
+svg.appendChild(svgEl('rect', { x: -HALF_W, y: -HALF_L, width: HALF_W * 2, height: HALF_L * 2, fill: 'none', stroke: '#4a5060', 'stroke-width': 0.03 }));
+svg.appendChild(svgEl('line', { x1: -HALF_W, y1: 0, x2: HALF_W, y2: 0, stroke: '#8890a0', 'stroke-width': 0.04 })); // net
+[-KITCHEN, KITCHEN].forEach(z => svg.appendChild(svgEl('line', { x1: -HALF_W, y1: z, x2: HALF_W, y2: z, stroke: '#4a5060', 'stroke-width': 0.02, 'stroke-dasharray': '0.08,0.08' })));
+// Faint reference grid (visual aid only — clicking anywhere places exactly there, not snapped).
+for (let x = -5; x <= 5; x++) svg.appendChild(svgEl('line', { x1: x, y1: -10, x2: x, y2: 10, stroke: '#22262f', 'stroke-width': 0.01 }));
+for (let z = -9; z <= 9; z += 1.5) svg.appendChild(svgEl('line', { x1: -6, y1: z, x2: 6, y2: z, stroke: '#22262f', 'stroke-width': 0.01 }));
+
+const playerGroup = svgEl('g', { class: 'player-dot' });
+svg.appendChild(playerGroup);
+
+function svgPointFromEvent(evt) {
+  const pt = svg.createSVGPoint();
+  pt.x = evt.clientX; pt.y = evt.clientY;
+  const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+  return { x: Math.round(p.x * 100) / 100, z: Math.round(p.y * 100) / 100 };
+}
+// A team's side of the net is fixed (near = positive z, far = negative z —
+// same convention drillStore.js's grid rows use). The UI enforces it here
+// rather than just flagging it in the validation banner afterward: a click
+// on the wrong side snaps to the nearest legal spot instead of placing
+// there or being silently ignored.
+const MIN_NET_GAP = 0.3;
+function clampToOwnSide(team, z) {
+  return team === 'near' ? Math.max(z, MIN_NET_GAP) : Math.min(z, -MIN_NET_GAP);
+}
+svg.addEventListener('click', (evt) => {
+  const p = svgPointFromEvent(evt);
+  p.z = clampToOwnSide(TEAM_OF[state.selectedSlot], p.z);
+  state.positions[state.selectedSlot] = p;
+  renderPlayers();
+  revalidate();
+});
+
+function renderPlayers() {
+  playerGroup.innerHTML = '';
+  const lines = [];
+  const active = activeSlots();
+  active.forEach(slot => {
+    const p = state.positions[slot];
+    if (!p) { lines.push(slot + ': not placed'); return; }
+    const dot = svgEl('circle', { cx: p.x, cy: p.z, r: 0.26, fill: SLOT_COLOR[slot], stroke: '#fff', 'stroke-width': 0.03 });
+    const label = svgEl('text', { x: p.x, y: p.z + 0.08, 'text-anchor': 'middle', 'font-size': 0.26, fill: '#fff' });
+    label.textContent = slot;
+    playerGroup.appendChild(dot);
+    playerGroup.appendChild(label);
+    lines.push(slot + ': x=' + p.x.toFixed(2) + ', z=' + p.z.toFixed(2));
+  });
+  document.getElementById('posReadout').textContent = lines.join('\n');
+}
+
+// ---- script editor ----
+const scriptList = document.getElementById('scriptList');
+function renderScript() {
+  scriptList.innerHTML = '';
+  state.script.forEach((entry, i) => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const hitterSelect = select(activeSlots(), entry.hitter, v => {
+      entry.hitter = v;
+      // Target must stay an opponent of the (possibly new) hitter.
+      if (!opponentsOf(v).includes(entry.target)) entry.target = opponentsOf(v)[0];
+      renderScript();
+      revalidate();
+    });
+    const typeSelect = select(SHAPE_TYPES, entry.shotType, v => { entry.shotType = v; revalidate(); });
+    // Target options are ALWAYS just the two opponents of the current hitter
+    // — a shot can't be aimed at your own partner, so it's never offered.
+    const targetSelect = select(opponentsOf(entry.hitter), entry.target, v => { entry.target = v; revalidate(); });
+    row.appendChild(hitterSelect);
+    row.appendChild(typeSelect);
+    row.appendChild(targetSelect);
+    const rm = document.createElement('button');
+    rm.textContent = '✕'; rm.className = 'danger';
+    rm.addEventListener('click', () => { state.script.splice(i, 1); renderScript(); revalidate(); });
+    row.appendChild(rm);
+    scriptList.appendChild(row);
+  });
+}
+function select(options, value, onChange) {
+  const s = document.createElement('select');
+  options.forEach(o => {
+    const opt = document.createElement('option');
+    opt.value = o; opt.textContent = o; if (o === value) opt.selected = true;
+    s.appendChild(opt);
+  });
+  s.addEventListener('change', () => onChange(s.value));
+  return s;
+}
+document.getElementById('addShot').addEventListener('click', () => {
+  const last = state.script[state.script.length - 1];
+  // Default a new shot's hitter to the previous shot's target (the natural
+  // next contact) and target to whoever hasn't been hit to yet, rather than
+  // always defaulting to the same P1->P3 pair regardless of context.
+  const hitter = last ? last.target : 'P1';
+  const target = last ? last.hitter : opponentsOf(hitter)[0];
+  state.script.push({ hitter, shotType: 'drive', target });
+  renderScript();
+  renderPlayers(); // refresh zone-mismatch markers now that targeting changed
+  revalidate();
+});
+renderScript();
+
+// ---- narration steps editor ----
+const stepsList = document.getElementById('stepsList');
+function renderSteps() {
+  stepsList.innerHTML = '';
+  state.steps.forEach((step, i) => {
+    const wrap = document.createElement('div');
+    wrap.style.marginBottom = '8px';
+    const title = document.createElement('input');
+    title.type = 'text'; title.placeholder = 'Step title'; title.value = step.title;
+    title.addEventListener('input', () => { step.title = title.value; });
+    const desc = document.createElement('textarea');
+    desc.placeholder = 'Step description'; desc.value = step.desc;
+    desc.addEventListener('input', () => { step.desc = desc.value; });
+    const rm = document.createElement('button');
+    rm.textContent = 'Remove step'; rm.className = 'danger'; rm.style.marginTop = '4px';
+    rm.addEventListener('click', () => { state.steps.splice(i, 1); renderSteps(); });
+    wrap.appendChild(title); wrap.appendChild(desc); wrap.appendChild(rm);
+    stepsList.appendChild(wrap);
+  });
+}
+document.getElementById('addStep').addEventListener('click', () => {
+  state.steps.push({ title: '', desc: '' });
+  renderSteps();
+});
+renderSteps();
+
+// ---- validation ----
+const banner = document.getElementById('banner');
+function revalidate() {
+  renderPlayers(); // keep the per-player zone-mismatch markers current
+  const missing = activeSlots().filter(s => !state.positions[s]);
+  if (missing.length) {
+    banner.className = 'banner err';
+    banner.textContent = 'Missing positions for: ' + missing.join(', ');
+    return;
+  }
+  if (!state.script.length) {
+    banner.className = 'banner err';
+    banner.textContent = 'Add at least one shot to the script (the opener).';
+    return;
+  }
+  const errors = validateDrill({ startPositions: state.positions, script: state.script });
+  if (errors.length) {
+    banner.className = 'banner err';
+    banner.innerHTML = '<strong>' + errors.length + ' validation error(s):</strong><ul>' +
+      errors.map(e => '<li>' + escapeHtml(e) + '</li>').join('') + '</ul>';
+  } else {
+    banner.className = 'banner ok';
+    banner.textContent = 'Valid.';
+  }
+}
+function escapeHtml(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+revalidate();
+
+// ---- drill object assembly (shared by JSON export + live test) ----
+function buildDrill() {
+  return {
+    id: 'drill-' + document.getElementById('fName').value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
+    name: document.getElementById('fName').value,
+    players: activeSlots().length,
+    desc: document.getElementById('fDesc').value,
+    goal: document.getElementById('fGoal').value,
+    tags: document.getElementById('fTags').value.split(',').map(t => t.trim()).filter(Boolean),
+    startPositions: Object.assign({}, state.positions),
+    maxShots: Number(document.getElementById('fMaxShots').value) || 4,
+    script: state.script.map(s => Object.assign({}, s)),
+    steps: state.steps.filter(s => s.title || s.desc)
+  };
+}
+
+document.getElementById('genJson').addEventListener('click', () => {
+  document.getElementById('jsonOut').value = JSON.stringify(buildDrill(), null, 2);
+});
+
+document.getElementById('testLive').addEventListener('click', () => {
+  const missing = activeSlots().filter(s => !state.positions[s]);
+  const result = document.getElementById('testResult');
+  if (missing.length || !state.script.length) {
+    result.textContent = 'Fix validation issues above before testing live.';
+    result.style.color = '#f0a8a8';
+    return;
+  }
+  sessionStorage.setItem('pb3dWipDrill', JSON.stringify(buildDrill()));
+  window.open(window.location.origin + '/?testDrill=1', '_blank');
+  result.textContent = 'Opened in a new tab — this builder tab is untouched, so you can keep editing.';
+  result.style.color = '#8fd9a8';
+});
+
+renderPlayers();
+</script>
+</body>
+</html>

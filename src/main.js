@@ -11,7 +11,8 @@ import { preloadAssetPack, assetStatusSummary } from './assets.js';
 import { CHARACTERS, DEFAULT_ROSTER, DRILL_ROSTER, getCharacter, resolveSlotCharacter } from './characters.js';
 import { makeCharacterPreview } from './characterPreview.js';
 import { normalizeMode } from './modes.js';
-import { loadDrills } from './drillStore.js';
+import { loadDrills, normalizeDrill, activeSlotsOf } from './drillStore.js';
+import { SLOT_INFO } from './drillDirector.js';
 import * as Power from './power.js';
 import * as AI from './ai.js';
 import { PERSONA_META, personaStats, STAT_LABELS } from './strategies/personas.js';
@@ -1008,11 +1009,15 @@ async function startDrillView(drill) {
   $('drillBadge').textContent = '● LOADING';
   $('drillTransport').style.display = 'none';
   renderDrillSteps(drill);
+  // Variable roster (2/3/4 players) — only the slots this drill actually
+  // declares in startPositions get spawned/preloaded, not always all 4.
+  var activeSlots = activeSlotsOf(drill);
   var cfg = { mode: 'drill', venue: 'park', courtPalette: 'blue', timeOfDay: 'day',
               difficulty: 'normal', cameraMode: 'broadcast', superMode: 'off',
               roster: Object.assign({}, DRILL_ROSTER) };
-  var neededPlayerKeys = ALL_POSITIONS.map(function (pos) {
-    return resolveSlotCharacter(pos, cfg.roster[pos]).playerModelKey;
+  var neededPlayerKeys = activeSlots.map(function (slotKey) {
+    var rosterKey = SLOT_INFO[slotKey].rosterKey;
+    return resolveSlotCharacter(rosterKey, cfg.roster[rosterKey]).playerModelKey;
   });
   cfg.neededPlayerKeys = neededPlayerKeys;
   var assetPack = null;
@@ -1028,7 +1033,7 @@ async function startDrillView(drill) {
     canvas: $('game'), difficulty: cfg.difficulty, audio: audio, isMobile: IS_TOUCH_DEVICE,
     mode: 'drill', venue: cfg.venue, courtPalette: cfg.courtPalette,
     timeOfDay: cfg.timeOfDay, roster: cfg.roster, assets: assetPack,
-    cameraMode: cfg.cameraMode, superMode: cfg.superMode
+    cameraMode: cfg.cameraMode, superMode: cfg.superMode, drillActiveSlots: activeSlots
   });
   // No game.setInput() for drill mode — no player to drive. #hud (score,
   // camera/pause/info/music controls) stays fully hidden too — there's no
@@ -1112,6 +1117,22 @@ $('drillStepsModal').addEventListener('click', function (e) { if (e.target === $
     var drill = drills.filter(function (d) { return d.id === drillId; })[0];
     if (drill) startDrillView(drill);
   });
+})();
+
+// ?testDrill=1 deep-link: launch a work-in-progress drill staged by
+// tools/drill-builder.html in sessionStorage — not part of DEFAULT_DRILLS,
+// lets a drill be played live before it's pasted into drillStore.js.
+(function () {
+  var params = new URLSearchParams(location.search);
+  if (params.get('testDrill') !== '1') return;
+  var raw = sessionStorage.getItem('pb3dWipDrill');
+  if (!raw) return;
+  try {
+    var drill = normalizeDrill(JSON.parse(raw));
+    startDrillView(drill);
+  } catch (e) {
+    console.error('PB3D: failed to load WIP drill from sessionStorage', e);
+  }
 })();
 
 // Boot the flow on the Start screen (kicks off AJ's turntable).

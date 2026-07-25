@@ -1,5 +1,7 @@
 'use strict';
 
+import { SLOT_INFO } from './drillDirector.js';
+
 // Convert a pickleball-drills grid coord (e.g. 'F10') to pb3d world coords.
 // Top of the SVG (row 1) = far side (z < 0); bottom (row 10) = near side (z > 0).
 var COLS = 'ABCDEFGH';
@@ -26,41 +28,195 @@ function normalizePositions(positions) {
   return out;
 }
 
+// Engine-consumed data (startPositions, script) and on-screen narration
+// (steps) are kept as separate top-level fields — not nested inside one
+// another — so an admin UI can edit a drill's starting formation or its shot
+// sequence without touching its step text, or reword a step without risking
+// the engine's real inputs.
 export function normalizeDrill(drill) {
   if (!drill) return drill;
   var steps = (drill.steps || []).map(function (step) {
-    return Object.assign({}, step, { positions: normalizePositions(step.positions) });
+    return { title: step.title, desc: step.desc };
   });
-  // Legacy: if no step has positions but startPositions exists, inject into step 0.
-  var startPos = drill.startPositions ? normalizePositions(drill.startPositions) : null;
-  if (startPos && steps.length > 0 && !Object.keys(steps[0].positions).length) {
-    steps[0] = Object.assign({}, steps[0], { positions: startPos });
+  return Object.assign({}, drill, {
+    startPositions: normalizePositions(drill.startPositions),
+    steps: steps
+  });
+}
+
+// P1/P2 are always partners on the near side of the net (Team A); P3/P4 are
+// always partners on the far side (Team B) — derived from drillDirector.js's
+// SLOT_INFO, the single source of truth for the P-slot-to-engine mapping, so
+// this can't drift out of sync with how src/game.js's `mode==='drill'`
+// roster is actually built. A drill can field 2, 3, or 4 players: P1/P3 are
+// always present (the anchor slots); P2/P4 are each independently optional,
+// as long as at least one player ends up on each side. A shot can only ever
+// go from a player to one of the OTHER team's active players, the same way
+// a real rally shot crosses the net, never sideways to your own partner.
+export var TEAM_OF = {};
+Object.keys(SLOT_INFO).forEach(function (slot) { TEAM_OF[slot] = SLOT_INFO[slot].team; });
+
+// The canonical P1,P2,P3,P4-ordered list of slots a drill actually uses,
+// filtered to whichever are present in its startPositions — the single
+// place both the engine (main.js, before constructing Game) and any
+// authoring UI should derive "how many players, which ones" from, rather
+// than each re-deriving it from Object.keys() independently.
+export function activeSlotsOf(drill) {
+  var positions = (drill && drill.startPositions) || {};
+  return Object.keys(SLOT_INFO).filter(function (slot) { return !!positions[slot]; });
+}
+
+// Validates a drill's roster and `script`. Returns a (possibly empty) array
+// of human-readable error strings — never throws, so it can be used both as
+// a test assertion and as live feedback in an authoring UI. Accepts either
+// raw grid-coordinate strings or already-resolved {x,z} positions in
+// startPositions.
+export function validateDrill(drill) {
+  var errors = [];
+  if (!drill) return errors;
+  var positions = normalizePositions(drill.startPositions || {});
+  var active = activeSlotsOf(Object.assign({}, drill, { startPositions: positions }));
+  var activeSet = {};
+  active.forEach(function (s) { activeSet[s] = true; });
+
+  // Roster shape: at least one player per side, and P2/P4 (the optional
+  // partner slots) can't exist without their anchor (P1/P3) — the engine's
+  // per-team "who's responsible" logic assumes a solo player is always
+  // team-slot 0, which P1/P3 already are; P2/P4 alone would be team-slot 1
+  // with nobody in slot 0, which nothing here is built to handle.
+  var hasNear = active.some(function (s) { return TEAM_OF[s] === 'near'; });
+  var hasFar = active.some(function (s) { return TEAM_OF[s] === 'far'; });
+  if (!hasNear) errors.push('roster: no near-side player (need P1 and/or P2)');
+  if (!hasFar) errors.push('roster: no far-side player (need P3 and/or P4)');
+  if (activeSet.P2 && !activeSet.P1) errors.push('roster: P2 is present without P1 — P1 is always the near-side anchor');
+  if (activeSet.P4 && !activeSet.P3) errors.push('roster: P4 is present without P3 — P3 is always the far-side anchor');
+
+  var script = drill.script || [];
+  for (var i = 0; i < script.length; i++) {
+    var entry = script[i];
+    if (!activeSet[entry.hitter]) {
+      errors.push('shot ' + i + ': hitter ' + entry.hitter + ' is not in this drill\'s roster');
+      continue;
+    }
+    if (!activeSet[entry.target]) {
+      errors.push('shot ' + i + ': target ' + entry.target + ' is not in this drill\'s roster');
+      continue;
+    }
+    if (TEAM_OF[entry.hitter] === TEAM_OF[entry.target]) {
+      errors.push(
+        'shot ' + i + ': ' + entry.hitter + ' hits to ' + entry.target + ', but they\'re partners (same team) — ' +
+        'a shot always crosses the net to an opponent, never sideways to your own partner'
+      );
+    }
   }
-  return Object.assign({}, drill, { steps: steps });
+  return errors;
 }
 
 var _drills = null;
 
-// Phase 1: a single drill, played out as real live simulated gameplay (see
-// src/drillDirector.js) rather than scripted/animated. Only step 0's
-// `positions` is actually read by the engine (the Setup formation + the
-// director's opening feed target); steps 1+ carry title/desc only, shown in
-// the Steps modal as a description of what the drill's own AI/physics
-// naturally produces — not a script the engine follows.
+// Played out as real live simulated gameplay (see src/drillDirector.js)
+// rather than scripted/animated. `startPositions` and `script` are the only
+// fields the engine reads: `startPositions` places all 4 players before the
+// rep begins, `script` is the ordered {hitter, shotType, target} shot
+// sequence the director follows (script[0] is the opener; script[1+] are
+// forced responses; once the list runs out, real undirected AI free-plays
+// until `maxShots`). `steps` is pure on-screen narration for the Steps
+// modal, describing what the drill's own AI/physics naturally produce — not
+// a script the engine follows. `shotType` is any of Shots.TYPES
+// ('drive'|'drop'|'dink'|'lob'|'speedup') plus 'smash'. `target` is always a
+// player slot (P1-P4) on the OPPOSING team from `hitter`; see validateDrill
+// above for the authoring constraints that come with that.
 export var DEFAULT_DRILLS = [
   {
     id: 'drill-drip',
     name: 'Drip Practice',
     players: 4,
-    desc: 'P1 simulates a bad return. P3 and P4 work the 3rd-shot drop. P2 threatens the poach from the NVZ.',
-    goal: "Train the 3rd-shot drop under realistic game pressure. P3 must drip to P1's feet to neutralize the point and earn the transition forward.",
-    tags: ['3rd shot drop', 'NVZ', 'driving', 'reset', 'poaching'],
+    desc: "P1 simulates a short return and can't quite reach the kitchen line before P3 attacks their feet with a drip down the line.",
+    goal: "Train the 3rd-shot drip under pressure: P3 must get there before P1 recovers to the kitchen line and finish at P1's feet, while P1 works the emergency split-step reset.",
+    tags: ['3rd shot drip', 'down the line', 'NVZ', 'reset', 'poaching'],
+    // P1 and P3 share a column so the down-the-line shot actually travels in
+    // a straight line between them both directions. This didn't use to be
+    // possible — P3 used to need P4's role instead, because the engine's
+    // x-zone contact-assignment could hand a shot aimed at P1 to P1's
+    // partner instead. Fixed at the source: game.js's _checkContacts/
+    // _moveCPU now override that zone check whenever a drillForcedShot is
+    // armed, so a scripted target always receives it regardless of which
+    // zone their position sits in. Any x/z on your own side of the net now
+    // works for any target.
+    startPositions: { P1: 'F10', P2: 'D7', P3: 'F1', P4: 'C2' },
+    maxShots: 4,
+    script: [
+      { hitter: 'P1', shotType: 'drive', target: 'P3' }, // "return directly down the line"
+      // Open question flagged for confirmation: described as "a drive that
+      // lands at P1's feet" — real `drive` (shots.js) is the flat, fast,
+      // driven family; a soft neutralizing drip is closer to `drop`'s
+      // profile. Using `drop` here (matches the original neutralize-the-
+      // point intent) but this is a guess, not a third assumption to build
+      // on silently — confirm or correct.
+      { hitter: 'P3', shotType: 'drop', target: 'P1' }
+    ],
     steps: [
-      { title: 'Setup', desc: "P1 (Team A) is near the baseline right — simulating a bad return. P2 (Team A) is just behind the kitchen line, shading the middle. P3 and P4 (Team B) are both at the baseline on their respective sides.", positions: { P1: 'F10', P2: 'D7', P3: 'F1', P4: 'C2' } },
-      { title: 'P1 Feeds', desc: "P1 hits a high, floaty ball toward P3, simulating a return that sat up. The moment the ball leaves P1's paddle, P1 starts moving forward toward NVZ." },
-      { title: 'P3 Drops — P1 Split-Steps — P2 Reads', desc: "P3 moves to the ball and drops cross-court toward P1's feet. P1 split-steps as P3 contacts. P2 reads P3's paddle face before committing to the poach." },
-      { title: 'Resolution', desc: "Clean drop at P1's feet: P1 is forced to reset low, P3 and P4 advance together toward NVZ, P2 holds. Popup: P2 attacks, P4 reacts." },
-      { title: 'Rep Ends — Loops', desc: "The rep is a fixed sequence — about 4 hits (feed, drop, reset, resolution) — then it stops and loops back to Setup as a replay you can pause, rewind, and rewatch. In person: rotate P3/P4 each rep, and after 5 reps swap P1/P2 with P3/P4 so everyone practices both roles." }
+      { title: 'Setup', desc: "P1 is at the baseline about to hit a short return — simulating shot 2 of a rally that came up just short of the kitchen line. P2 shades the middle, ready to poach but respecting P1's down-the-line lane. P3 and P4 start at the baseline, P3 directly across from P1." },
+      { title: 'P1 Returns Down the Line', desc: "P1 hits shot 2 — a return down the line to P3 — then starts moving forward toward the kitchen line. Because the return was short, P1 won't quite get there in time." },
+      { title: "P3 Drips at P1's Feet", desc: "P3 reads the short return and attacks it — shot 3, a drip down the line at P1's feet — trying to arrive before P1 reaches the kitchen line. P4 moves in alongside P3, ready to crash if the ball pops up." },
+      { title: 'P1 Resets — P2 Holds', desc: "P1 split-steps the instant P3 makes contact — shot 4, a low reset. P2 covers the middle, ready to poach, but respects the angle and stays in the lane rather than jumping the shot early." },
+      { title: 'Resolution — Rep Ends', desc: "Shot 5 resolves the exchange: P1 forced low again, or P3/P4 pressing an easy ball. The ball mostly stays between P1 and P3 down the line, with P2 and P4 moving in but staying honest. After 4 hits (shots 2 through 5), the rep ends and loops as a replay you can pause, rewind, and rewatch." }
+    ]
+  },
+  {
+    id: 'drill-dink-rally',
+    name: 'Cross-Court Dink Rally',
+    players: 4,
+    desc: 'P1 and P3 hold a cross-court diagonal dinking exchange at the kitchen line; P2 and P4 shadow the rally without touching the ball.',
+    goal: "Train cross-court dinking angles and off-ball court awareness — the two players not in the exchange should still be reading it and repositioning, not standing still.",
+    tags: ['dinking', 'cross-court', 'NVZ', 'soft game', 'shadowing'],
+    // P1/P3 on opposite x makes this a true diagonal, not a shared column.
+    startPositions: { P1: 'F7', P2: 'C7', P3: 'C4', P4: 'F4' },
+    maxShots: 5,
+    script: [
+      { hitter: 'P1', shotType: 'dink', target: 'P3' } // opens the rally; no forced response — real AI free-plays the rest
+    ],
+    steps: [
+      { title: 'Setup', desc: "All four players are at the kitchen line. P1 and P3 are diagonally cross-court from each other — the live dinking lane. P2 and P4 hold the other diagonal, shadowing the rally." },
+      { title: 'Rally Opens', desc: "P1 dinks cross-court to P3 — the exchange is already live, no setup shot needed to get it started." },
+      { title: 'Cross-Court Dinks + Shadowing', desc: "P1 and P3 trade soft dinks on the diagonal. P2 and P4 aren't touching the ball, but they shift and follow the rally, moving to wherever they'd need to be if it came to their side." },
+      { title: 'Rep Ends — Loops', desc: "The rep runs 5 touches, then stops and loops back to Setup as a replay you can pause, rewind, and rewatch. In person: rotate who's on the live diagonal each rep." }
+    ]
+  },
+  // Minimal drills for testing variable roster sizes (2 and 3 players) —
+  // not meant as real content, tagged 'test' so they're identifiable.
+  {
+    id: 'drill-1v1-test',
+    name: '1v1 Quick Test',
+    players: 2,
+    desc: 'Minimal 2-player rally (P1 vs P3, no partners) for testing variable roster sizes.',
+    goal: 'Verify a solo-vs-solo drill roster plays correctly.',
+    tags: ['test'],
+    startPositions: { P1: 'F10', P3: 'F1' },
+    maxShots: 3,
+    script: [
+      { hitter: 'P1', shotType: 'drive', target: 'P3' }
+    ],
+    steps: [
+      { title: 'Setup', desc: 'P1 and P3 only — no partners on either side.' },
+      { title: 'Rally', desc: 'P1 drives to P3, then real AI free-plays to the cap.' }
+    ]
+  },
+  {
+    id: 'drill-2v1-test',
+    name: '2v1 Quick Test',
+    players: 3,
+    desc: 'Minimal 3-player rally (P1+P2 vs P3, far side has no partner) for testing variable roster sizes.',
+    goal: 'Verify an uneven 2-vs-1 drill roster plays correctly.',
+    tags: ['test'],
+    startPositions: { P1: 'F10', P2: 'D7', P3: 'F1' },
+    maxShots: 3,
+    script: [
+      { hitter: 'P1', shotType: 'drive', target: 'P3' }
+    ],
+    steps: [
+      { title: 'Setup', desc: 'P1 and P2 (near) vs P3 alone (far).' },
+      { title: 'Rally', desc: 'P1 drives to P3, then real AI free-plays to the cap.' }
     ]
   }
 ];
