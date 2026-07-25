@@ -228,8 +228,21 @@ export var DEFAULT_DRILLS = [
     tags: ['dinking', 'cross-court', 'NVZ', 'soft game', 'shadowing'],
     // P1/P3 on opposite x makes this a true diagonal, not a shared column.
     startPositions: { P1: 'F7', P2: 'C7', P3: 'C4', P4: 'F4' },
+    // Alternates P1<->P3 for 5 real touches (matches the "runs 5 touches"
+    // narration below, which used to be stale against a 1-entry script from
+    // before the maxShots-driven free-play tail was removed). P2/P4 (the
+    // off-ball pair) don't need moves cues to track the ball toward whoever
+    // is currently responsible — strategies/doubles.js's chooseMovement
+    // already does that for free — so the moves cues here are deliberately
+    // for the OTHER half of "shadowing": a visible, choreographed in/out
+    // sway toward the middle T and back out to the alley, synced to which
+    // side is live, on top of the AI's own default lane-shading.
     script: [
-      { hitter: 'P1', shotType: 'dink', target: 'P3' } // opens the rally; only touch — see note below
+      { hitter: 'P1', shotType: 'dink', target: 'P3' },
+      { hitter: 'P3', shotType: 'dink', target: 'P1', moves: [{ player: 'P2', to: 'D7' }, { player: 'P4', to: 'E4' }] },
+      { hitter: 'P1', shotType: 'dink', target: 'P3', moves: [{ player: 'P2', to: 'C7' }, { player: 'P4', to: 'F4' }] },
+      { hitter: 'P3', shotType: 'dink', target: 'P1', moves: [{ player: 'P2', to: 'D7' }, { player: 'P4', to: 'E4' }] },
+      { hitter: 'P1', shotType: 'dink', target: 'P3', moves: [{ player: 'P2', to: 'C7' }, { player: 'P4', to: 'F4' }] }
     ],
     steps: [
       { title: 'Setup', desc: "All four players are at the kitchen line. P1 and P3 are diagonally cross-court from each other — the live dinking lane. P2 and P4 hold the other diagonal, shadowing the rally." },

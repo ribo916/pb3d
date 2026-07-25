@@ -115,6 +115,7 @@
     <label style="margin-top:0;">Script (shots in order: who hits, what kind, at whom)</label>
     <div id="scriptList"></div>
     <button id="addShot">+ Add shot</button>
+    <button id="dupShot">⧉ Duplicate last shot</button>
     <label style="margin-top:16px;">Narration steps (shown in-game, not read by the engine)</label>
     <div id="stepsList"></div>
     <button id="addStep">+ Add step</button>
@@ -446,6 +447,23 @@ document.getElementById('addShot').addEventListener('click', () => {
   state.script.push({ hitter, shotType: 'drive', target });
   renderScript();
   renderPlayers(); // refresh zone-mismatch markers now that targeting changed
+  revalidate();
+});
+document.getElementById('dupShot').addEventListener('click', () => {
+  const last = state.script[state.script.length - 1];
+  if (!last) return;
+  // Mirrors hitter/target (the natural next contact in an alternating
+  // exchange, e.g. P1->P3 then P3->P1) and deep-clones shotType + moves —
+  // shadow cues on an off-ball pair (P2/P4) rarely change beat-to-beat, so
+  // re-authoring a long alternating pattern by hand (add shot, re-pick
+  // type, re-place every move) is the exact tedium this button removes.
+  const entry = { hitter: last.target, shotType: last.shotType, target: last.hitter };
+  if (last.moves && last.moves.length) {
+    entry.moves = last.moves.map(mv => Object.assign({}, mv, mv.to ? { to: Object.assign({}, mv.to) } : {}));
+  }
+  state.script.push(entry);
+  renderScript();
+  renderPlayers();
   revalidate();
 });
 renderScript();

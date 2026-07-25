@@ -1247,6 +1247,30 @@ test('drill-dink-rally: startPositions resolved for all 4 players', () => {
   }
 });
 
+test('drill-dink-rally: script has 5 alternating P1<->P3 touches, matching its own "5 touches" narration', () => {
+  const drill = getDrillById('drill-dink-rally');
+  assert.equal(drill.script.length, 5);
+  const hitters = drill.script.map(entry => entry.hitter);
+  assert.deepEqual(hitters, ['P1', 'P3', 'P1', 'P3', 'P1'], 'hitters alternate P1<->P3');
+  for (const entry of drill.script) {
+    const expectedTarget = entry.hitter === 'P1' ? 'P3' : 'P1';
+    assert.equal(entry.target, expectedTarget, entry.hitter + ' always dinks to the other cross-court player');
+    assert.equal(entry.shotType, 'dink');
+  }
+});
+
+test('drill-dink-rally: shadow moves cues (P2/P4) are well-formed on every beat that carries them', () => {
+  const drill = getDrillById('drill-dink-rally');
+  for (const entry of drill.script) {
+    if (!entry.moves) continue;
+    const players = entry.moves.map(m => m.player);
+    assert.deepEqual(players.sort(), ['P2', 'P4'], 'shadow cues are for the off-ball P2/P4 pair');
+    for (const mv of entry.moves) {
+      assert.ok(typeof mv.to.x === 'number' && typeof mv.to.z === 'number', mv.player + ' move resolved to a world position');
+    }
+  }
+});
+
 test('drill steps carry no positions field (pure narration, decoupled from startPositions)', () => {
   for (const drill of DEFAULT_DRILLS) {
     for (const step of drill.steps) {
