@@ -53,6 +53,15 @@
   .field label { margin-top: 0; }
   .field textarea { min-height: 62px; }
   .info-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; }
+  /* Drill info collapses by default — the shot-count/hint status row (.info-meta)
+     stays outside the <details> so it's always visible, only the rarely-touched
+     name/desc/goal/tags fields hide behind it. */
+  .drill-info-panel > details > summary.panel-title {
+    cursor: pointer; list-style: none; display: flex; align-items: center; justify-content: space-between;
+  }
+  .drill-info-panel > details > summary::-webkit-details-marker { display: none; }
+  .drill-info-panel > details > summary::after { content: "▾"; color: var(--text-faint); transition: transform .2s ease; }
+  .drill-info-panel > details[open] > summary::after { transform: rotate(180deg); }
   .layout { display: grid; grid-template-columns: minmax(430px, 1.05fr) minmax(420px, .95fr); gap: 24px; align-items: start; }
   .panel {
     background: var(--card-bg); border: var(--card-bw) solid var(--card-border);
@@ -246,25 +255,27 @@
 </div>
 
 <section class="panel drill-info-panel" aria-labelledby="drillInfoTitle">
-  <h2 class="panel-title" id="drillInfoTitle">Drill info</h2>
-  <div class="info-grid">
-    <div class="field">
-      <label for="fName">Name</label>
-      <input type="text" id="fName" value="New Drill">
+  <details class="de-info-details">
+    <summary class="panel-title" id="drillInfoTitle">Drill info</summary>
+    <div class="info-grid">
+      <div class="field">
+        <label for="fName">Name</label>
+        <input type="text" id="fName" value="New Drill">
+      </div>
+      <div class="field">
+        <label for="fDesc">Description</label>
+        <textarea id="fDesc" placeholder="What happens in this drill?"></textarea>
+      </div>
+      <div class="field">
+        <label for="fGoal">Goal</label>
+        <textarea id="fGoal" placeholder="What should players learn or notice?"></textarea>
+      </div>
+      <div class="field">
+        <label for="fTags">Tags</label>
+        <input type="text" id="fTags" placeholder="dink, recovery, doubles">
+      </div>
     </div>
-    <div class="field">
-      <label for="fDesc">Description</label>
-      <textarea id="fDesc" placeholder="What happens in this drill?"></textarea>
-    </div>
-    <div class="field">
-      <label for="fGoal">Goal</label>
-      <textarea id="fGoal" placeholder="What should players learn or notice?"></textarea>
-    </div>
-    <div class="field">
-      <label for="fTags">Tags</label>
-      <input type="text" id="fTags" placeholder="dink, recovery, doubles">
-    </div>
-  </div>
+  </details>
   <div class="info-meta">
     <div id="shotCount" class="hint" title="The rep ends automatically right after the last scripted shot — there's no separate length to configure.">0 shots</div>
     <div class="hint">Build the setup below, then test it as live gameplay.</div>
