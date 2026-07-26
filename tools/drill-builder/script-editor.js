@@ -271,8 +271,12 @@ export function renderScript(onChange, scriptListEl) {
   });
 }
 
-export function renderSteps() {
-  const stepsList = document.getElementById('stepsList');
+// `stepsListEl`/`openNarrationBtnEl` default to the standalone builder's
+// #stepsList/#openNarration, same optional-target pattern as renderScript
+// above — the in-app editor (src/drillAdmin.js) passes its own elements
+// since a single document can't reuse those ids twice.
+export function renderSteps(stepsListEl, openNarrationBtnEl) {
+  const stepsList = stepsListEl || document.getElementById('stepsList');
   stepsList.innerHTML = '';
   state.steps.forEach((step, i) => {
     const wrap = document.createElement('div');
@@ -285,11 +289,11 @@ export function renderSteps() {
     desc.addEventListener('input', () => { step.desc = desc.value; });
     const rm = document.createElement('button');
     rm.textContent = 'Remove step'; rm.className = 'danger'; rm.style.marginTop = '4px';
-    rm.addEventListener('click', () => { state.steps.splice(i, 1); renderSteps(); });
+    rm.addEventListener('click', () => { state.steps.splice(i, 1); renderSteps(stepsListEl, openNarrationBtnEl); });
     wrap.appendChild(title); wrap.appendChild(desc); wrap.appendChild(rm);
     stepsList.appendChild(wrap);
   });
-  const openNarration = document.getElementById('openNarration');
+  const openNarration = openNarrationBtnEl || document.getElementById('openNarration');
   if (openNarration) {
     openNarration.textContent = 'Narration (' + state.steps.length + ')';
   }

@@ -963,25 +963,96 @@ document.addEventListener('keydown', function (e) {
 // ---- Drills wiring ----
 $('drillsBtn').addEventListener('click', function () { goToFlow('drills'); });
 
+// Library state: all() drills fetched once per screen-entry, then filtered
+// client-side by name search + selected tags so typing/toggling stays instant.
+var drillLibState = { drills: [], search: '', tags: [] };
+
 function renderDrillLibrary() {
   var list = $('drillCardList');
-  list.innerHTML = '<div style="padding:24px;opacity:.5;text-align:center">Loading…</div>';
+  list.innerHTML = '<div class="drill-lib-empty">Loading…</div>';
+  $('drillTagRow').innerHTML = '';
+  drillLibState.search = '';
+  drillLibState.tags = [];
+  $('drillSearchInput').value = '';
+  $('drillSearchClear').hidden = true;
   loadDrills().then(function (drills) {
-    list.innerHTML = drills.map(function (d) {
-      var tags = (d.tags || []).map(function (t) {
-        return '<span class="drill-card-tag">' + t + '</span>';
-      }).join('');
-      var steps = d.steps ? d.steps.length : 0;
-      return '<div class="drill-card" data-drill-id="' + d.id + '">' +
-        '<button class="hud-icon-btn drill-card-edit-btn" data-drill-edit="' + d.id + '" title="Edit" type="button">✎</button>' +
-        '<div class="drill-card-name">' + escapeHtml(d.name) + '</div>' +
-        '<div class="drill-card-steps">' + steps + ' step' + (steps !== 1 ? 's' : '') + '</div>' +
-        '<div class="drill-card-desc">' + escapeHtml(d.desc || '') + '</div>' +
-        (tags ? '<div class="drill-card-tags">' + tags + '</div>' : '') +
-        '</div>';
-    }).join('') || '<div style="padding:24px;opacity:.5;text-align:center">No drills found.</div>';
+    drillLibState.drills = drills;
+    renderDrillTagFilters();
+    renderDrillCards();
   });
 }
+
+function renderDrillTagFilters() {
+  var row = $('drillTagRow');
+  var seen = {};
+  var tags = [];
+  drillLibState.drills.forEach(function (d) {
+    (d.tags || []).forEach(function (t) { if (!seen[t]) { seen[t] = true; tags.push(t); } });
+  });
+  tags.sort(function (a, b) { return a.localeCompare(b); });
+  row.innerHTML = tags.map(function (t) {
+    var active = drillLibState.tags.indexOf(t) !== -1;
+    return '<button type="button" class="drill-tag-chip' + (active ? ' active' : '') + '" data-tag="' +
+      escapeHtml(t) + '">' + escapeHtml(t) + '</button>';
+  }).join('');
+}
+
+function drillMatchesFilters(d) {
+  var q = drillLibState.search.trim().toLowerCase();
+  if (q && (d.name || '').toLowerCase().indexOf(q) === -1) return false;
+  if (drillLibState.tags.length) {
+    var dTags = d.tags || [];
+    if (!drillLibState.tags.some(function (t) { return dTags.indexOf(t) !== -1; })) return false;
+  }
+  return true;
+}
+
+function renderDrillCards() {
+  var list = $('drillCardList');
+  var all = drillLibState.drills;
+  if (!all.length) {
+    list.innerHTML = '<div class="drill-lib-empty">No drills yet — tap + to create one.</div>';
+    $('drillLibCount').textContent = '';
+    return;
+  }
+  var filtered = all.filter(drillMatchesFilters);
+  $('drillLibCount').textContent = filtered.length + ' of ' + all.length + ' drill' + (all.length !== 1 ? 's' : '');
+  list.innerHTML = filtered.map(function (d) {
+    var tags = (d.tags || []).map(function (t) {
+      return '<span class="drill-card-tag">' + escapeHtml(t) + '</span>';
+    }).join('');
+    var steps = d.steps ? d.steps.length : 0;
+    return '<div class="drill-card" data-drill-id="' + d.id + '">' +
+      '<button class="hud-icon-btn drill-card-edit-btn" data-drill-edit="' + d.id + '" title="Edit" type="button">✎</button>' +
+      '<div class="drill-card-name">' + escapeHtml(d.name) + '</div>' +
+      '<div class="drill-card-steps">' + steps + ' step' + (steps !== 1 ? 's' : '') + '</div>' +
+      '<div class="drill-card-desc">' + escapeHtml(d.desc || '') + '</div>' +
+      (tags ? '<div class="drill-card-tags">' + tags + '</div>' : '') +
+      '</div>';
+  }).join('') || '<div class="drill-lib-empty">No drills match your search.</div>';
+}
+
+$('drillSearchInput').addEventListener('input', function (e) {
+  drillLibState.search = e.target.value;
+  $('drillSearchClear').hidden = !e.target.value;
+  renderDrillCards();
+});
+$('drillSearchClear').addEventListener('click', function () {
+  drillLibState.search = '';
+  $('drillSearchInput').value = '';
+  $('drillSearchClear').hidden = true;
+  renderDrillCards();
+  $('drillSearchInput').focus();
+});
+$('drillTagRow').addEventListener('click', function (e) {
+  var chip = e.target.closest('[data-tag]');
+  if (!chip) return;
+  var tag = chip.getAttribute('data-tag');
+  var idx = drillLibState.tags.indexOf(tag);
+  if (idx === -1) drillLibState.tags.push(tag); else drillLibState.tags.splice(idx, 1);
+  renderDrillTagFilters();
+  renderDrillCards();
+});
 
 $('newDrillBtn').addEventListener('click', function () {
   loadDrills().then(function (drills) {

@@ -12,12 +12,12 @@
 // single document can't reuse those ids twice) — the standalone tool's own
 // call sites are unaffected since that argument defaults to its ids.
 //
-// Scope note: narration ("steps") editing stays a standalone-builder-only
-// feature for now — this screen covers what DRILLS.md's gap actually asked
-// for (create/edit/delete the engine-consumed drill data: roster, script),
-// not a second copy of the narration modal. A new in-app drill keeps
-// state.js's default single "Setup" step; edit it further in
-// tools/drill-builder.html if needed.
+// Narration (steps) editing and JSON export reuse the standalone builder's
+// same modal pattern — a "Narration (N)" button opens #deNarrationModal
+// (renderSteps pointed at this screen's own #deStepsList/#deOpenNarration,
+// same optional-target pattern court-svg.js/script-editor.js already use
+// for the court/script panels), and "Export JSON" opens #deJsonModal with
+// the same buildDrill() this screen already uses to save.
 
 import { validateDrill, TEAM_OF, createDrill, updateDrill, deleteDrill } from './drillStore.js';
 import {
@@ -25,7 +25,7 @@ import {
   ALL_SLOTS, SLOT_CLASS, ANCHOR_SLOTS
 } from '../tools/drill-builder/state.js';
 import { buildCourt, attachCourtClicks, renderPlayers as renderCourtPlayers } from '../tools/drill-builder/court-svg.js';
-import { renderScript } from '../tools/drill-builder/script-editor.js';
+import { renderScript, renderSteps } from '../tools/drill-builder/script-editor.js';
 
 var $ = function (id) { return document.getElementById(id); };
 
@@ -184,6 +184,7 @@ function renderPicker() {
 function renderAll() {
   renderPicker();
   renderScript(onChange, $('deScriptList'));
+  renderSteps($('deStepsList'), $('deOpenNarration'));
   onChange();
 }
 
@@ -269,6 +270,43 @@ function ensureInit() {
     window.open(window.location.origin + '/?testDrill=1', '_blank');
     status.textContent = 'Opened in a new tab.';
     status.style.color = '#8fd9a8';
+  });
+
+  // ---- Narration (steps) modal ----
+  $('deOpenNarration').addEventListener('click', function () {
+    renderSteps($('deStepsList'), $('deOpenNarration'));
+    $('deNarrationModal').classList.add('active');
+  });
+  $('deAddStep').addEventListener('click', function () {
+    state.steps.push({ title: '', desc: '' });
+    renderSteps($('deStepsList'), $('deOpenNarration'));
+  });
+  $('deNarrationClose').addEventListener('click', function () { $('deNarrationModal').classList.remove('active'); });
+  $('deNarrationDone').addEventListener('click', function () { $('deNarrationModal').classList.remove('active'); });
+  $('deNarrationModal').addEventListener('click', function (e) {
+    if (e.target === $('deNarrationModal')) $('deNarrationModal').classList.remove('active');
+  });
+
+  // ---- Export JSON modal ----
+  $('deJsonBtn').addEventListener('click', function () {
+    var problems = drillProblems();
+    var status = $('deStatus');
+    if (problems.length) {
+      status.textContent = 'Fix validation issues above before exporting JSON.';
+      status.style.color = '#f0a8a8';
+      return;
+    }
+    $('deJsonOut').value = JSON.stringify(buildDrill(), null, 2);
+    $('deJsonModal').classList.add('active');
+  });
+  $('deJsonClose').addEventListener('click', function () { $('deJsonModal').classList.remove('active'); });
+  $('deJsonModal').addEventListener('click', function (e) {
+    if (e.target === $('deJsonModal')) $('deJsonModal').classList.remove('active');
+  });
+  $('deJsonCopy').addEventListener('click', function () {
+    var ta = $('deJsonOut');
+    ta.select();
+    if (navigator.clipboard) navigator.clipboard.writeText(ta.value);
   });
 }
 
