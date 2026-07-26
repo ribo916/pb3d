@@ -8,7 +8,7 @@
 // side effects beyond a single field lives here as a named function so the
 // "what does excluding a player actually clean up" logic has one home.
 
-import { TEAM_OF } from '../../src/drillStore.js';
+import { TEAM_OF, normalizeDrill } from '../../src/drillStore.js';
 
 export const ALL_SLOTS = ['P1', 'P2', 'P3', 'P4'];
 export const SLOT_CLASS = { P1: 'p1', P2: 'p2', P3: 'p3', P4: 'p4' };
@@ -109,4 +109,72 @@ export function setSlotIncluded(slot, included) {
     state.placingMoveFor = null;
     state.placingLandingFor = null;
   }
+}
+
+// Back to a blank drill — shared by "+ New Drill" and as the first step of
+// loading any drill (existing library entry or imported JSON) into state.
+export function resetState() {
+  state.selectedSlot = 'P1';
+  state.includeP2 = true;
+  state.includeP4 = true;
+  state.positions = {};
+  state.script = [];
+  state.steps = [{ title: 'Setup', desc: '' }];
+  state.expandedMoveRow = null;
+  state.placingMoveFor = null;
+  state.placingLandingFor = null;
+  state.builderStepIndex = 0;
+}
+
+// Converts a script entry's movement cue into the editor's internal `moves`
+// shape regardless of whether it was authored as plain `moves` (the shape
+// DEFAULT_DRILLS itself uses) or the builder's richer `players` directive
+// export — an existing or imported drill can be either.
+function movesFromEntry(entry) {
+  if (entry.moves) {
+    return entry.moves.map(m => ({ player: m.player, to: m.to, behavior: m.behavior || 'move', arriveBy: m.arriveBy || 'none' }));
+  }
+  if (entry.players) {
+    return Object.keys(entry.players).map(slot => {
+      const d = entry.players[slot] || {};
+      return { player: slot, to: d.to || null, behavior: d.behavior || 'move', arriveBy: d.arriveBy || 'none' };
+    });
+  }
+  return [];
+}
+
+// Populates `state` (roster toggles, positions, script, step narration) from
+// a drill object shaped like DEFAULT_DRILLS — the shared path for both
+// opening an existing library drill for editing and importing a hand-
+// authored/pasted JSON drill. Grid-coord strings are resolved to world
+// coords via normalizeDrill, so an import can use either coordinate shape.
+// Returns the normalized drill so the caller can also read its
+// name/desc/goal/tags for the metadata fields, which live outside `state`.
+export function loadDrillIntoState(rawDrill) {
+  const drill = normalizeDrill(rawDrill) || {};
+  resetState();
+  state.includeP2 = !!(drill.startPositions && drill.startPositions.P2);
+  state.includeP4 = !!(drill.startPositions && drill.startPositions.P4);
+  state.positions = Object.assign({}, drill.startPositions);
+  // Positional correlation: drill.steps[0] is Setup's narration, drill.steps[i+1]
+  // is script[i]'s (see buildDrill() in main.js/drillAdmin.js — both emit
+  // exactly one entry per step, even blank, specifically so this mapping is
+  // reliable). A hand-authored drill whose `steps` predates that convention
+  // (a short, free-standing caption list, e.g. DEFAULT_DRILLS) won't line up
+  // perfectly here — narration is cosmetic-only, so a best-effort mapping
+  // that can't crash anything is an acceptable trade for the common case.
+  state.steps = [drill.steps && drill.steps[0] ? Object.assign({}, drill.steps[0]) : { title: 'Setup', desc: '' }];
+  state.script = (drill.script || []).map((entry, i) => {
+    const copy = { hitter: entry.hitter, shotType: entry.shotType, target: entry.target || entry.receiver };
+    if (entry.landing) copy.landing = Object.assign({}, entry.landing);
+    const moves = movesFromEntry(entry);
+    if (moves.length) copy.moves = moves;
+    const narration = drill.steps && drill.steps[i + 1];
+    if (narration) {
+      copy.title = narration.title || '';
+      copy.desc = narration.desc || '';
+    }
+    return copy;
+  });
+  return drill;
 }

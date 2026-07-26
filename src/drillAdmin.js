@@ -18,7 +18,7 @@
 import { validateDrill, TEAM_OF, createDrill, updateDrill, deleteDrill } from './drillStore.js';
 import {
   state, activeSlots, opponentsOf, isIncluded, setSlotIncluded, computeStepPositions,
-  ALL_SLOTS, SLOT_CLASS, ANCHOR_SLOTS
+  resetState, loadDrillIntoState, ALL_SLOTS, SLOT_CLASS, ANCHOR_SLOTS
 } from '../tools/drill-builder/state.js';
 import { buildCourt, attachStepCourtClicks, renderStepCourt } from '../tools/drill-builder/court-svg.js';
 import { renderStepChips, renderStepBody } from '../tools/drill-builder/step-view.js';
@@ -29,65 +29,6 @@ var initialized = false;
 var playerGroup = null;
 var editingId = null; // null while creating a new drill; the drill's id while editing one
 var currentDrills = []; // the last list loadDrills() resolved, for id-collision checks
-
-function resetState() {
-  state.selectedSlot = 'P1';
-  state.includeP2 = true;
-  state.includeP4 = true;
-  state.positions = {};
-  state.script = [];
-  state.steps = [{ title: 'Setup', desc: '' }];
-  state.expandedMoveRow = null;
-  state.placingMoveFor = null;
-  state.placingLandingFor = null;
-  state.builderStepIndex = 0;
-}
-
-// Converts a script entry's movement cue into the editor's internal `moves`
-// shape regardless of whether it was authored as plain `moves` (the shape
-// DEFAULT_DRILLS itself uses) or the standalone builder's richer `players`
-// directive export — an existing drill can be either.
-function movesFromEntry(entry) {
-  if (entry.moves) {
-    return entry.moves.map(function (m) {
-      return { player: m.player, to: m.to, behavior: m.behavior || 'move', arriveBy: m.arriveBy || 'none' };
-    });
-  }
-  if (entry.players) {
-    return Object.keys(entry.players).map(function (slot) {
-      var d = entry.players[slot] || {};
-      return { player: slot, to: d.to || null, behavior: d.behavior || 'move', arriveBy: d.arriveBy || 'none' };
-    });
-  }
-  return [];
-}
-
-function loadIntoState(drill) {
-  resetState();
-  state.includeP2 = !!(drill.startPositions && drill.startPositions.P2);
-  state.includeP4 = !!(drill.startPositions && drill.startPositions.P4);
-  state.positions = Object.assign({}, drill.startPositions);
-  // Positional correlation: drill.steps[0] is Setup's narration, drill.steps[i+1]
-  // is script[i]'s (see tools/drill-builder/main.js buildDrill() — it emits
-  // exactly one entry per step, even blank, specifically so this mapping is
-  // reliable). A hand-authored drill whose `steps` predates that convention
-  // (a short, free-standing caption list, e.g. DEFAULT_DRILLS) won't line up
-  // perfectly here — narration is cosmetic-only, so a best-effort mapping
-  // that can't crash anything is an acceptable trade for the common case.
-  state.steps = [drill.steps && drill.steps[0] ? Object.assign({}, drill.steps[0]) : { title: 'Setup', desc: '' }];
-  state.script = (drill.script || []).map(function (entry, i) {
-    var copy = { hitter: entry.hitter, shotType: entry.shotType, target: entry.target || entry.receiver };
-    if (entry.landing) copy.landing = Object.assign({}, entry.landing);
-    var moves = movesFromEntry(entry);
-    if (moves.length) copy.moves = moves;
-    var narration = drill.steps && drill.steps[i + 1];
-    if (narration) {
-      copy.title = narration.title || '';
-      copy.desc = narration.desc || '';
-    }
-    return copy;
-  });
-}
 
 function slugify(name) {
   return 'drill-' + String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
@@ -383,6 +324,49 @@ function ensureInit() {
     ta.select();
     if (navigator.clipboard) navigator.clipboard.writeText(ta.value);
   });
+
+  // ---- Import JSON ----
+  // Deliberately leaves `editingId` untouched: importing into a fresh "+ New
+  // Drill" screen stays a create-on-save, while importing while editing an
+  // existing drill replaces that drill's content on the next Save — the
+  // same "which record does Save target" decision the screen was already in
+  // before Import was clicked.
+  $('deImportBtn').addEventListener('click', function () {
+    $('deImportInput').value = '';
+    $('deImportError').style.display = 'none';
+    $('deImportModal').classList.add('active');
+  });
+  $('deImportClose').addEventListener('click', function () { $('deImportModal').classList.remove('active'); });
+  $('deImportModal').addEventListener('click', function (e) {
+    if (e.target === $('deImportModal')) $('deImportModal').classList.remove('active');
+  });
+  $('deImportGo').addEventListener('click', function () {
+    var errEl = $('deImportError');
+    var raw;
+    try {
+      raw = JSON.parse($('deImportInput').value);
+    } catch (e) {
+      errEl.textContent = 'Not valid JSON: ' + e.message;
+      errEl.style.display = '';
+      return;
+    }
+    if (!raw || typeof raw !== 'object') {
+      errEl.textContent = 'Expected a JSON object with startPositions/script.';
+      errEl.style.display = '';
+      return;
+    }
+    var drill = loadDrillIntoState(raw);
+    errEl.style.display = 'none';
+    $('deFName').value = drill.name || '';
+    $('deFDesc').value = drill.desc || '';
+    $('deFGoal').value = drill.goal || '';
+    $('deFTags').value = (drill.tags || []).join(', ');
+    $('deImportModal').classList.remove('active');
+    renderAll();
+    var status = $('deStatus');
+    status.textContent = 'Imported "' + (drill.name || drill.id || 'drill') + '" — review and Save when ready.';
+    status.style.color = '#8fd9a8';
+  });
 }
 
 // Called by main.js's "+ New Drill" button.
@@ -405,7 +389,7 @@ export function openNewDrill(drills) {
 export function openEditDrill(drill, drills) {
   currentDrills = drills || [];
   editingId = drill.id;
-  loadIntoState(drill);
+  loadDrillIntoState(drill);
   ensureInit();
   $('deScreenTitle').textContent = 'Edit Drill';
   $('deDeleteBtn').style.display = '';

@@ -8,7 +8,7 @@
 import { validateDrill, TEAM_OF, DEFAULT_DRILLS, createDrill } from '../../src/drillStore.js';
 import {
   state, activeSlots, opponentsOf, isIncluded, setSlotIncluded, computeStepPositions,
-  ALL_SLOTS, SLOT_CLASS, ANCHOR_SLOTS
+  loadDrillIntoState, ALL_SLOTS, SLOT_CLASS, ANCHOR_SLOTS
 } from './state.js';
 import { buildCourt, attachStepCourtClicks, renderStepCourt } from './court-svg.js';
 import { renderStepChips, renderStepBody } from './step-view.js';
@@ -331,4 +331,45 @@ document.getElementById('jsonCopy').addEventListener('click', () => {
   const ta = document.getElementById('jsonOut');
   ta.select();
   if (navigator.clipboard) navigator.clipboard.writeText(ta.value);
+});
+
+// ---- Import JSON ----
+const importModal = document.getElementById('importModal');
+document.getElementById('importJson').addEventListener('click', () => {
+  document.getElementById('importInput').value = '';
+  document.getElementById('importError').style.display = 'none';
+  importModal.classList.add('active');
+});
+document.getElementById('importClose').addEventListener('click', () => importModal.classList.remove('active'));
+importModal.addEventListener('click', (e) => { if (e.target === importModal) importModal.classList.remove('active'); });
+document.getElementById('importGo').addEventListener('click', () => {
+  const errEl = document.getElementById('importError');
+  let raw;
+  try {
+    raw = JSON.parse(document.getElementById('importInput').value);
+  } catch (e) {
+    errEl.textContent = 'Not valid JSON: ' + e.message;
+    errEl.style.display = '';
+    return;
+  }
+  if (!raw || typeof raw !== 'object') {
+    errEl.textContent = 'Expected a JSON object with startPositions/script.';
+    errEl.style.display = '';
+    return;
+  }
+  const drill = loadDrillIntoState(raw);
+  errEl.style.display = 'none';
+  document.getElementById('fName').value = drill.name || '';
+  document.getElementById('fDesc').value = drill.desc || '';
+  document.getElementById('fGoal').value = drill.goal || '';
+  document.getElementById('fTags').value = (drill.tags || []).join(', ');
+  importModal.classList.remove('active');
+  renderPicker();
+  clampStepIndex();
+  renderStepUI();
+  renderCourt();
+  revalidate();
+  const result = document.getElementById('testResult');
+  result.textContent = 'Imported "' + (drill.name || drill.id || 'drill') + '" — review and use Test/Save below.';
+  result.style.color = '#8fd9a8';
 });
