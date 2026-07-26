@@ -284,21 +284,70 @@ out the state machine and replay-loop transport.
   loaded via `<script type="module" src="./drill-builder/main.js">` (still
   no build step — Vite's dev server resolves the imports natively, same as
   it already did for the single-file version): `state.js` (shared authoring
-  state + roster derivation), `court-svg.js` (the court/player/cue
-  rendering — the one piece worth reusing if an in-app admin UI ever
-  replaces this standalone tool), `script-editor.js` (the Script/Steps
-  panels), `main.js` (wiring + the validation gate, below).
+  state + roster derivation + `computeStepPositions`, the step-position
+  estimator), `court-svg.js` (the court/player/cue rendering, plus
+  `attachStepCourtClicks`/`renderStepCourt` for the per-step preview),
+  `step-view.js` (the merged single-step editor), `main.js` (wiring + the
+  validation gate, below). `script-editor.js` (the older all-shots-at-once
+  Script/Steps panels + separate narration modal) is frozen and no longer
+  imported by anything — `state.js`/`court-svg.js` only ever gained new,
+  additive exports so it could stay untouched, but both this tool and the
+  in-app editor (`src/drillAdmin.js`, see "Persistence" below) now use
+  `step-view.js`'s merged view instead.
+  - **Single merged, step-by-step view** — one panel, court on the left,
+    the current step's editor on the right (not stacked, so you're never
+    scrolling away from the court to edit a step). You page through the
+    drill one step at a time: **Setup** (roster + starting positions), then
+    one step per scripted shot. A chip strip ("Setup", "Shot 1", "Shot 2",
+    …) plus Prev/Next buttons navigate; clicking a chip or Next/Prev is the
+    only way to change which step is being viewed. At the last step, "Next"
+    itself becomes **"+ Add shot"** — there's no separate always-visible add
+    button; adding is just where "next" naturally leads once there's nothing
+    left to navigate to.
+  - The court redraws per step via `computeStepPositions(stepIndex)`: an
+    authoring-time approximation, not real physics (the runtime's actual
+    per-rally movement is live AI/physics, never authored data). Positions
+    carry forward step to step; a shot's **receiver moves to the ball**
+    (its `landing`, or their own prior spot if no landing was set) by
+    default — the same "move to intercept" behavior the real AI exhibits —
+    and an explicit `moves[].to` cue for that same player overrides it, same
+    as any other player's cue. The current hitter gets a solid yellow ring
+    (a fixed highlight color, not their own player color — a same-hue ring
+    around a same-hue dot barely reads as a highlight); the current receiver
+    gets a dashed yellow ring instead of a separate ball marker — since the
+    receiver always ends up exactly at the ball (see above), drawing a
+    filled ball dot on top of them would just hide their "P2" label, so the
+    dashed hitter→ball path line is drawn but the ball's own dot is skipped
+    whenever a receiver is standing right there. The *previous* step renders
+    faded behind the current one as a ghost — both player-movement lines and
+    the last shot's ball path — so motion between steps reads at a glance.
+  - **Hitter lock**: the first scripted shot's hitter is a free choice.
+    Every later step's hitter is fixed at creation time to the previous
+    step's receiver and shown as a read-only label — "only the person who
+    can hit is selected," matching the receiver-chain-continuity rule
+    `validateDrill` already enforces. Editing an earlier step's receiver
+    does **not** auto-cascade into later (locked) hitters; a resulting
+    chain mismatch is flagged by the same validation banner as before,
+    fixed by deleting/re-adding the affected step(s).
+  - **Add step** inserts immediately after the step currently being viewed
+    (not always at the end) and moves the view to the new step. Each step
+    has its own "Remove this step" action. There's no "duplicate" action in
+    this view.
+  - **Narration is inline and collapsed by default**, not a separate modal —
+    a "▸ Narration" disclosure at the top of each step's editor (Setup
+    included), showing a `•` marker once it has text. Setup's narration is
+    still `state.steps[0]` (defaulting to `{title:'Setup'}`); each scripted
+    step carries its own optional title/desc. `main.js`'s `buildDrill()`
+    derives the exported top-level `steps: [...]` array from these at export
+    time — **always one entry per step, even blank** (not filtered down to
+    only the non-empty ones) so an editor reloading this drill can map
+    narration back to the right step reliably; the two places that actually
+    display `steps[]` to a player filter blanks out at render time instead
+    (see "Persistence" below).
   - Player icons: P1/P2 (near) below the court, P3/P4 (far) above it —
-    matching where those teams actually render on the court, not an
-    arbitrary choice. Circular, color-coded to match the court dots.
-  - Drill metadata sits in a full-width header above the authoring
-    workspace. On desktop the court and Script panels are side by
-    side; on narrow/mobile screens they stack into one readable column.
-    The Script panel mirrors the rendered court panel's height and only its
-    shot list scrolls, keeping the primary two-column workspace aligned.
-    Add/Duplicate/Narration actions stay in a fixed row at the top of the
-    Script panel. Narration opens from there in a dedicated modal
-    rather than consuming permanent workspace height.
+    matching where those teams actually render on the court. Circular,
+    color-coded to match the court dots. The picker is only shown/usable on
+    the Setup step, since placement only ever applies there.
   - The placement apron outside the court has subtle near/far team color,
     stronger reference-grid lines, and coordinate labels so wide serve/ATP
     positions remain legible instead of floating in an indistinct dark box.
@@ -311,18 +360,24 @@ out the state machine and replay-loop transport.
     constrained to the selected player's own side of the net: a click on
     the wrong side snaps to the nearest legal spot at the net line instead
     of placing there or being ignored.
-  - Script editor: ordered hitter/shotType/target rows; the target dropdown
-    only ever offers the hitter's opponents. Player directives are presented
-    as plain-language "player directions" with labeled Who / Coaching label /
-    Arrive by fields, an always-visible summary chip, and a persistent legend
-    explaining that behavior is descriptive while `arriveBy` controls pace.
+  - Per-step editor: hitter/shotType/receiver fields (target dropdown only
+    ever offers the hitter's opponents), landing placement, and player
+    directives. A directive's "Movement" field is just two options — "Moves
+    to a destination" or "Holds position" — not the old eight-label
+    "coaching label" picker: `src/drillDirector.js`'s `armMovesForBeat` only
+    ever special-cases `behavior === 'hold'`, every other label drove
+    identical movement physics, so the extra labels were purely cosmetic
+    clutter with no functional difference to show for it.
   - Live `validateDrill` banner.
   - **"Generate drill JSON"** — paste-ready `DEFAULT_DRILLS` entry.
   - **"▶ Test this drill live"** — stages the drill in `sessionStorage` and
     opens the real game via `?testDrill=1`: a real live rep, capped,
     captured, and looped, before anything is ever pasted anywhere.
-  - No save/persistence beyond the browser session (still gap #2 below), no
-    drag-and-drop, no editing of already-shipped drills in place.
+  - **"💾 Save to server"** — saves via `/api/drills`, the same store the
+    in-app Drills screen (`src/drillAdmin.js`) reads/writes; no drag-and-drop,
+    no editing of an already-saved drill from this tool (that's the in-app
+    Drills screen's job, which shares this exact step-by-step view — see
+    "Persistence" below).
 
 ### Shipped drills (`DEFAULT_DRILLS`, `src/drillStore.js`)
 
@@ -407,14 +462,33 @@ in-app editor and the standalone builder tool.
 
 **In-app create/edit/delete**: a new `#scrDrillEdit` flow screen
 (`src/drillAdmin.js`) reuses `tools/drill-builder/{state,court-svg,
-script-editor}.js` rather than re-implementing court placement/script editing
-— those modules' render functions took an additive optional target-element
-argument so the same code can point at this screen's elements instead of the
-standalone tool's ids. Reachable via "+ New Drill" on the Drills library
-screen and a per-card edit (✎) button. **Scope trim**: narration/"steps"
-editing stays a standalone-builder-only feature for now (a new in-app drill
-keeps the default single "Setup" step) — this screen covers the roster+script
-data the "no create/edit/delete" gap was actually about.
+step-view}.js` — the same merged step-by-step court+editor view the
+standalone builder uses (chip strip + Prev/Next, per-step hitter lock,
+ghosted movement/ball-path preview, collapsed-by-default inline narration
+accordion) — rather than re-implementing court placement/step editing a
+second time. Those modules' render/compute functions take explicit
+target-element arguments so the same code can point at this screen's
+elements instead of the standalone tool's ids. Reachable via "+ New Drill"
+on the Drills library screen and a per-card edit (✎) button.
+`script-editor.js` (the older all-shots-at-once Script/Steps panels and
+narration modal) is no longer used by either tool — kept around only as a
+frozen, unimported file in case it's useful reference, not wired into
+anything.
+
+**Narration round-trips through save/load now**: `buildDrill()` in both
+tools emits the exported `steps[]` array *unfiltered* — always exactly one
+entry per step (Setup + one per script index), even blank — instead of
+dropping empty ones. That's what lets `drillAdmin.js`'s `loadIntoState()`
+reliably map `drill.steps[i+1]` back onto `script[i]`'s narration fields
+when opening an existing drill for editing. The two places that display
+`steps[]` to a player (`src/main.js`'s live in-drill step list and the
+drill-card's "N steps" count on the library screen) filter out blank entries
+at render time instead, so the on-screen experience is unchanged. A
+hand-authored drill whose `steps` predates this convention (a short,
+free-standing caption list not correlated to script length, e.g. the
+`DEFAULT_DRILLS` seeds) won't map perfectly onto per-step fields on load —
+narration is cosmetic-only, so this is an accepted, low-stakes approximation
+rather than something worth a schema migration.
 
 `tools/drill-builder.html` stays as the desktop/power-user authoring surface
 (more room than a mobile flow screen) and now has a real "Save to server"
@@ -434,5 +508,3 @@ Generate JSON / Test Live.
    `characters.js`).
 3. **Launch config (venue/palette/time-of-day) is hardcoded** — always
    park/blue/day, regardless of any prior flow picks.
-4. **No narration/"steps" editing in the in-app screen** (see scope trim
-   above) — still standalone-builder-only.

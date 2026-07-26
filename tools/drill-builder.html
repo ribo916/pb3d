@@ -62,12 +62,12 @@
   .drill-info-panel > details > summary::-webkit-details-marker { display: none; }
   .drill-info-panel > details > summary::after { content: "▾"; color: var(--text-faint); transition: transform .2s ease; }
   .drill-info-panel > details[open] > summary::after { transform: rotate(180deg); }
-  .layout { display: grid; grid-template-columns: minmax(430px, 1.05fr) minmax(420px, .95fr); gap: 24px; align-items: start; }
   .panel {
     background: var(--card-bg); border: var(--card-bw) solid var(--card-border);
     border-radius: var(--card-radius); box-shadow: var(--card-shadow);
     padding: 18px 20px;
   }
+  .builder-panel { display: grid; grid-template-columns: minmax(360px, .95fr) minmax(340px, 1.05fr); gap: 22px; align-items: start; box-sizing: border-box; }
   .court-panel { display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 0; }
   .court-wrap {
     width: min(100%, 500px); padding: 10px; box-sizing: border-box; border-radius: 18px;
@@ -76,12 +76,28 @@
     box-shadow: inset 0 0 35px rgba(126,240,255,.035), 0 12px 28px rgba(0,0,0,.22);
   }
   .court-wrap svg { display: block; width: 100%; height: auto; }
-  .col-right { min-width: 0; }
-  .col-right .panel { width: 100%; box-sizing: border-box; }
-  .script-panel {
-    display: flex; flex-direction: column; min-height: 0; overflow: hidden;
-    height: var(--court-panel-height, auto);
+  .builder-right {
+    display: flex; flex-direction: column; min-width: 0; min-height: 0;
+    max-height: var(--court-panel-height, none);
   }
+  .step-nav { justify-content: center; gap: 10px; flex-wrap: wrap; flex: 0 0 auto; }
+  .step-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; flex: 1 1 auto; }
+  .step-chip {
+    border-radius: 999px; padding: 5px 12px; font-size: 11px; cursor: pointer;
+    background: var(--seg-bg); border: 1px solid var(--seg-border); color: var(--text-soft); font-family: inherit;
+  }
+  .step-chip:hover { background: var(--seg-hover); }
+  .step-chip.active { background: color-mix(in srgb, var(--accent) 20%, transparent); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .step-right-scroll {
+    flex: 0 1 auto; min-height: 0; overflow-y: auto; padding-right: 6px; margin: 8px -6px 0 -2px;
+    scrollbar-color: rgba(126,240,255,.4) rgba(255,255,255,.035);
+  }
+  .step-body { border-top: 1px solid var(--seg-border); padding-top: 12px; }
+  .hitter-lock {
+    display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 6px;
+    background: rgba(255,255,255,.03); border: 1px solid var(--seg-border); font-size: 13px;
+  }
+  .hitter-lock-swatch { width: 12px; height: 12px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
 
   .panel-title {
     font-family: var(--title-font); text-transform: var(--title-transform); font-weight: var(--title-weight);
@@ -104,24 +120,16 @@
   .shot-number { font: 700 10px var(--title-font); letter-spacing: 1px; color: var(--text-faint); text-transform: uppercase; width: 100%; }
   .shot-fields { align-items: end; flex-wrap: nowrap; }
   .shot-fields .directive-field { flex: 1 1 0; }
-  .script-scroll {
-    flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 6px; margin: 0 -6px 0 -2px;
-    scrollbar-color: rgba(126,240,255,.4) rgba(255,255,255,.035);
+  details.accordion { margin-bottom: 12px; }
+  details.accordion > summary {
+    cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px;
+    font: 700 10px var(--title-font); letter-spacing: 1px; text-transform: uppercase;
+    color: var(--accent); padding: 2px 0;
   }
-  #scriptList { min-height: 0; }
-  #stepsList { max-height: 60vh; overflow-y: auto; padding-right: 6px; margin: 0 -6px 0 -2px; }
-  .script-actions {
-    flex: 0 0 auto; padding-top: 10px; margin: 2px 0 0;
-    border-top: 1px solid var(--seg-border);
-  }
-  .script-tools { flex: 0 0 auto; justify-content: flex-end; margin: -2px 0 12px; }
-  .directive-guide {
-    border: 1px solid rgba(126,240,255,.16); background: rgba(126,240,255,.045);
-    border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; color: var(--text-soft);
-    font-size: 11px; line-height: 1.5;
-  }
-  .directive-guide strong { color: var(--accent); }
-  .directive-guide .guide-formula { color: #fff; font-weight: 650; margin-bottom: 3px; }
+  details.accordion > summary::-webkit-details-marker { display: none; }
+  details.accordion > summary::before { content: "▸"; color: var(--text-faint); transition: transform .15s ease; font-size: 10px; }
+  details.accordion[open] > summary::before { transform: rotate(90deg); }
+  details.accordion > .accordion-body { padding-top: 8px; }
   .moves-toggle { background: none; border: none; color: var(--accent); font-size: 11px; cursor: pointer; padding: 6px 0 3px; }
   .moves-toggle:hover { text-decoration: underline; }
   .directive-summary { display: flex; flex-wrap: wrap; gap: 5px; margin: 3px 0 5px 12px; min-height: 20px; }
@@ -183,12 +191,12 @@
   }
 
   /* ---- modal shell, mirrored from index.html's #infoModal / .info-panel ---- */
-  #helpModal, #jsonModal, #narrationModal {
+  #helpModal, #jsonModal {
     display: none; position: fixed; inset: 0; z-index: 40;
     background: rgba(6,18,31,0.75); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
     align-items: center; justify-content: center; padding: 20px;
   }
-  #helpModal.active, #jsonModal.active, #narrationModal.active { display: flex; }
+  #helpModal.active, #jsonModal.active { display: flex; }
   .info-panel {
     background: var(--card-bg); border: var(--card-bw) solid var(--card-border);
     border-radius: var(--card-radius); padding: 26px 28px; max-width: min(560px, 100%);
@@ -211,12 +219,10 @@
     display: flex; align-items: center; justify-content: center; font-family: inherit;
   }
   .info-close:hover { background: rgba(255,255,255,.16); }
-  .narration-panel { max-width: min(680px, 100%); }
-  .narration-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
 
   @media (max-width: 1040px) {
     .info-grid { grid-template-columns: 1fr 1fr; }
-    .layout { grid-template-columns: minmax(360px,.9fr) minmax(380px,1.1fr); gap: 16px; }
+    .builder-panel { grid-template-columns: minmax(320px,.9fr) minmax(300px,1.1fr); gap: 16px; }
     .move-row { grid-template-columns: 1fr 1fr; }
     .directive-explainer { grid-column: 1 / -1; }
   }
@@ -224,10 +230,11 @@
     body { padding: 12px; }
     .topbar { align-items: flex-start; }
     .status-pill { width: 100%; max-width: none; box-sizing: border-box; }
-    .info-grid, .layout { grid-template-columns: 1fr; }
+    .info-grid { grid-template-columns: 1fr; }
     .panel { padding: 15px; border-radius: 16px; }
-    .court-panel { order: 0; }
-    .col-right { order: 1; }
+    .builder-panel { grid-template-columns: 1fr; }
+    .builder-right { max-height: none; }
+    .step-right-scroll { overflow-y: visible; }
     .court-wrap { width: min(100%, 440px); padding: 7px; }
     .footer-bar { position: sticky; bottom: 0; z-index: 10; padding: 12px; margin: 18px -12px -12px;
       background: rgba(5,12,20,.94); backdrop-filter: blur(10px); }
@@ -282,8 +289,8 @@
   </div>
 </section>
 
-<div class="layout">
-  <div class="panel court-panel">
+<div class="panel builder-panel">
+  <div class="court-panel">
     <div class="picker-label" title="P3 and P4 are Team B, partners on the far side of the net">Far &middot; Team B</div>
     <div class="player-picker" id="pickerFar"></div>
     <div class="court-wrap">
@@ -294,24 +301,15 @@
     <div id="posReadout"></div>
   </div>
 
-  <div class="col-right">
-    <div class="panel script-panel">
-      <h2 class="panel-title" title="Shots in order: who hits, what kind, who receives, and optionally where the ball lands.">Script</h2>
-      <div class="row script-tools">
-        <button id="openNarration" title="Edit the coaching notes shown with the drill">Narration (1)</button>
-      </div>
-      <div class="directive-guide">
-        <div class="guide-formula">Player direction = who moves + coaching label + destination + deadline</div>
-        <strong>Coaching label</strong> explains why they move; it does not teleport or change their physics.
-        <strong>Arrive by</strong> controls the pace: no deadline, by this shot’s bounce, or by the next paddle contact.
-      </div>
-      <div class="script-scroll">
-        <div id="scriptList"></div>
-        <div class="row script-actions">
-          <button id="addShot">+ Add shot</button>
-          <button id="dupShot" title="Mirrors the hitter/receiver of the last shot and copies its type, landing, and movement cues">&#10697; Duplicate last</button>
-        </div>
-      </div>
+  <div class="builder-right">
+    <div class="row step-nav">
+      <button id="stepPrevBtn" title="Previous step">&#8249; Prev</button>
+      <div id="stepChips" class="step-chips"></div>
+      <button id="stepNextBtn" title="Next step">Next &#8250;</button>
+    </div>
+
+    <div class="step-right-scroll">
+      <div id="stepBody" class="step-body"></div>
     </div>
   </div>
 </div>
@@ -373,21 +371,6 @@
     <textarea id="jsonOut" readonly placeholder="Click 'Generate drill JSON' to build this."></textarea>
     <div class="row" style="margin-top:10px; justify-content:flex-end;">
       <button id="jsonCopy">Copy to clipboard</button>
-    </div>
-  </div>
-</div>
-
-<div id="narrationModal" role="dialog" aria-modal="true" aria-labelledby="narrationTitle">
-  <div class="info-panel narration-panel">
-    <button class="info-close" id="narrationClose" aria-label="Close narration editor">&#10005;</button>
-    <h2 id="narrationTitle">Narration steps</h2>
-    <div class="info-section">
-      <p>These are the coaching notes shown with the drill. They explain the sequence but do not control player movement or ball physics.</p>
-    </div>
-    <div id="stepsList"></div>
-    <div class="narration-actions">
-      <button id="addStep">+ Add step</button>
-      <button class="primary" id="narrationDone">Done</button>
     </div>
   </div>
 </div>

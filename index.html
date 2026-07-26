@@ -1377,28 +1377,14 @@
       display: flex; align-items: center; justify-content: center; font-family: inherit; }
     .info-close:active { opacity: 0.65; }
 
-    /* ---- Drill editor: narration + JSON export modals (same shell as
-       #infoModal/#drillStepsModal; content can run long so these get their
-       own scrolling max-height instead of .info-panel's default). ---- */
-    #deNarrationModal, #deJsonModal { display: none; position: fixed; inset: 0; z-index: 40;
+    /* ---- Drill editor: JSON export modal (same shell as #infoModal/
+       #drillStepsModal; content can run long so it gets its own scrolling
+       max-height instead of .info-panel's default). ---- */
+    #deJsonModal { display: none; position: fixed; inset: 0; z-index: 40;
       background: rgba(6,18,31,0.75); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
       align-items: center; justify-content: center; padding: 20px; }
-    #deNarrationModal.active, #deJsonModal.active { display: flex; }
+    #deJsonModal.active { display: flex; }
     .de-modal-panel { max-width: min(560px, 100%); max-height: 85vh; overflow-y: auto; }
-    #deStepsList > div input[type=text], #deStepsList > div textarea {
-      width: 100%; box-sizing: border-box; background: var(--seg-bg); color: var(--text);
-      border: 1px solid var(--seg-border); border-radius: 6px; padding: 6px 8px;
-      font-size: 13px; font-family: inherit; margin-bottom: 4px; }
-    #deStepsList > div textarea { min-height: 44px; resize: vertical; }
-    #deStepsList > div button.danger {
-      background: rgba(240,90,90,.12); border: 1px solid rgba(240,90,90,.4); color: var(--text);
-      border-radius: var(--btn-radius); padding: 6px 10px; font-size: 12px; cursor: pointer; font-family: inherit; }
-    .de-narration-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
-    .de-narration-actions button {
-      background: var(--seg-bg); color: var(--text); border: 1px solid var(--seg-border);
-      border-radius: var(--btn-radius); padding: 8px 14px; font-size: 13px; cursor: pointer; font-family: inherit; }
-    .de-narration-actions button.primary {
-      background: color-mix(in srgb, var(--accent) 16%, transparent); border-color: var(--accent); color: var(--accent); font-weight: 700; }
     #deJsonOut { width: 100%; height: 280px; box-sizing: border-box; margin-top: 4px;
       font-family: ui-monospace, monospace; font-size: 12px; background: var(--seg-bg); color: var(--text);
       border: 1px solid var(--seg-border); border-radius: 6px; padding: 8px; resize: vertical; }
@@ -1753,21 +1739,42 @@
     #scrDrillEdit .de-info-details > summary::after { content: "▾"; color: var(--text-faint); transition: transform .2s ease; }
     #scrDrillEdit .de-info-details[open] > summary::after { transform: rotate(180deg); }
     #scrDrillEdit .de-info-details > .info-grid { padding: 0 18px 16px; }
-    /* Court + Script side by side (mirrors tools/drill-builder.html's own
-       .layout) — the two panels editors bounce between constantly while
-       authoring a shot; stacked with the whole screen scrolling between them
-       (the old layout) meant scrolling up/down on every single edit. The
-       script panel's height is synced to the court panel's real rendered
+    /* Court + step editor side by side in one merged panel (mirrors
+       tools/drill-builder.html's own .builder-panel) — you page through the
+       drill one step at a time (chip strip + Prev/Next) instead of scrolling
+       a long all-shots-at-once list, and the court shows that step's
+       approximate player/ball positions with the current hitter ringed. The
+       right column's height is synced to the court panel's real rendered
        height (drillAdmin.js's ResizeObserver, same technique the standalone
        builder uses) so it gets its own internal scroll instead of pushing
        the footer Save/Delete/Test-Live row off screen. */
     #scrDrillEdit .de-layout { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(280px, 1fr); gap: 16px; align-items: start; }
-    #scrDrillEdit .script-panel { display: flex; flex-direction: column; min-height: 0; overflow: hidden; height: var(--de-court-h, auto); }
-    #scrDrillEdit .de-script-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 6px; margin: 0 -6px 0 -2px; }
+    #scrDrillEdit .de-builder-right { display: flex; flex-direction: column; min-width: 0; min-height: 0; max-height: var(--de-court-h, none); }
+    #scrDrillEdit .de-step-nav { justify-content: center; gap: 10px; flex-wrap: wrap; flex: 0 0 auto; }
+    #scrDrillEdit .step-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; flex: 1 1 auto; }
+    #scrDrillEdit .step-chip {
+      border-radius: 999px; padding: 5px 12px; font-size: 11px; cursor: pointer;
+      background: var(--seg-bg); border: 1px solid var(--seg-border); color: var(--text-soft); font-family: inherit; }
+    #scrDrillEdit .step-chip.active { background: color-mix(in srgb, var(--accent) 20%, transparent); border-color: var(--accent); color: var(--accent); font-weight: 700; }
+    #scrDrillEdit .de-step-scroll { flex: 0 1 auto; min-height: 0; overflow-y: auto; padding-right: 6px; margin: 8px -6px 0 -2px; }
+    #scrDrillEdit .hitter-lock {
+      display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 6px;
+      background: var(--seg-bg); border: 1px solid var(--seg-border); font-size: 13px; }
+    #scrDrillEdit .hitter-lock-swatch { width: 12px; height: 12px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
+    #scrDrillEdit details.accordion { margin-bottom: 12px; }
+    #scrDrillEdit details.accordion > summary {
+      cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px;
+      font: 700 10px var(--title-font); letter-spacing: 1px; text-transform: uppercase;
+      color: var(--accent); padding: 2px 0; }
+    #scrDrillEdit details.accordion > summary::-webkit-details-marker { display: none; }
+    #scrDrillEdit details.accordion > summary::before { content: "▸"; color: var(--text-faint); transition: transform .15s ease; font-size: 10px; }
+    #scrDrillEdit details.accordion[open] > summary::before { transform: rotate(90deg); }
+    #scrDrillEdit details.accordion > .accordion-body { padding-top: 8px; }
+    #scrDrillEdit .de-info-meta { margin: -4px 0 14px; }
     @media (max-width: 760px) {
       #scrDrillEdit .de-layout { grid-template-columns: 1fr; }
-      #scrDrillEdit .script-panel { height: auto; overflow: visible; }
-      #scrDrillEdit .de-script-scroll { overflow: visible; }
+      #scrDrillEdit .de-builder-right { max-height: none; }
+      #scrDrillEdit .de-step-scroll { overflow: visible; }
     }
     #scrDrillEdit label { display: block; font-size: 12px; color: var(--label); margin: 8px 0 4px; }
     #scrDrillEdit label:first-of-type { margin-top: 0; }
@@ -1776,8 +1783,6 @@
       border: 1px solid var(--seg-border); border-radius: 6px; padding: 6px 8px; font-size: 13px; font-family: inherit; }
     #scrDrillEdit textarea { min-height: 44px; resize: vertical; }
     #scrDrillEdit .row { display: flex; gap: 8px; align-items: end; margin: 4px 0; flex-wrap: wrap; }
-    #scrDrillEdit .de-script-header { justify-content: space-between; align-items: center; margin: 0 0 10px; }
-    #scrDrillEdit .de-script-header .panel-title { margin: 0; }
     #scrDrillEdit .row select { flex: 1; }
     #scrDrillEdit .court-panel { display: flex; flex-direction: column; align-items: center; gap: 8px; }
     #scrDrillEdit .court-wrap { width: min(100%, 420px); padding: 8px; box-sizing: border-box; border-radius: 16px;
@@ -1797,14 +1802,8 @@
     #scrDrillEdit .p3 { background: #4576d6; } #scrDrillEdit .p4 { background: #45b0d6; }
     #scrDrillEdit #dePosReadout { font-family: ui-monospace, monospace; font-size: 10px; color: var(--text-faint);
       margin-top: 4px; line-height: 1.5; white-space: pre; text-align: center; }
-    #scrDrillEdit .shot-block { border: 1px solid var(--seg-border); border-radius: 10px; padding: 10px; margin: 8px 0; }
-    #scrDrillEdit .shot-number { font: 700 10px var(--title-font); letter-spacing: 1px; color: var(--text-faint); text-transform: uppercase; width: 100%; }
     #scrDrillEdit .directive-field { flex: 1 1 0; min-width: 0; }
     #scrDrillEdit .directive-field label { margin: 0 0 4px; font-size: 9px; text-transform: uppercase; letter-spacing: .5px; }
-    #scrDrillEdit .directive-summary { display: flex; flex-wrap: wrap; gap: 5px; margin: 3px 0 5px 8px; min-height: 18px; }
-    #scrDrillEdit .directive-chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 7px; border-radius: 999px;
-      background: var(--seg-bg); border: 1px solid var(--seg-border); color: var(--text-soft); font-size: 10px; }
-    #scrDrillEdit .directive-chip strong { color: var(--text); }
     #scrDrillEdit .directive-empty { color: var(--text-faint); font-size: 10px; padding: 2px 0; }
     #scrDrillEdit .move-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: end; margin: 8px 0 8px 8px; padding: 9px;
       border-radius: 8px; background: var(--seg-bg); }
@@ -1814,7 +1813,6 @@
     #scrDrillEdit .to-readout { font-size: 10px; color: var(--text-faint); }
     #scrDrillEdit .landing-row { display: flex; gap: 6px; align-items: center; margin: 6px 0 2px 8px; flex-wrap: wrap; }
     #scrDrillEdit .directive-explainer { flex-basis: 100%; font-size: 10px; color: var(--text-faint); line-height: 1.4; }
-    #scrDrillEdit .moves-toggle { background: none; border: none; color: var(--accent); font-size: 11px; cursor: pointer; padding: 6px 0 3px; }
     #scrDrillEdit button { background: var(--seg-bg); color: var(--text); border: 1px solid var(--seg-border);
       border-radius: var(--btn-radius); padding: 7px 12px; font-size: 12px; cursor: pointer; font-family: inherit; }
     #scrDrillEdit button.danger { background: rgba(240,90,90,.12); border-color: rgba(240,90,90,.4); }
@@ -2218,9 +2216,12 @@
           <div><label for="deFTags">Tags</label><input type="text" id="deFTags" placeholder="dink, recovery, doubles"></div>
         </div>
       </details>
+      <div class="de-info-meta">
+        <div id="deShotCount" class="hint">0 shots</div>
+      </div>
 
-      <div class="de-layout">
-        <div class="panel court-panel">
+      <div class="panel de-layout">
+        <div class="court-panel">
           <div class="picker-label" title="P3 and P4 are Team B, partners on the far side of the net">Far · Team B</div>
           <div class="player-picker" id="dePickerFar"></div>
           <div class="court-wrap">
@@ -2231,17 +2232,14 @@
           <div id="dePosReadout"></div>
         </div>
 
-        <div class="panel script-panel">
-          <div class="row de-script-header">
-            <h2 class="panel-title" id="deShotCount">0 shots</h2>
-            <button id="deOpenNarration" type="button" title="Edit the coaching notes shown with the drill">Narration (1)</button>
+        <div class="de-builder-right">
+          <div class="row de-step-nav">
+            <button id="deStepPrevBtn" type="button" title="Previous step">‹ Prev</button>
+            <div id="deStepChips" class="step-chips"></div>
+            <button id="deStepNextBtn" type="button" title="Next step">Next ›</button>
           </div>
-          <div class="de-script-scroll">
-            <div id="deScriptList"></div>
-            <div class="row" style="margin-top:8px">
-              <button id="deAddShot" type="button">+ Add shot</button>
-              <button id="deDupShot" type="button" title="Mirrors the hitter/receiver of the last shot">⟲ Duplicate last</button>
-            </div>
+          <div class="de-step-scroll">
+            <div id="deStepBody" class="step-body"></div>
           </div>
         </div>
       </div>
@@ -2434,22 +2432,6 @@
       <button class="info-close" id="drillStepsCloseBtn">✕</button>
       <h2 id="drillStepsTitle">STEPS</h2>
       <div class="drill-steps-list" id="drillStepsList"></div>
-    </div>
-  </div>
-
-  <!-- Drill editor: narration ("steps") editor modal — mirrors tools/drill-builder.html's #narrationModal -->
-  <div id="deNarrationModal">
-    <div class="info-panel de-modal-panel">
-      <button class="info-close" id="deNarrationClose">✕</button>
-      <h2>Narration steps</h2>
-      <div class="info-section">
-        <p>These are the coaching notes shown with the drill. They explain the sequence but do not control player movement or ball physics.</p>
-      </div>
-      <div id="deStepsList"></div>
-      <div class="de-narration-actions">
-        <button id="deAddStep" type="button">+ Add step</button>
-        <button class="primary" id="deNarrationDone" type="button">Done</button>
-      </div>
     </div>
   </div>
 

@@ -34,14 +34,14 @@ function clampToOwnSide(team, z) {
   return team === 'near' ? Math.max(z, MIN_NET_GAP) : Math.min(z, -MIN_NET_GAP);
 }
 
-function clampLandingPoint(p, team) {
+export function clampLandingPoint(p, team) {
   p.x = Math.max(-HALF_W, Math.min(HALF_W, p.x));
   p.z = Math.max(-HALF_L, Math.min(HALF_L, p.z));
   p.z = clampToOwnSide(team, p.z);
   return p;
 }
 
-function clampPlacementPoint(p, team) {
+export function clampPlacementPoint(p, team) {
   p.x = Math.max(-PLACEMENT_X, Math.min(PLACEMENT_X, p.x));
   p.z = Math.max(-PLACEMENT_Z, Math.min(PLACEMENT_Z, p.z));
   p.z = clampToOwnSide(team, p.z);
@@ -128,7 +128,7 @@ export function buildCourt(svg) {
   return playerGroup;
 }
 
-function svgPointFromEvent(svg, evt) {
+export function svgPointFromEvent(svg, evt) {
   const pt = svg.createSVGPoint();
   pt.x = evt.clientX; pt.y = evt.clientY;
   const p = pt.matrixTransform(svg.getScreenCTM().inverse());
@@ -174,6 +174,43 @@ export function attachCourtClicks(svg, onChange) {
     }
     state.positions[state.selectedSlot] = clampPlacementPoint(p, TEAM_OF[state.selectedSlot]);
     onChange();
+  });
+}
+
+// Standalone-builder-only variant of attachCourtClicks for the merged
+// step-by-step view: same landing/move-target/plain-placement branching, but
+// plain placement (setting a player's one-time Setup position) only applies
+// while viewing Setup (builderStepIndex 0) — a stray court click on a later
+// step must never silently rewrite a Setup position. attachCourtClicks
+// itself is untouched; drillAdmin.js keeps using that one.
+export function attachStepCourtClicks(svg, onChange) {
+  svg.addEventListener('click', (evt) => {
+    const p = svgPointFromEvent(svg, evt);
+    if (state.placingLandingFor != null) {
+      const entry = state.script[state.placingLandingFor];
+      state.placingLandingFor = null;
+      if (entry) {
+        const receiverTeam = TEAM_OF[entry.target || entry.receiver];
+        entry.landing = clampLandingPoint(p, receiverTeam);
+      }
+      onChange();
+      return;
+    }
+    if (state.placingMoveFor) {
+      const { entryIndex, moveIndex } = state.placingMoveFor;
+      const entry = state.script[entryIndex];
+      state.placingMoveFor = null;
+      if (entry && entry.moves && entry.moves[moveIndex]) {
+        const mv = entry.moves[moveIndex];
+        mv.to = clampPlacementPoint(p, TEAM_OF[mv.player]);
+      }
+      onChange();
+      return;
+    }
+    if (state.builderStepIndex === 0 && state.selectedSlot) {
+      state.positions[state.selectedSlot] = clampPlacementPoint(p, TEAM_OF[state.selectedSlot]);
+      onChange();
+    }
   });
 }
 
@@ -245,4 +282,110 @@ export function renderPlayers(playerGroup, posReadoutEl) {
       }
     });
   }
+}
+
+// Standalone-builder-only step-view renderer: draws a computeStepPositions()
+// snapshot (see state.js) instead of the raw Setup positions renderPlayers()
+// draws. Renders `prevSnapshot` first as a faint, non-interactive ghost (so
+// movement between steps reads at a glance), then the current snapshot's
+// player dots/labels (same visual language as renderPlayers), a hollow ring
+// around the current hitter, and a ball marker. Deliberately re-implements
+// the dot/label loop rather than calling renderPlayers — renderPlayers's
+// expandedMoveRow-gated cue overlay stays untouched for drillAdmin.js.
+export function renderStepCourt(playerGroup, snapshot, prevSnapshot, posReadoutEl) {
+  playerGroup.innerHTML = '';
+
+  // Ghost layer: the previous step's ball path (hitter -> ball) and each
+  // player's movement line from their previous spot to where they are now,
+  // all faint/non-interactive, so the last shot's flight and the last
+  // repositioning both read at a glance before the current step draws over them.
+  if (prevSnapshot) {
+    if (prevSnapshot.ball) {
+      const prevHitterPos = prevSnapshot.positions[prevSnapshot.hitter];
+      if (prevHitterPos) {
+        playerGroup.appendChild(svgEl('line', {
+          x1: prevHitterPos.x, y1: prevHitterPos.z, x2: prevSnapshot.ball.x, y2: prevSnapshot.ball.z,
+          stroke: '#f2e85b', 'stroke-width': 0.025, 'stroke-dasharray': '0.1,0.08', opacity: 0.25
+        }));
+      }
+      playerGroup.appendChild(svgEl('circle', {
+        cx: prevSnapshot.ball.x, cy: prevSnapshot.ball.z, r: 0.13, fill: '#f2e85b', opacity: 0.28
+      }));
+    }
+    activeSlots().forEach(slot => {
+      const from = prevSnapshot.positions[slot];
+      const to = snapshot.positions[slot];
+      if (!from) return;
+      if (to && (Math.abs(from.x - to.x) > 0.01 || Math.abs(from.z - to.z) > 0.01)) {
+        playerGroup.appendChild(svgEl('line', {
+          x1: from.x, y1: from.z, x2: to.x, y2: to.z,
+          stroke: SLOT_COLOR[slot] || '#aaa', 'stroke-width': 0.035,
+          'stroke-dasharray': '0.06,0.1', opacity: 0.4
+        }));
+      }
+      playerGroup.appendChild(svgEl('circle', {
+        cx: from.x, cy: from.z, r: 0.22, fill: SLOT_COLOR[slot], stroke: 'none', opacity: 0.28
+      }));
+    });
+  }
+
+  const lines = [];
+  activeSlots().forEach(slot => {
+    const p = snapshot.positions[slot];
+    if (!p) { lines.push(slot + ': not placed'); return; }
+    if (slot === snapshot.hitter) {
+      // A fixed highlight color (matching the ball marker), not the
+      // player's own SLOT_COLOR — a same-hue ring around a same-hue dot
+      // reads as barely-there on the two/four slots whose color it matches,
+      // and this way the ring never competes with the white "P1" label for
+      // attention.
+      playerGroup.appendChild(svgEl('circle', {
+        cx: p.x, cy: p.z, r: 0.42, fill: 'none',
+        stroke: '#f2e85b', 'stroke-width': 0.06, opacity: 0.9
+      }));
+    } else if (slot === snapshot.receiver) {
+      // Dashed (vs. the hitter's solid ring) marks "the ball is headed
+      // here." No separate ball dot is drawn on top of them for this same
+      // reason — computeStepPositions always moves the receiver TO the
+      // ball, so a filled marker at that exact spot would just sit on top
+      // of their dot and hide the "P2" label under it.
+      playerGroup.appendChild(svgEl('circle', {
+        cx: p.x, cy: p.z, r: 0.42, fill: 'none',
+        stroke: '#f2e85b', 'stroke-width': 0.05, 'stroke-dasharray': '0.1,0.07', opacity: 0.8
+      }));
+    }
+    const dot = svgEl('circle', { cx: p.x, cy: p.z, r: 0.26, fill: SLOT_COLOR[slot], stroke: '#fff', 'stroke-width': 0.03 });
+    const label = svgEl('text', { x: p.x, y: p.z + 0.08, 'text-anchor': 'middle', 'font-size': 0.26, fill: '#fff' });
+    label.textContent = slot;
+    playerGroup.appendChild(dot);
+    playerGroup.appendChild(label);
+    lines.push(slot + ': x=' + p.x.toFixed(2) + ', z=' + p.z.toFixed(2));
+  });
+
+  // Current step's ball path: hitter -> ball, same visual language as the
+  // per-shot landing cue in renderPlayers, so "where the ball is going"
+  // reads as a path, not just an isolated marker. The ball's own dot is
+  // only drawn when it does NOT land on the receiver's dot (e.g. the
+  // receiver hasn't been placed yet) — normally the receiver's dashed ring
+  // above already shows exactly where the ball is going, and a solid ball
+  // marker on top of them would just hide their label again.
+  if (snapshot.ball) {
+    const hitterPos = snapshot.positions[snapshot.hitter];
+    if (hitterPos) {
+      playerGroup.appendChild(svgEl('line', {
+        x1: hitterPos.x, y1: hitterPos.z, x2: snapshot.ball.x, y2: snapshot.ball.z,
+        stroke: '#f2e85b', 'stroke-width': 0.03, 'stroke-dasharray': '0.12,0.08', opacity: 0.8
+      }));
+    }
+    const receiverPos = snapshot.receiver ? snapshot.positions[snapshot.receiver] : null;
+    if (!receiverPos) {
+      const ball = svgEl('circle', {
+        cx: snapshot.ball.x, cy: snapshot.ball.z, r: 0.16,
+        fill: '#f2e85b', stroke: '#1b1d26', 'stroke-width': 0.04
+      });
+      playerGroup.appendChild(ball);
+    }
+  }
+
+  (posReadoutEl || document.getElementById('posReadout')).textContent = lines.join('\n');
 }

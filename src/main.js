@@ -328,6 +328,12 @@ function updateReplayBar() {
 }
 
 function quitToMenu() {
+  // Captured before exitDrillMode() clears the flag below — exiting a drill
+  // (launched from the Drills library, a ?drill=<id> deep link, or the
+  // builder's ?testDrill=1 live test) should land back on the Drills
+  // library, not the main title screen; a normal match's quit still goes
+  // to Start as before.
+  var wasDrilling = drilling;
   running = false;
   paused = false;
   if (replaying) exitReplayMode();
@@ -335,10 +341,10 @@ function quitToMenu() {
   closeMusicModal();
   $('pauseModal').classList.remove('active');
   $('hud').style.display = 'none';
-  // Return to the arcade flow's Start screen; #menu stays a hidden harness.
-  // flowState (radios + rosterPicks) persists, so prior picks are remembered.
+  // Return to the arcade flow; #menu stays a hidden harness. flowState
+  // (radios + rosterPicks) persists, so prior picks are remembered.
   $('flowRoot').style.display = '';
-  goToFlow('start');
+  goToFlow(wasDrilling ? 'drills' : 'start');
   game = null;
   input = null;
   last = 0;
@@ -1021,7 +1027,12 @@ function renderDrillCards() {
     var tags = (d.tags || []).map(function (t) {
       return '<span class="drill-card-tag">' + escapeHtml(t) + '</span>';
     }).join('');
-    var steps = d.steps ? d.steps.length : 0;
+    // Counts only steps with actual narration text — the authoring tools
+    // now emit one entry per script step even when blank (so an editor can
+    // reliably map narration back to the right step), so a raw .length
+    // would inflate this to "script length" regardless of whether any
+    // narration was actually written.
+    var steps = d.steps ? d.steps.filter(function (s) { return s && (s.title || s.desc); }).length : 0;
     return '<div class="drill-card" data-drill-id="' + d.id + '">' +
       '<button class="hud-icon-btn drill-card-edit-btn" data-drill-edit="' + d.id + '" title="Edit" type="button">✎</button>' +
       '<div class="drill-card-name">' + escapeHtml(d.name) + '</div>' +
@@ -1175,7 +1186,13 @@ function updateDrillBar() {
 
 function renderDrillSteps(drill) {
   if (!drill) return;
-  $('drillStepsList').innerHTML = drill.steps.map(function (s) {
+  // The authoring tools emit one steps[] entry per script step even when
+  // blank (see tools/drill-builder/main.js buildDrill()) so an editor can
+  // map narration back to the right step reliably — filter those blanks out
+  // here so this on-screen list only ever shows narration someone wrote.
+  $('drillStepsList').innerHTML = drill.steps.filter(function (s) {
+    return s && (s.title || s.desc);
+  }).map(function (s) {
     return '<div class="drill-steps-row">' +
       '<div class="drill-steps-row-title">' + escapeHtml(s.title || '') + '</div>' +
       '<div class="drill-steps-row-desc">' + escapeHtml(s.desc || '') + '</div>' +

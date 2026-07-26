@@ -26,7 +26,8 @@ export const state = {
   steps: [{ title: 'Setup', desc: '' }],
   expandedMoveRow: null,   // index of the script row whose "moves" editor is open (also what's drawn on the court)
   placingMoveFor: null,    // { entryIndex, moveIndex } while the next court click sets a move's target
-  placingLandingFor: null  // script index while the next court click sets that shot's landing
+  placingLandingFor: null, // script index while the next court click sets that shot's landing
+  builderStepIndex: 0      // standalone-builder-only "which step is being viewed": 0 = Setup, N = script[N-1]
 };
 
 // P1/P3 are always active (the anchors); P2/P4 follow their checkboxes.
@@ -35,6 +36,42 @@ export function activeSlots() {
   return ALL_SLOTS.filter(s => s === 'P1' || s === 'P3' || (s === 'P2' && state.includeP2) || (s === 'P4' && state.includeP4));
 }
 export function opponentsOf(slot) { return activeSlots().filter(s => TEAM_OF[s] !== TEAM_OF[slot]); }
+
+// Standalone-builder-only: approximates "where is everyone, right after step
+// `stepIndex` fires" for the step-by-step court preview. stepIndex 0 = Setup
+// (no shot has happened yet), stepIndex N = right after script[N-1]. Starts
+// from the one-time authored state.positions. For each processed shot, the
+// receiver is moved to the ball (landing, or their own prior spot if no
+// landing was set) — the same "move to intercept" behavior the real AI
+// exhibits, since the receiver has to be standing at the ball to hit it.
+// An explicit moves[].to cue for that same player then overrides that
+// default, same as any other player's cue. A player with no cue and who
+// wasn't a receiver on this shot simply stays at their last known spot.
+// Never mutates state.positions; this is a best-effort authoring aid, not
+// real physics — the runtime's actual per-rally movement is live AI/
+// physics, not authored data, so there is nothing more precise to compute
+// from here.
+export function computeStepPositions(stepIndex) {
+  const positions = {};
+  activeSlots().forEach(slot => {
+    positions[slot] = state.positions[slot] ? Object.assign({}, state.positions[slot]) : null;
+  });
+  let ball = null;
+  let hitter = null;
+  let receiver = null;
+  const upto = Math.min(stepIndex, state.script.length);
+  for (let i = 0; i < upto; i++) {
+    const entry = state.script[i];
+    hitter = entry.hitter;
+    receiver = entry.target;
+    ball = entry.landing
+      ? Object.assign({}, entry.landing)
+      : (positions[entry.target] ? Object.assign({}, positions[entry.target]) : null);
+    if (ball) positions[entry.target] = Object.assign({}, ball);
+    (entry.moves || []).forEach(mv => { if (mv.to) positions[mv.player] = Object.assign({}, mv.to); });
+  }
+  return { positions, ball, hitter, receiver };
+}
 
 export function isIncluded(slot) {
   if (ANCHOR_SLOTS[slot]) return true;

@@ -1,31 +1,27 @@
 'use strict';
 
 // In-app "create/edit/delete a drill" screen (index.html's #scrDrillEdit).
-// Reuses the standalone tools/drill-builder/{state,court-svg,script-editor}.js
-// modules rather than re-implementing court placement/script editing a
-// second time — those modules already correctly solve every hard part of
-// this (own-side-of-net placement, opponent-only target dropdowns, live
-// validateDrill feedback, P2/P4 roster toggling). court-svg.js/
-// script-editor.js's render functions take an optional target-element
-// argument specifically so they can be pointed at THIS screen's elements
-// instead of the standalone builder's #court/#scriptList/#posReadout (a
-// single document can't reuse those ids twice) — the standalone tool's own
-// call sites are unaffected since that argument defaults to its ids.
+// Reuses the standalone tools/drill-builder/{state,court-svg,step-view}.js
+// modules rather than re-implementing court placement/step editing a second
+// time — those modules already correctly solve every hard part of this
+// (own-side-of-net placement, opponent-only target dropdowns, live
+// validateDrill feedback, P2/P4 roster toggling, the merged step-by-step
+// court+editor view). court-svg.js/state.js's render/compute functions take
+// explicit target-element arguments specifically so they can be pointed at
+// THIS screen's elements instead of the standalone builder's #deCourt/
+// #deStepBody/#dePosReadout (a single document can't reuse those ids twice).
 //
-// Narration (steps) editing and JSON export reuse the standalone builder's
-// same modal pattern — a "Narration (N)" button opens #deNarrationModal
-// (renderSteps pointed at this screen's own #deStepsList/#deOpenNarration,
-// same optional-target pattern court-svg.js/script-editor.js already use
-// for the court/script panels), and "Export JSON" opens #deJsonModal with
+// Narration (inline per-step, collapsed accordion) and JSON export reuse the
+// standalone builder's same patterns — "Export JSON" opens #deJsonModal with
 // the same buildDrill() this screen already uses to save.
 
 import { validateDrill, TEAM_OF, createDrill, updateDrill, deleteDrill } from './drillStore.js';
 import {
-  state, activeSlots, opponentsOf, isIncluded, setSlotIncluded,
+  state, activeSlots, opponentsOf, isIncluded, setSlotIncluded, computeStepPositions,
   ALL_SLOTS, SLOT_CLASS, ANCHOR_SLOTS
 } from '../tools/drill-builder/state.js';
-import { buildCourt, attachCourtClicks, renderPlayers as renderCourtPlayers } from '../tools/drill-builder/court-svg.js';
-import { renderScript, renderSteps } from '../tools/drill-builder/script-editor.js';
+import { buildCourt, attachStepCourtClicks, renderStepCourt } from '../tools/drill-builder/court-svg.js';
+import { renderStepChips, renderStepBody } from '../tools/drill-builder/step-view.js';
 
 var $ = function (id) { return document.getElementById(id); };
 
@@ -44,6 +40,7 @@ function resetState() {
   state.expandedMoveRow = null;
   state.placingMoveFor = null;
   state.placingLandingFor = null;
+  state.builderStepIndex = 0;
 }
 
 // Converts a script entry's movement cue into the editor's internal `moves`
@@ -70,14 +67,26 @@ function loadIntoState(drill) {
   state.includeP2 = !!(drill.startPositions && drill.startPositions.P2);
   state.includeP4 = !!(drill.startPositions && drill.startPositions.P4);
   state.positions = Object.assign({}, drill.startPositions);
-  state.script = (drill.script || []).map(function (entry) {
+  // Positional correlation: drill.steps[0] is Setup's narration, drill.steps[i+1]
+  // is script[i]'s (see tools/drill-builder/main.js buildDrill() — it emits
+  // exactly one entry per step, even blank, specifically so this mapping is
+  // reliable). A hand-authored drill whose `steps` predates that convention
+  // (a short, free-standing caption list, e.g. DEFAULT_DRILLS) won't line up
+  // perfectly here — narration is cosmetic-only, so a best-effort mapping
+  // that can't crash anything is an acceptable trade for the common case.
+  state.steps = [drill.steps && drill.steps[0] ? Object.assign({}, drill.steps[0]) : { title: 'Setup', desc: '' }];
+  state.script = (drill.script || []).map(function (entry, i) {
     var copy = { hitter: entry.hitter, shotType: entry.shotType, target: entry.target || entry.receiver };
     if (entry.landing) copy.landing = Object.assign({}, entry.landing);
     var moves = movesFromEntry(entry);
     if (moves.length) copy.moves = moves;
+    var narration = drill.steps && drill.steps[i + 1];
+    if (narration) {
+      copy.title = narration.title || '';
+      copy.desc = narration.desc || '';
+    }
     return copy;
   });
-  state.steps = (drill.steps && drill.steps.length) ? drill.steps.map(function (s) { return Object.assign({}, s); }) : [{ title: 'Setup', desc: '' }];
 }
 
 function slugify(name) {
@@ -94,8 +103,23 @@ function buildDrill() {
     goal: $('deFGoal').value,
     tags: $('deFTags').value.split(',').map(function (t) { return t.trim(); }).filter(Boolean),
     startPositions: Object.assign({}, state.positions),
-    script: state.script.map(function (s) { return Object.assign({}, s); }),
-    steps: state.steps.filter(function (s) { return s.title || s.desc; })
+    script: state.script.map(function (s) {
+      // title/desc are authoring-only narration fields folded into the
+      // top-level `steps` array below — they don't belong on the shipped
+      // script entry itself.
+      var copy = Object.assign({}, s);
+      delete copy.title;
+      delete copy.desc;
+      return copy;
+    }),
+    // Always one entry per step (Setup + one per script index), even when
+    // blank — not filtered down to only the non-empty ones, so loadIntoState
+    // above can map narration back to the right step reliably. Blank entries
+    // are filtered out at display time instead (src/main.js's
+    // renderDrillSteps and the drill-card step count).
+    steps: [state.steps[0] || { title: 'Setup', desc: '' }].concat(
+      state.script.map(function (s) { return { title: s.title || '', desc: s.desc || '' }; })
+    )
   };
 }
 
@@ -115,13 +139,80 @@ function drillProblems() {
 
 function escapeHtml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
+function renderCourt() {
+  var snapshot = computeStepPositions(state.builderStepIndex);
+  var prevSnapshot = state.builderStepIndex > 0 ? computeStepPositions(state.builderStepIndex - 1) : null;
+  renderStepCourt(playerGroup, snapshot, prevSnapshot, $('dePosReadout'));
+}
+
+// Placement (the player picker) only does anything while viewing Setup
+// (attachStepCourtClicks gates the actual write on builderStepIndex === 0
+// too) — hide it on every other step rather than leaving a control on
+// screen that silently does nothing.
+function togglePickerVisibility() {
+  var showPicker = state.builderStepIndex === 0;
+  var els = document.querySelectorAll('#scrDrillEdit .player-picker, #scrDrillEdit .picker-label');
+  for (var i = 0; i < els.length; i++) els[i].style.display = showPicker ? '' : 'none';
+}
+
 function onChange() {
-  renderCourtPlayers(playerGroup, $('dePosReadout'));
+  renderCourt();
+  renderStepUI();
   revalidate();
 }
 
+function renderStepUI() {
+  renderStepChips($('deStepChips'), jumpToStep);
+  renderStepBody($('deStepBody'), { onChange: onChange, onRemoveStep: onRemoveStep });
+  $('deStepPrevBtn').disabled = state.builderStepIndex === 0;
+  var nextBtn = $('deStepNextBtn');
+  var hasNext = state.builderStepIndex < state.script.length;
+  // At the end of the script there's nothing to navigate to, so "Next"
+  // becomes the add-shot action instead of just going disabled.
+  nextBtn.textContent = hasNext ? 'Next ›' : '+ Add shot';
+  nextBtn.title = hasNext ? 'Go to the next step' : 'Adds a new shot after this one and moves to it';
+  togglePickerVisibility();
+}
+
+function clampStepIndex() {
+  state.builderStepIndex = Math.max(0, Math.min(state.builderStepIndex, state.script.length));
+}
+
+function jumpToStep(i) {
+  state.builderStepIndex = i;
+  state.placingMoveFor = null;
+  state.placingLandingFor = null;
+  onChange();
+}
+
+// Inserts right after the currently-viewed step (not always at the end) and
+// moves the view to the new step.
+function addStepAfterCurrent() {
+  var insertAt = state.builderStepIndex;
+  var prevEntry = insertAt > 0 ? state.script[insertAt - 1] : null;
+  var nextEntry = state.script[insertAt] || null;
+  var hitter = prevEntry ? prevEntry.target : 'P1';
+  var target = opponentsOf(hitter)[0];
+  if (nextEntry && opponentsOf(hitter).indexOf(nextEntry.hitter) !== -1) target = nextEntry.hitter;
+  state.script.splice(insertAt, 0, { hitter: hitter, shotType: 'drive', target: target });
+  state.placingMoveFor = null;
+  state.placingLandingFor = null;
+  state.builderStepIndex = insertAt + 1;
+  onChange();
+}
+
+function onRemoveStep() {
+  var idx = state.builderStepIndex - 1;
+  if (idx < 0 || idx >= state.script.length) return;
+  state.script.splice(idx, 1);
+  state.expandedMoveRow = null;
+  state.placingMoveFor = null;
+  state.placingLandingFor = null;
+  clampStepIndex();
+  onChange();
+}
+
 function revalidate() {
-  renderCourtPlayers(playerGroup, $('dePosReadout'));
   var n = state.script.length;
   $('deShotCount').textContent = n ? (n + ' scripted shot' + (n === 1 ? '' : 's')) : '0 shots';
   var problems = drillProblems();
@@ -157,7 +248,7 @@ function renderPicker() {
     b.className = 'icon-btn ' + SLOT_CLASS[slot] + (selected ? ' active' : '');
     b.disabled = !included;
     b.title = ANCHOR_SLOTS[slot] ? slot + ' is always in the roster' : 'Select ' + slot + ' for placement';
-    b.addEventListener('click', function () { state.selectedSlot = slot; renderPicker(); onChange(); });
+    b.addEventListener('click', function () { state.selectedSlot = slot; renderPicker(); renderCourt(); revalidate(); });
     wrap.appendChild(b);
 
     if (!ANCHOR_SLOTS[slot]) {
@@ -169,8 +260,10 @@ function renderPicker() {
       cb.addEventListener('change', function () {
         setSlotIncluded(slot, cb.checked);
         renderPicker();
-        renderScript(onChange, $('deScriptList'));
-        onChange();
+        clampStepIndex();
+        renderStepUI();
+        renderCourt();
+        revalidate();
       });
       toggle.appendChild(cb);
       toggle.appendChild(document.createTextNode('include'));
@@ -183,9 +276,9 @@ function renderPicker() {
 
 function renderAll() {
   renderPicker();
-  renderScript(onChange, $('deScriptList'));
-  renderSteps($('deStepsList'), $('deOpenNarration'));
-  onChange();
+  renderStepUI();
+  renderCourt();
+  revalidate();
 }
 
 function ensureInit() {
@@ -193,15 +286,12 @@ function ensureInit() {
   initialized = true;
   var svg = $('deCourt');
   playerGroup = buildCourt(svg);
-  attachCourtClicks(svg, function () { renderScript(onChange, $('deScriptList')); onChange(); });
+  attachStepCourtClicks(svg, onChange);
 
-  // Side-by-side court/script layout (index.html's .de-layout) sizes the
-  // script panel to match the court panel's real rendered height — same
-  // technique tools/drill-builder/main.js uses for its own .layout — so the
-  // shot list scrolls internally instead of pushing the Save/Delete/Test-Live
-  // footer off screen. Its own document (this in-app editor lives in
-  // index.html, the standalone builder in tools/drill-builder.html), so
-  // reusing the --de-court-h custom property name here can't collide with it.
+  // The court defines the workspace's visual height. Mirror that measured
+  // height onto the right-hand step column so only its own content scrolls
+  // internally, keeping the court and the current step's chips/nav visible
+  // together without scrolling the whole screen.
   var courtPanel = document.querySelector('#scrDrillEdit .court-panel');
   function syncCourtHeight() {
     document.documentElement.style.setProperty('--de-court-h', courtPanel.getBoundingClientRect().height + 'px');
@@ -212,29 +302,12 @@ function ensureInit() {
     window.addEventListener('resize', syncCourtHeight);
   }
 
-  $('deAddShot').addEventListener('click', function () {
-    var last = state.script[state.script.length - 1];
-    var hitter = last ? last.target : 'P1';
-    var target = last ? last.hitter : opponentsOf(hitter)[0];
-    state.placingMoveFor = null;
-    state.placingLandingFor = null;
-    state.script.push({ hitter: hitter, shotType: 'drive', target: target });
-    renderScript(onChange, $('deScriptList'));
-    onChange();
+  $('deStepPrevBtn').addEventListener('click', function () {
+    if (state.builderStepIndex > 0) jumpToStep(state.builderStepIndex - 1);
   });
-  $('deDupShot').addEventListener('click', function () {
-    var last = state.script[state.script.length - 1];
-    if (!last) return;
-    var entry = { hitter: last.target, shotType: last.shotType, target: last.hitter };
-    if (last.landing) entry.landing = Object.assign({}, last.landing);
-    if (last.moves && last.moves.length) {
-      entry.moves = last.moves.map(function (mv) { return Object.assign({}, mv, mv.to ? { to: Object.assign({}, mv.to) } : {}); });
-    }
-    state.placingMoveFor = null;
-    state.placingLandingFor = null;
-    state.script.push(entry);
-    renderScript(onChange, $('deScriptList'));
-    onChange();
+  $('deStepNextBtn').addEventListener('click', function () {
+    if (state.builderStepIndex < state.script.length) jumpToStep(state.builderStepIndex + 1);
+    else addStepAfterCurrent();
   });
 
   ['deFName', 'deFDesc', 'deFGoal', 'deFTags'].forEach(function (id) {
@@ -287,21 +360,6 @@ function ensureInit() {
     window.open(window.location.origin + '/?testDrill=1', '_blank');
     status.textContent = 'Opened in a new tab.';
     status.style.color = '#8fd9a8';
-  });
-
-  // ---- Narration (steps) modal ----
-  $('deOpenNarration').addEventListener('click', function () {
-    renderSteps($('deStepsList'), $('deOpenNarration'));
-    $('deNarrationModal').classList.add('active');
-  });
-  $('deAddStep').addEventListener('click', function () {
-    state.steps.push({ title: '', desc: '' });
-    renderSteps($('deStepsList'), $('deOpenNarration'));
-  });
-  $('deNarrationClose').addEventListener('click', function () { $('deNarrationModal').classList.remove('active'); });
-  $('deNarrationDone').addEventListener('click', function () { $('deNarrationModal').classList.remove('active'); });
-  $('deNarrationModal').addEventListener('click', function (e) {
-    if (e.target === $('deNarrationModal')) $('deNarrationModal').classList.remove('active');
   });
 
   // ---- Export JSON modal ----
