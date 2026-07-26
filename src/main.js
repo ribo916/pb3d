@@ -1027,12 +1027,10 @@ function renderDrillCards() {
     var tags = (d.tags || []).map(function (t) {
       return '<span class="drill-card-tag">' + escapeHtml(t) + '</span>';
     }).join('');
-    // Counts only steps with actual narration text — the authoring tools
-    // now emit one entry per script step even when blank (so an editor can
-    // reliably map narration back to the right step), so a raw .length
-    // would inflate this to "script length" regardless of whether any
-    // narration was actually written.
-    var steps = d.steps ? d.steps.filter(function (s) { return s && (s.title || s.desc); }).length : 0;
+    // Script length, not narration count — narration is optional per step
+    // (see loadIntoState in drillAdmin.js), so counting only narrated steps
+    // understated drills that were authored without per-step captions.
+    var steps = d.script ? d.script.length : 0;
     return '<div class="drill-card" data-drill-id="' + d.id + '">' +
       '<button class="hud-icon-btn drill-card-edit-btn" data-drill-edit="' + d.id + '" title="Edit" type="button">✎</button>' +
       '<div class="drill-card-name">' + escapeHtml(d.name) + '</div>' +
