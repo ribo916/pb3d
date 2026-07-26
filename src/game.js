@@ -1756,7 +1756,9 @@ Game.prototype._executeSuper = function (p, fwd, at) {
   // whole point of a body bag. Pick the victim first, then solve the shot at
   // them; the blast marker uses the same player, so intent and outcome can't
   // disagree. Lateral input chooses WHICH opponent rather than a court spot.
-  var victim = this._pickSuperVictim(p, blend);
+  // `at.victim` (drill scripting only) pins a specific player instead of the
+  // auto-pick, so an authored "supersmash at P1" beat is deterministic.
+  var victim = (at && at.victim) || this._pickSuperVictim(p, blend);
   var spec = Shots.specV2('supersmash', C.KITCHEN, C.HALF_L);
   var targetX, targetZ;
   if (victim) {
@@ -1960,10 +1962,15 @@ Game.prototype._cpuHit = function (p) {
   }
   // Super smash: spend the meter and route through the shared executor so the
   // AI delivers an identical shot to the human's (including the blast marker).
-  if (shot.isSuper && p.power && p.power.armed) {
-    Power.spend(p.power);
+  // A scripted drill supersmash bypasses the armed-meter gate entirely (drills
+  // hardcode superMode:'off', so p.power never actually arms) — the script
+  // itself is the authorization; Power.spend on an unarmed/empty meter is a
+  // harmless no-op.
+  if (shot.isSuper && (firedScriptedShot || (p.power && p.power.armed))) {
+    if (p.power) Power.spend(p.power);
     this._executeSuper(p, fwd, {
-      aim: clamp(shot.target.x / (C.HALF_W * 0.92), -1, 1)
+      aim: clamp(shot.target.x / (C.HALF_W * 0.92), -1, 1),
+      victim: shot.victim
     });
     return;
   }

@@ -6,7 +6,8 @@
 import { TYPES as SHOT_TYPES } from '../../src/shots.js';
 import { state, activeSlots, opponentsOf } from './state.js';
 
-const SHAPE_TYPES = SHOT_TYPES.concat(['smash']); // smash is a real Shots profile, not in the auto-classified TYPES list
+// smash/supersmash/popup are real Shots profiles, not in the auto-classified TYPES list
+const SHAPE_TYPES = SHOT_TYPES.concat(['smash', 'supersmash', 'popup']);
 const PLAYER_BEHAVIORS = [
   { value: 'move', label: 'Move', desc: 'General repositioning.' },
   { value: 'recover', label: 'Recover', desc: 'Return to a useful base position after the shot.' },

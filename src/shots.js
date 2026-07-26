@@ -58,6 +58,16 @@ const PROFILES_V2 = {
   // automatic put-away. Its hang time is tuned against SUPER.STUN's total so a
   // doubles partner has time to cover; in singles there is nobody to cover.
   blastpop:   { apex: 3.60, depthFrac: 0.30, spinX: -0.5, spinY: 0, margin: 0.55, vMax: 8 },
+  // Popup — a forced weak return, not an AI-selectable intent (not in
+  // `TYPES`). Represents a receiver jammed by a drive/drip at their feet
+  // before reaching the kitchen: apex pinned at the stability system's own
+  // mishit ceiling (STABILITY.MISHIT_APEX_MAX_V2), so it lands in the smash
+  // zone regardless of the hitter's real contact quality — the same value
+  // Shots.apexForQualityV2 already caps an organically-mishit drop/drive at.
+  // Soft pace (vMax) and drop's kitchen-depth landing match a rushed reset
+  // attempt, not a real shot. Scriptable in drills as `shotType: 'popup'`,
+  // usually followed by a `smash`/`supersmash` beat.
+  popup:   { apex: STABILITY.MISHIT_APEX_MAX_V2, absZ: 'drop', spinX: -1.0, spinY: 0, margin: 0.26, vMax: 7 },
   erne:    { apex: 0.95, depthFrac: 0.35, spinX:  4.0, spinY: 0, margin: 0.05, vMax: 18, direct: true },
   atp:     { apex: 0.60, depthFrac: 0.55, spinX:  0.0, spinY: 3.0, margin: 0, vMax: 15, allowNet: true },
   feed:    { apex: 2.55, depthFrac: 0.55, spinX:  1.0, spinY: 0, margin: 0.20, vMax: 12 }

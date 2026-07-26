@@ -412,13 +412,24 @@ export function getScriptedShot(game, drillData, scriptIndex, hitterPlayer) {
   if (!landing) return null;
   var sp = Shots.specV2(entry.shotType, C.KITCHEN, C.HALF_L);
   var zSign = (hitterPlayer.team === 'near') ? -1 : 1;
+  var isSuper = entry.shotType === 'supersmash';
   return {
     target: { x: landing.x, z: landing.z * zSign },
     apex: sp.apex,
     margin: sp.margin,
     spin: { x: sp.spinX || 0, y: sp.spinY || 0, z: 0 },
     type: entry.shotType,
-    isSmash: entry.shotType === 'smash'
+    isSmash: entry.shotType === 'smash',
+    // Routes through game.js's real _executeSuper (blast/knockback/VFX), same
+    // as a live-play super — never just the plain specV2 trajectory. `victim`
+    // pins it to the beat's own authored `target` instead of _pickSuperVictim's
+    // auto-pick, so "supersmash at P1" is deterministic like every other beat.
+    // Only meaningful as a script[1+] forced response (there's no rally, and
+    // so no popup, for an opener to be attacking); scripting it as script[0]
+    // still fires but degrades to a plain driven shot with no spectacle,
+    // since fireOpeningShot calls _executeShotV2 directly, not _executeSuper.
+    isSuper: isSuper,
+    victim: isSuper ? receiverPlayer : undefined
   };
 }
 

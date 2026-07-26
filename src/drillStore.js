@@ -9,7 +9,10 @@ import { TYPES as SHOT_TYPES } from './shots.js';
 var COLS = 'ABCDEFGH';
 var X_STOPS = [-3.8, -3.048, -1.524, -0.508, 0.508, 1.524, 3.048, 3.8];
 var Z_STOPS = [-7.5, -6.706, -4.0, -2.134, -0.5, 0.5, 2.134, 4.0, 6.706, 7.5];
-var VALID_SHOT_TYPES = SHOT_TYPES.concat(['smash']);
+// smash/supersmash/popup are state-triggered in live play (never an
+// AI-selectable intent — see Shots.TYPES), but ARE valid to author directly
+// into a drill's `script` as a forced beat.
+var VALID_SHOT_TYPES = SHOT_TYPES.concat(['smash', 'supersmash', 'popup']);
 var VALID_PLAYER_BEHAVIORS = ['move', 'hold', 'shadow', 'recover', 'crash', 'retreat', 'switch', 'chase'];
 var VALID_ARRIVE_BY = ['none', 'bounce', 'contact', 'ball-contact', 'next-contact'];
 var ROW_RE = /^[0-9]+$/;
@@ -354,7 +357,14 @@ var _drills = null;
 // pure on-screen narration for the Steps
 // modal, describing what the drill's own AI/physics naturally produce — not
 // a script the engine follows. `shotType` is any of Shots.TYPES
-// ('drive'|'drop'|'dink'|'lob'|'speedup') plus 'smash'. `target` is always a
+// ('drive'|'drop'|'dink'|'lob'|'speedup') plus the state-triggered
+// 'smash'/'supersmash'/'popup'. `popup` forces a smash-height sitter
+// (see shots.js) regardless of contact quality — use it to script the
+// consequence of a drip/drive at someone's feet before a following
+// 'smash'/'supersmash' beat attacks it. `supersmash` fires the real blast/
+// knockback spectacle (drillDirector.js arms it through the same
+// _executeSuper path live play uses, targeting exactly the beat's named
+// `target`). `target` is always a
 // player slot (P1-P4) on the OPPOSING team from `hitter`; see validateDrill
 // above for the authoring constraints that come with that. `moves` (optional)
 // is a list of {player, to} movement cues that arm the instant this beat's
