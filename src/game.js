@@ -1189,7 +1189,9 @@ Game.prototype._moveCPU = function (p, dt) {
   // regardless of the x-zone rotation (see the matching override in
   // _checkContacts) — otherwise they'd stand there "not responsible" while
   // the ball sails past, and the scripted shot would strand the rep.
-  if (!drillCapped && this.drillForcedShot && this.drillForcedShot.hitter === p) responsible = true;
+  var drillForcedResponsible = !drillCapped && this.mode === 'drill' &&
+    this.drillForcedShot && this.drillForcedShot.hitter === p;
+  if (drillForcedResponsible) responsible = true;
   // Strategy dispatch is per-TEAM, not per-match: a solo drill-mode team
   // (2/3-player drill) plays singles.js's movement logic (full-court
   // coverage, no partner/lane assumptions) even though the match's overall
@@ -1205,6 +1207,16 @@ Game.prototype._moveCPU = function (p, dt) {
     incoming: incoming,
     prediction: pred,
     responsible: responsible,
+    // doubles.js's chooseMovement normally reads a high-peaking incoming ball
+    // as a weak "popup" and split-steps at the lane's default recovery spot
+    // instead of chasing it — a good read in real free-play, where a
+    // teammate can cover it. A drill's forced responsibility has no such
+    // safety net: the named receiver is the ONLY player _checkContacts will
+    // ever award this ball to (see the comment above), and a scripted `lob`
+    // is BY DESIGN a high peakY, so without this flag the popup read fires
+    // on every drill lob and leaves the receiver standing in place until
+    // the ball bounces (often too late to react at all).
+    drillForcedResponsible: drillForcedResponsible,
     servingTeam: this.match.server,
     opponents: this._opponentsFor(team),
     isReturner: this.state === STATE.RALLY && rally && rally.shots <= 1 && team !== this.match.server,

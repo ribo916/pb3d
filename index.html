@@ -1743,6 +1743,22 @@
     #scrDrillEdit .panel-title { font-family: var(--title-font); text-transform: var(--title-transform);
       font-weight: var(--title-weight); letter-spacing: var(--title-spacing); font-size: 12px; color: var(--accent); margin: 0 0 12px; }
     #scrDrillEdit .info-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+    /* Court + Script side by side (mirrors tools/drill-builder.html's own
+       .layout) — the two panels editors bounce between constantly while
+       authoring a shot; stacked with the whole screen scrolling between them
+       (the old layout) meant scrolling up/down on every single edit. The
+       script panel's height is synced to the court panel's real rendered
+       height (drillAdmin.js's ResizeObserver, same technique the standalone
+       builder uses) so it gets its own internal scroll instead of pushing
+       the footer Save/Delete/Test-Live row off screen. */
+    #scrDrillEdit .de-layout { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(280px, 1fr); gap: 16px; align-items: start; }
+    #scrDrillEdit .script-panel { display: flex; flex-direction: column; min-height: 0; overflow: hidden; height: var(--de-court-h, auto); }
+    #scrDrillEdit .de-script-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 6px; margin: 0 -6px 0 -2px; }
+    @media (max-width: 760px) {
+      #scrDrillEdit .de-layout { grid-template-columns: 1fr; }
+      #scrDrillEdit .script-panel { height: auto; overflow: visible; }
+      #scrDrillEdit .de-script-scroll { overflow: visible; }
+    }
     #scrDrillEdit label { display: block; font-size: 12px; color: var(--label); margin: 8px 0 4px; }
     #scrDrillEdit label:first-of-type { margin-top: 0; }
     #scrDrillEdit input[type=text], #scrDrillEdit textarea, #scrDrillEdit select {
@@ -2193,26 +2209,30 @@
         </div>
       </div>
 
-      <div class="panel court-panel">
-        <div class="picker-label" title="P3 and P4 are Team B, partners on the far side of the net">Far · Team B</div>
-        <div class="player-picker" id="dePickerFar"></div>
-        <div class="court-wrap">
-          <svg id="deCourt" viewBox="-6 -10 12 20" role="img" aria-label="Interactive pickleball court placement grid"></svg>
+      <div class="de-layout">
+        <div class="panel court-panel">
+          <div class="picker-label" title="P3 and P4 are Team B, partners on the far side of the net">Far · Team B</div>
+          <div class="player-picker" id="dePickerFar"></div>
+          <div class="court-wrap">
+            <svg id="deCourt" viewBox="-6 -10 12 20" role="img" aria-label="Interactive pickleball court placement grid"></svg>
+          </div>
+          <div class="player-picker" id="dePickerNear"></div>
+          <div class="picker-label" title="P1 and P2 are Team A, partners on the near side of the net">Near · Team A</div>
+          <div id="dePosReadout"></div>
         </div>
-        <div class="player-picker" id="dePickerNear"></div>
-        <div class="picker-label" title="P1 and P2 are Team A, partners on the near side of the net">Near · Team A</div>
-        <div id="dePosReadout"></div>
-      </div>
 
-      <div class="panel">
-        <div class="row de-script-header">
-          <h2 class="panel-title" id="deShotCount">0 shots</h2>
-          <button id="deOpenNarration" type="button" title="Edit the coaching notes shown with the drill">Narration (1)</button>
-        </div>
-        <div id="deScriptList"></div>
-        <div class="row" style="margin-top:8px">
-          <button id="deAddShot" type="button">+ Add shot</button>
-          <button id="deDupShot" type="button" title="Mirrors the hitter/receiver of the last shot">⟲ Duplicate last</button>
+        <div class="panel script-panel">
+          <div class="row de-script-header">
+            <h2 class="panel-title" id="deShotCount">0 shots</h2>
+            <button id="deOpenNarration" type="button" title="Edit the coaching notes shown with the drill">Narration (1)</button>
+          </div>
+          <div class="de-script-scroll">
+            <div id="deScriptList"></div>
+            <div class="row" style="margin-top:8px">
+              <button id="deAddShot" type="button">+ Add shot</button>
+              <button id="deDupShot" type="button" title="Mirrors the hitter/receiver of the last shot">⟲ Duplicate last</button>
+            </div>
+          </div>
         </div>
       </div>
 

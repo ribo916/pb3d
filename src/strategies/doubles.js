@@ -43,7 +43,12 @@ export function chooseMovement(ai, ball, rally, ctx) {
   var incoming = ctx.incoming;
 
   if (pred && ctx.responsible) {
-    var isPopup = (pred.peakY != null) && pred.peakY >= 2.0;
+    // A drill's forced responsibility (ctx.drillForcedResponsible) always
+    // chases the real predicted landing — see game.js's _moveCPU for why a
+    // high-peaking ball (any `lob`, or an organic mishit pop-up on a
+    // scripted shot) must never fall back to the lane's default recovery
+    // spot the way genuine free-play's partner-covers-it read does.
+    var isPopup = !ctx.drillForcedResponsible && (pred.peakY != null) && pred.peakY >= 2.0;
     if (!isPopup) {
       tx = pred.x;
       tz = pred.z + fwd * 0.25;

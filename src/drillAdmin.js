@@ -195,6 +195,23 @@ function ensureInit() {
   playerGroup = buildCourt(svg);
   attachCourtClicks(svg, function () { renderScript(onChange, $('deScriptList')); onChange(); });
 
+  // Side-by-side court/script layout (index.html's .de-layout) sizes the
+  // script panel to match the court panel's real rendered height — same
+  // technique tools/drill-builder/main.js uses for its own .layout — so the
+  // shot list scrolls internally instead of pushing the Save/Delete/Test-Live
+  // footer off screen. Its own document (this in-app editor lives in
+  // index.html, the standalone builder in tools/drill-builder.html), so
+  // reusing the --de-court-h custom property name here can't collide with it.
+  var courtPanel = document.querySelector('#scrDrillEdit .court-panel');
+  function syncCourtHeight() {
+    document.documentElement.style.setProperty('--de-court-h', courtPanel.getBoundingClientRect().height + 'px');
+  }
+  if (typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(syncCourtHeight).observe(courtPanel);
+  } else {
+    window.addEventListener('resize', syncCourtHeight);
+  }
+
   $('deAddShot').addEventListener('click', function () {
     var last = state.script[state.script.length - 1];
     var hitter = last ? last.target : 'P1';

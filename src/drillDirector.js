@@ -145,6 +145,19 @@ export function resetRep(game, drillData) {
     p.stun = Power.makeStun();
   });
   game.ball.live = false;
+  // Park the ball at the opener's hitting hand from the very first frame of
+  // Setup, matching exactly where fireOpeningShot's own _executeShotV2 call
+  // will launch it from. Without this the ball sits wherever Physics.makeBall()
+  // (or the previous rep) last left it — visibly a stale, unrelated position
+  // on screen — until fireOpeningShot's assignment snaps it to the hitter the
+  // instant SETUP_HOLD elapses, reading as a sudden unexplained jump.
+  var opener = ((drillData && drillData.script) || [])[0];
+  var openerHitter = opener && resolvePlayer(game, opener.hitter);
+  if (openerHitter) {
+    game.ball.pos.x = openerHitter.pos.x;
+    game.ball.pos.y = 0.9;
+    game.ball.pos.z = openerHitter.pos.z;
+  }
 
   // Reps never accumulate real score — a long drill session should never be
   // able to trip a real match.gameOver.
