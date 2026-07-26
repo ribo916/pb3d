@@ -11,7 +11,7 @@ import { preloadAssetPack, assetStatusSummary } from './assets.js';
 import { CHARACTERS, DEFAULT_ROSTER, DRILL_ROSTER, getCharacter, resolveSlotCharacter } from './characters.js';
 import { makeCharacterPreview } from './characterPreview.js';
 import { normalizeMode } from './modes.js';
-import { loadDrills, normalizeDrill, activeSlotsOf } from './drillStore.js';
+import { loadDrills, normalizeDrill, activeSlotsOf, isPlayerCountTag } from './drillStore.js';
 import { openNewDrill, openEditDrill } from './drillAdmin.js';
 import { SLOT_INFO } from './drillDirector.js';
 import * as Power from './power.js';
@@ -969,16 +969,35 @@ document.addEventListener('keydown', function (e) {
 // ---- Drills wiring ----
 $('drillsBtn').addEventListener('click', function () { goToFlow('drills'); });
 
+// Favorites are a personal/local preference, not part of a drill's saved
+// data (they're not sent to /api/drills) — plain localStorage is enough and
+// avoids a schema/server round trip for something this lightweight.
+var FAV_DRILLS_KEY = 'pb3dFavoriteDrills';
+var favoriteDrillIds = (function () {
+  try {
+    var arr = JSON.parse(localStorage.getItem(FAV_DRILLS_KEY) || '[]');
+    return Array.isArray(arr) ? arr : [];
+  } catch (e) { return []; }
+})();
+function isDrillFavorite(id) { return favoriteDrillIds.indexOf(id) !== -1; }
+function toggleDrillFavorite(id) {
+  var idx = favoriteDrillIds.indexOf(id);
+  if (idx === -1) favoriteDrillIds.push(id); else favoriteDrillIds.splice(idx, 1);
+  try { localStorage.setItem(FAV_DRILLS_KEY, JSON.stringify(favoriteDrillIds)); } catch (e) {}
+}
+
 // Library state: all() drills fetched once per screen-entry, then filtered
 // client-side by name search + selected tags so typing/toggling stays instant.
-var drillLibState = { drills: [], search: '', tags: [] };
+var drillLibState = { drills: [], search: '', tags: [], favoritesOnly: false };
 
 function renderDrillLibrary() {
   var list = $('drillCardList');
   list.innerHTML = '<div class="drill-lib-empty">Loading…</div>';
+  $('drillQuickFilters').innerHTML = '';
   $('drillTagRow').innerHTML = '';
   drillLibState.search = '';
   drillLibState.tags = [];
+  drillLibState.favoritesOnly = false;
   $('drillSearchInput').value = '';
   $('drillSearchClear').hidden = true;
   loadDrills().then(function (drills) {
@@ -988,15 +1007,37 @@ function renderDrillLibrary() {
   });
 }
 
+// Favorites and player-count ("2-player" etc.) are still ordinary tags
+// under the hood — drillMatchesFilters/drillLibState.tags treat them no
+// differently — but with dozens of freeform content tags in the same row
+// they were easy to miss, so they get their own "quick filters" row and a
+// bolder chip style instead of blending into the alphabetical tag list.
 function renderDrillTagFilters() {
+  var quickRow = $('drillQuickFilters');
   var row = $('drillTagRow');
   var seen = {};
   var tags = [];
   drillLibState.drills.forEach(function (d) {
     (d.tags || []).forEach(function (t) { if (!seen[t]) { seen[t] = true; tags.push(t); } });
   });
-  tags.sort(function (a, b) { return a.localeCompare(b); });
-  row.innerHTML = tags.map(function (t) {
+  var playerCountTags = tags.filter(isPlayerCountTag).sort(function (a, b) {
+    return parseInt(a, 10) - parseInt(b, 10);
+  });
+  var otherTags = tags.filter(function (t) { return !isPlayerCountTag(t); })
+    .sort(function (a, b) { return a.localeCompare(b); });
+
+  var favActive = drillLibState.favoritesOnly;
+  var favChip = '<button type="button" class="drill-tag-chip drill-quick-chip drill-fav-chip' + (favActive ? ' active' : '') +
+    '" data-fav-toggle="1" title="Show only your favorited drills">' + (favActive ? '♥' : '♡') + ' Favorites</button>';
+  var playerChips = playerCountTags.map(function (t) {
+    var active = drillLibState.tags.indexOf(t) !== -1;
+    var n = t.split('-')[0];
+    return '<button type="button" class="drill-tag-chip drill-quick-chip' + (active ? ' active' : '') + '" data-tag="' +
+      escapeHtml(t) + '">' + escapeHtml(n) + ' Player' + (n === '1' ? '' : 's') + '</button>';
+  }).join('');
+  quickRow.innerHTML = favChip + playerChips;
+
+  row.innerHTML = otherTags.map(function (t) {
     var active = drillLibState.tags.indexOf(t) !== -1;
     return '<button type="button" class="drill-tag-chip' + (active ? ' active' : '') + '" data-tag="' +
       escapeHtml(t) + '">' + escapeHtml(t) + '</button>';
@@ -1010,6 +1051,7 @@ function drillMatchesFilters(d) {
     var dTags = d.tags || [];
     if (!drillLibState.tags.some(function (t) { return dTags.indexOf(t) !== -1; })) return false;
   }
+  if (drillLibState.favoritesOnly && !isDrillFavorite(d.id)) return false;
   return true;
 }
 
@@ -1022,6 +1064,9 @@ function renderDrillCards() {
     return;
   }
   var filtered = all.filter(drillMatchesFilters);
+  // Stable sort (spec-guaranteed since ES2019): favorited cards float to the
+  // top while preserving whatever order they'd otherwise appear in.
+  filtered.sort(function (a, b) { return (isDrillFavorite(b.id) ? 1 : 0) - (isDrillFavorite(a.id) ? 1 : 0); });
   $('drillLibCount').textContent = filtered.length + ' of ' + all.length + ' drill' + (all.length !== 1 ? 's' : '');
   list.innerHTML = filtered.map(function (d) {
     var tags = (d.tags || []).map(function (t) {
@@ -1031,7 +1076,10 @@ function renderDrillCards() {
     // (see loadIntoState in drillAdmin.js), so counting only narrated steps
     // understated drills that were authored without per-step captions.
     var steps = d.script ? d.script.length : 0;
+    var fav = isDrillFavorite(d.id);
     return '<div class="drill-card" data-drill-id="' + d.id + '">' +
+      '<button class="hud-icon-btn drill-card-fav-btn' + (fav ? ' active' : '') + '" data-drill-fav="' + d.id +
+        '" title="' + (fav ? 'Remove from favorites' : 'Add to favorites') + '" type="button">' + (fav ? '♥' : '♡') + '</button>' +
       '<button class="hud-icon-btn drill-card-edit-btn" data-drill-edit="' + d.id + '" title="Edit" type="button">✎</button>' +
       '<div class="drill-card-name">' + escapeHtml(d.name) + '</div>' +
       '<div class="drill-card-steps">' + steps + ' step' + (steps !== 1 ? 's' : '') + '</div>' +
@@ -1053,7 +1101,16 @@ $('drillSearchClear').addEventListener('click', function () {
   renderDrillCards();
   $('drillSearchInput').focus();
 });
-$('drillTagRow').addEventListener('click', function (e) {
+// Shared by both filter rows (#drillQuickFilters and #drillTagRow) — same
+// chip behavior, just a different visual grouping of which tags render where.
+function onDrillFilterRowClick(e) {
+  var favBtn = e.target.closest('[data-fav-toggle]');
+  if (favBtn) {
+    drillLibState.favoritesOnly = !drillLibState.favoritesOnly;
+    renderDrillTagFilters();
+    renderDrillCards();
+    return;
+  }
   var chip = e.target.closest('[data-tag]');
   if (!chip) return;
   var tag = chip.getAttribute('data-tag');
@@ -1061,7 +1118,9 @@ $('drillTagRow').addEventListener('click', function (e) {
   if (idx === -1) drillLibState.tags.push(tag); else drillLibState.tags.splice(idx, 1);
   renderDrillTagFilters();
   renderDrillCards();
-});
+}
+$('drillQuickFilters').addEventListener('click', onDrillFilterRowClick);
+$('drillTagRow').addEventListener('click', onDrillFilterRowClick);
 
 $('newDrillBtn').addEventListener('click', function () {
   loadDrills().then(function (drills) {
@@ -1071,6 +1130,13 @@ $('newDrillBtn').addEventListener('click', function () {
 });
 
 $('drillCardList').addEventListener('click', function (e) {
+  var favBtn = e.target.closest('[data-drill-fav]');
+  if (favBtn) {
+    e.stopPropagation();
+    toggleDrillFavorite(favBtn.getAttribute('data-drill-fav'));
+    renderDrillCards();
+    return;
+  }
   var editBtn = e.target.closest('[data-drill-edit]');
   if (editBtn) {
     e.stopPropagation();

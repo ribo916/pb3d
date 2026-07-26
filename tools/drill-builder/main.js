@@ -5,7 +5,7 @@
 // / Test Live / Save), and the help/JSON modals. Court rendering lives in
 // court-svg.js, the per-step editor in step-view.js, shared state in state.js.
 
-import { validateDrill, TEAM_OF, DEFAULT_DRILLS, createDrill } from '../../src/drillStore.js';
+import { validateDrill, normalizeDrill, stripPlayerCountTag, TEAM_OF, DEFAULT_DRILLS, createDrill } from '../../src/drillStore.js';
 import {
   state, activeSlots, opponentsOf, isIncluded, setSlotIncluded, computeStepPositions,
   loadDrillIntoState, ALL_SLOTS, SLOT_CLASS, ANCHOR_SLOTS
@@ -223,8 +223,12 @@ renderCourt();
 revalidate();
 
 // ---- drill object assembly (shared by JSON export + live test) ----
+// normalizeDrill (besides its usual position/script resolution, a no-op
+// here since state already stores resolved {x,z}) injects the correct
+// N-player tag from the active roster — the author never types it, and
+// wrapping it here means Test Live/Save/Export JSON all get it identically.
 function buildDrill() {
-  return {
+  return normalizeDrill({
     id: 'drill-' + document.getElementById('fName').value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
     name: document.getElementById('fName').value,
     players: activeSlots().length,
@@ -264,7 +268,7 @@ function buildDrill() {
     // live game's UI still only shows narration that's actually there.
     steps: [state.steps[0] || { title: 'Setup', desc: '' }]
       .concat(state.script.map(s => ({ title: s.title || '', desc: s.desc || '' })))
-  };
+  });
 }
 
 document.getElementById('testLive').addEventListener('click', () => {
@@ -362,7 +366,7 @@ document.getElementById('importGo').addEventListener('click', () => {
   document.getElementById('fName').value = drill.name || '';
   document.getElementById('fDesc').value = drill.desc || '';
   document.getElementById('fGoal').value = drill.goal || '';
-  document.getElementById('fTags').value = (drill.tags || []).join(', ');
+  document.getElementById('fTags').value = stripPlayerCountTag(drill.tags).join(', ');
   importModal.classList.remove('active');
   renderPicker();
   clampStepIndex();

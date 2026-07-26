@@ -15,7 +15,7 @@
 // standalone builder's same patterns — "Export JSON" opens #deJsonModal with
 // the same buildDrill() this screen already uses to save.
 
-import { validateDrill, TEAM_OF, createDrill, updateDrill, deleteDrill } from './drillStore.js';
+import { validateDrill, normalizeDrill, stripPlayerCountTag, TEAM_OF, createDrill, updateDrill, deleteDrill } from './drillStore.js';
 import {
   state, activeSlots, opponentsOf, isIncluded, setSlotIncluded, computeStepPositions,
   resetState, loadDrillIntoState, ALL_SLOTS, SLOT_CLASS, ANCHOR_SLOTS
@@ -36,7 +36,11 @@ function slugify(name) {
 
 function buildDrill() {
   var name = $('deFName').value;
-  return {
+  // normalizeDrill (besides its usual position/script resolution, a no-op
+  // here since state already stores resolved {x,z}) injects the correct
+  // N-player tag from the active roster — the author never types it, and
+  // wrapping it here means Save/Test Live/Export JSON all get it identically.
+  return normalizeDrill({
     id: editingId || slugify(name),
     name: name,
     players: activeSlots().length,
@@ -61,7 +65,7 @@ function buildDrill() {
     steps: [state.steps[0] || { title: 'Setup', desc: '' }].concat(
       state.script.map(function (s) { return { title: s.title || '', desc: s.desc || '' }; })
     )
-  };
+  });
 }
 
 function drillProblems() {
@@ -360,7 +364,7 @@ function ensureInit() {
     $('deFName').value = drill.name || '';
     $('deFDesc').value = drill.desc || '';
     $('deFGoal').value = drill.goal || '';
-    $('deFTags').value = (drill.tags || []).join(', ');
+    $('deFTags').value = stripPlayerCountTag(drill.tags).join(', ');
     $('deImportModal').classList.remove('active');
     renderAll();
     var status = $('deStatus');
@@ -396,7 +400,7 @@ export function openEditDrill(drill, drills) {
   $('deFName').value = drill.name || '';
   $('deFDesc').value = drill.desc || '';
   $('deFGoal').value = drill.goal || '';
-  $('deFTags').value = (drill.tags || []).join(', ');
+  $('deFTags').value = stripPlayerCountTag(drill.tags).join(', ');
   $('deStatus').textContent = '';
   renderAll();
 }

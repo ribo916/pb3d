@@ -18,6 +18,41 @@ var VALID_ARRIVE_BY = ['none', 'bounce', 'contact', 'ball-contact', 'next-contac
 var ROW_RE = /^[0-9]+$/;
 var MIN_PLAYER_SPACING = 0.35;
 
+// Player-count tags (e.g. "2-player") are derived from the roster, never
+// author-entered — normalizeDrill below injects the correct one on every
+// load/save/export path. Kept as an ordinary tag (not a separate field) so
+// the Drills library's existing tag-filter UI can filter by player count
+// for free, with no separate UI needed.
+var PLAYER_COUNT_TAG_RE = /^[0-9]+-player$/;
+
+export function playerCountTag(n) {
+  return n + '-player';
+}
+
+// Strips any existing N-player tag and appends the correct one for the
+// given roster size — idempotent, so calling it again with an
+// already-tagged list just re-confirms the same tag.
+export function withPlayerCountTag(tags, activeCount) {
+  var kept = (tags || []).filter(function (t) { return !PLAYER_COUNT_TAG_RE.test(t); });
+  kept.push(playerCountTag(activeCount));
+  return kept;
+}
+
+// Used only when populating the editable Tags text field (the standalone
+// builder and in-app editor) — strips the derived tag so it never shows up
+// as something an author could hand-edit or duplicate; normalizeDrill
+// re-derives it on every save regardless of what that field contains.
+export function stripPlayerCountTag(tags) {
+  return (tags || []).filter(function (t) { return !PLAYER_COUNT_TAG_RE.test(t); });
+}
+
+// Lets the Drills library UI single out player-count tags to render as
+// their own quick-filter row instead of mixing them into the general tag
+// list — same underlying tag string, just a different display grouping.
+export function isPlayerCountTag(tag) {
+  return PLAYER_COUNT_TAG_RE.test(tag);
+}
+
 // Returns `null` (not a fallback coordinate) for anything malformed — a
 // caller that gets `{x:0,z:0}` back from a typo can't tell "the drill wants
 // the net" from "the input was garbage." Column letter is accepted case-
@@ -102,10 +137,17 @@ export function normalizeDrill(drill) {
     step = step || {};
     return { title: step.title, desc: step.desc };
   });
+  var startPositions = normalizePositions(drill.startPositions);
+  // activeSlotsOf is defined further down this module but hoisted (function
+  // declaration), so it's callable here safely — by the time normalizeDrill
+  // actually runs (module load or later), the whole module has finished
+  // evaluating, so TEAM_OF (which activeSlotsOf reads) is already populated.
+  var activeCount = activeSlotsOf({ startPositions: startPositions }).length;
   return Object.assign({}, drill, {
-    startPositions: normalizePositions(drill.startPositions),
+    startPositions: startPositions,
     script: normalizeScript(drill.script),
-    steps: steps
+    steps: steps,
+    tags: withPlayerCountTag(drill.tags, activeCount)
   });
 }
 
