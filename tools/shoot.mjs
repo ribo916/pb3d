@@ -134,7 +134,7 @@ async function captureCharacterScreen() {
 
   // Cycle every character tile on the first slot (P1 / You), screenshotting the
   // live preview so the selectable GLBs get loaded and visually checked at once.
-  const ids = ['ch01', 'ch03', 'ch04', 'ch06', 'ch07', 'ch08', 'ch09', 'ch10', 'ch11', 'ch12', 'ch14', 'ch15'];
+  const ids = ['ch01', 'ch03', 'ch04', 'ch06', 'ch07', 'ch08', 'ch09', 'ch10', 'ch11', 'ch12', 'ch14', 'ch15', 'ch18'];
   for (const id of ids) {
     await page.click(`#flowCharGrid [data-character-id="${id}"]`);
     await waitForCharacterPreview();

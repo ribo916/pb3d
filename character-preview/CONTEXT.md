@@ -15,7 +15,109 @@ re-derive any of it from scratch.
 
 ## READ THIS FIRST — status as of the end of the last session
 
-**Current Codex pass — READY elbows moved forward/down in preview only.** Kept
+**Latest session — `ch16`/`ch17` ("Kai"/"Zane") REMOVED after visual review;
+`ch18` ("Remy") kept.** The session below imported all three, then dug into a
+user report that several characters' shoulders looked "pointed and gargoyle
+like... like an M with their head in the middle" in the ready stance. That
+investigation (documented in full below, including several dead ends worth
+reading before repeating them) root-caused it to the **hair mesh rendering
+detached from the head** during the shared locomotion clips — confirmed
+roster-wide (also reproduced on `ch06`/`ch08`/`ch14`/`ch18`, not just the
+newly-imported characters), but the exact mechanism was NOT pinned down
+despite extensive effort — several promising leads (skin-quantization
+bounds, shared inverseBindMatrices, JOINTS/WEIGHTS quantization) were ruled
+out one at a time, and the investigation ultimately stalled on a discrepancy
+between CPU-side (`applyBoneTransform`) reproduction and the actual GPU
+render that was never resolved. Given the defect is real but the fix is not
+yet understood, the user's call: **drop `ch16`/`ch17` entirely** (their hair
+was the most visually offensive against their specific hair color/hoodie
+combination) **and keep `ch18`** (same underlying defect, but far less
+visually objectionable on Remy's hair/outfit). `ch16`/`ch17`'s manifest
+entries, `src/characters.js` entries, GLBs, and portraits were all removed;
+`ch18` and its two manifest fixes (`playerOffset`, `paddleSocketScale`) were
+kept. **The hair-detachment bug itself is still unfixed and still present on
+`ch18` and the rest of the roster** — it was just not severe enough on the
+kept characters to block shipping. If picking this back up, start from the
+mesh-visibility-isolation method (hide every SkinnedMesh except the
+suspected one, screenshot, repeat) — it was the only fully reliable
+technique in the whole investigation; treat any file-level `gltf-transform`
+analysis or CPU-side skinning math with suspicion until cross-verified
+against an actual rendered screenshot, per the dead-ends documented below.
+
+**Previous session — 3 new characters imported (`ch16`/`ch17`/`ch18` = Kai/Zane/
+Remy), from user-supplied FBX rather than fresh mixamo.com downloads.** Same
+pipeline as always (`blender-fbx-to-gltf.py` character mode →
+`build-mixamo-character.mjs` → `validate-player-glb.mjs` → manifest/characters
+wiring); Blender wasn't installed on this machine and was added via
+`brew install --cask blender` (5.2.0 LTS) to run it. `ch16`/`ch17` calibrated
+identically to the rest of the roster (facing +Z, playerScale ~1, standard
+`paddleSocketScale: 100`) with no surprises. `ch18` (Remy) was NOT a clean
+drop-in and is worth reading closely before importing another non-Mixamo-
+native asset:
+- Its raw bind-pose height measured **3.78m** — roughly double every other
+  character's raw scale (which ranged 1.36–2.12m). `playerScale` still just
+  divides that down to the usual ~1.8m target (`0.48`), same formula as
+  always.
+- But the shared `pickleball-locomotion.glb` idle clip, applied onto that
+  ~2x-oversized skeleton, sank the Hips **~0.43m** below where the identical
+  clip puts them on a normal-scale character — confirmed by directly reading
+  live `mixamorigHips`/`mixamorigLeftFoot` world positions on `ch16` vs
+  `ch18` after the same `player.update()` + `mixer.update(0.15)` warm-up
+  (`ch16` hips landed at world y=0.815, `ch18` at y=0.387; feet showed the
+  same ~0.43m gap) — not a pose distortion (leg length end-to-end was nearly
+  identical between the two), a uniform vertical sink. Likely cause: the
+  shared clip's Hips position track carries an absolute delta baked against
+  genuine Mixamo-scale rigs, which doesn't scale correctly onto a skeleton
+  authored at a very different absolute size. **Fixed with a measured
+  `playerOffset: [0, 0.43, 0]`** on just that manifest entry — deliberately
+  NOT by touching the shared clip file or the retarget pipeline, since that
+  risks every other character and this is fully explained as a per-character
+  scale mismatch.
+- Separately, `paddleSocketScale: 100` (the constant reused unchanged by
+  every character since `ch12`) is only correct because it exactly cancels
+  the fixed 0.01 Armature-wrapper scale when `playerScale` is near 1 — the
+  real relationship is `paddleSocketScale = 100 / playerScale`. Never
+  surfaced before because every prior character's `playerScale` sat in the
+  0.85–1.22 band; `ch18`'s outlier `0.48` made the paddle render at roughly
+  half size until corrected to `208.33` (confirmed by directly measuring
+  `paddle_socket`'s world-space scale via `matrixWorld.decompose()`).
+- Both numbers were found by instrumenting the REAL runtime path
+  (`makePlayer()` from `src/players.js`, driven headlessly through Playwright
+  against the actual dev server, not a standalone reproduction) — a static
+  offline GLB inspection (like `validate-player-glb.mjs` runs) can't see
+  either bug, since both only manifest once the shared animation clip and
+  manifest scale are actually applied together at runtime. If a future
+  character import looks visually fine standing still but wrong once
+  idle/run animation plays, or has an invisible/mis-sized paddle, measure the
+  live posed skeleton and `paddle_socket` world transform the same way before
+  assuming new retarget math is needed.
+- The static portrait thumbnails (`assets/images/portraits/*.png`, baked by
+  `tools/generate-portraits.mjs` / `bakePortrait()` in `src/main.js`) use
+  `characterPreview.js`'s `frameCamera()`, which sizes the camera from a
+  bounding box computed on the SAME posed skeleton — so the Hips-sink bug
+  above was also silently breaking `ch18`'s portrait framing (character
+  rendered tiny, floating near the bottom of the thumbnail) before the
+  `playerOffset` fix; it self-resolved once the pose was corrected, no
+  separate framing fix was needed.
+- **A THIRD, separate bug — the standalone `character-preview/` tool itself
+  (this folder's `main.js`, distinct from `src/characterPreview.js` above)
+  never applied ANY manifest `playerScale`/`playerOffset`/`playerRotation` for
+  ANY character** — `activateCharacter()` added the raw loaded GLTF `scene`
+  straight into the scene graph at native scale/origin. Invisible for the
+  original 12 (all close enough to native ~1x scale that it didn't matter
+  visually) but made `ch18` render at literally 2x intended height — reported
+  by the user as "half in the ground, crotch where other players' feet are."
+  Fixed by applying `playerScale`/`playerRotation` the same way
+  `src/players.js`'s `configureAuthoredModel()` does. **`playerOffset`
+  specifically has to be applied AFTER `frameCameraToObject()`, not before**:
+  that call's `frameCameraToBounds()` grounds the object at y=0 from its OWN
+  freshly-measured bind-pose box (`object.position.y -= box.min.y`) as a
+  matter of course for every character, regardless of authored origin — set
+  `playerOffset` before that call and it's silently overwritten. Verified
+  across all 15 characters (scale + grounded bounds all read sane, zero
+  console errors) via a throwaway Playwright driver, not left in the repo.
+
+**Previous Codex pass — READY elbows moved forward/down in preview only.** Kept
 `Steel_Idle_PreJump_ReadyPose__steelmanny.FBX` and the existing
 `mirrorRightLegOntoLeft()` crouch fix, but added a second `tp-ready`-only
 post-process in `main.js`: `pushReadyArmsForward()`. It rewrites the
@@ -308,12 +410,13 @@ Files:
   `src/assets.js` for the one asset that loader doesn't cover (the
   `pickleball-swings.glb` swing-clip library, fetched eagerly at page load
   since it's small and always relevant).
-- `assets/models/players/mixamo/*.glb` — the 12 shipped, optimized character
-  assets (`ch01`, `ch03`, `ch04`, `ch06`–`ch12`, `ch14`, `ch15`; 0.2-1.7MB each;
-  see `tools/build-mixamo-character.mjs`),
+- `assets/models/players/mixamo/*.glb` — the 13 shipped, optimized character
+  assets (`ch01`, `ch03`, `ch04`, `ch06`–`ch12`, `ch14`, `ch15`, `ch18`;
+  0.2-1.9MB each; see `tools/build-mixamo-character.mjs`; `ch16`/`ch17` were
+  imported and then removed in the same session, see "READ THIS FIRST"),
   the SAME files (one common location, not duplicated) wired into the real
   game's `assets/manifest.js` as `player-ch01-v1`, `player-ch03-v1`, … through
-  `player-ch15-v1`.
+  `player-ch18-v1`.
   `assets/animations/pickleball-swings.glb` is the shared 0.07MB
   forehand/backhand/overhead swing-clip library, and
   `assets/animations/pickleball-locomotion.glb` the shared 0.14MB

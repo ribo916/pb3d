@@ -188,6 +188,37 @@ export const ASSET_MANIFEST = {
       paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 100,
       syncPrimitiveArms: false,
       customizable: false, optional: true
+    },
+    {
+      // Source: Remy.fbx, user-supplied (not a mixamo.com download), same
+      // Blender + build-mixamo-character.mjs pipeline and calibration method
+      // as the rest of the roster. Facing measured via
+      // `node tools/validate-player-glb.mjs` (toe-vs-foot +Z, no rotation
+      // correction needed). Two sibling imports from the same session
+      // (Ch08_nonPBR/"Kai", Ch38_nonPBR/"Zane") were removed after visual
+      // review -- see character-preview/CONTEXT.md.
+      // bind-pose height measured at 3.78m (roughly 2x the rest of the
+      // roster, a real per-source unit-scale difference, not a build bug --
+      // confirmed by width scaling proportionally too).
+      // playerOffset.y=0.43 corrects a measured hip/root sink during the
+      // shared 'idle' locomotion clip specific to this character (hips
+      // landed at world y=0.387 vs a normal-scale character's ~0.815 for the
+      // same clip -- a uniform ~0.43m sink, not a pose/leg-length distortion,
+      // most likely because the shared clip's
+      // Hips track carries an absolute vertical delta calibrated against
+      // genuine Mixamo-scale rigs, and this character's raw skeleton is
+      // authored at ~2x that scale before playerScale is applied). paddle_
+      // socket's world scale is playerScale * the fixed 0.01 Armature-wrapper
+      // scale (see paddleSocketScale comment above), so the standard 100x
+      // compensation under-sizes the paddle at this character's much lower
+      // playerScale -- 100 / 0.48 corrects it back to real-world size.
+      key: 'player-ch18-v1', label: 'Mixamo character (ch18)',
+      url: '/assets/models/players/mixamo/ch18.glb', scope: 'player',
+      fallbackKey: 'player-ch01-v1', playerScale: 0.48, playerOffset: [0, 0.43, 0],
+      playerRotation: [0, 0, 0], paddleSocketOffset: [0, 0, 0],
+      paddleSocketRotation: [Math.PI, 0, 0], paddleSocketScale: 208.33,
+      syncPrimitiveArms: false,
+      customizable: false, optional: true
     }
   ],
   textures: [

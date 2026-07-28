@@ -34,7 +34,8 @@ export const CHARACTERS = [
   { id: 'ch11', playerModelKey: 'player-ch11-v1', label: 'Wren', swatch: 0xda77f2, persona: 'defensive', voice: 'girl' },
   { id: 'ch12', playerModelKey: 'player-ch12-v1', label: 'Beau', swatch: 0xf06595, persona: 'banger', voice: 'boy' },
   { id: 'ch14', playerModelKey: 'player-ch14-v1', label: 'Piper', swatch: 0xe8590c, persona: 'defensive', voice: 'girl' },
-  { id: 'ch15', playerModelKey: 'player-ch15-v1', label: 'Skye', swatch: 0x20c997, persona: 'balanced', voice: 'girl' }
+  { id: 'ch15', playerModelKey: 'player-ch15-v1', label: 'Skye', swatch: 0x20c997, persona: 'balanced', voice: 'girl' },
+  { id: 'ch18', playerModelKey: 'player-ch18-v1', label: 'Remy', swatch: 0xae3ec9, persona: 'balanced', voice: 'boy' }
 ];
 
 export function getCharacter(id) {

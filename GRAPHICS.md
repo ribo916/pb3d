@@ -20,9 +20,9 @@ merged to `master`. The game now has:
 - The gendered Quaternius-customization roster (`player-male-v1`/
   `player-female-v1`, gender/hair/hair-color/facial-hair/shirt-color/
   pants-color picker) has been **fully retired**. All 4 roster slots now pick
-  one of the 12 active Mixamo characters (`ch01`, `ch03`, `ch04`, `ch06`-`ch12`,
-  `ch14`, `ch15` — there is intentionally no `ch02`/`ch05`/`ch13`) via a
-  fighting-game-style
+  one of the 13 active Mixamo-pipeline characters (`ch01`, `ch03`, `ch04`,
+  `ch06`-`ch12`, `ch14`, `ch15`, `ch18` — there is intentionally no
+  `ch02`/`ch05`/`ch13`/`ch16`/`ch17`) via a fighting-game-style
   picker (see "Mixamo Character Pipeline" below) — no per-character cosmetic
   customization exists anymore; each Mixamo GLB renders with its own imported
   look untouched (`customizable: false`). The `player-male-v1`/
@@ -109,8 +109,8 @@ assets/
   models/
     players/
       mixamo/
-        ch01, ch03, ch04, ch06-ch12, ch14, ch15 .glb
-                                     (12 active; no ch02/ch05/ch13)
+        ch01, ch03, ch04, ch06-ch12, ch14, ch15, ch18 .glb
+                                     (13 active; no ch02/ch05/ch13/ch16/ch17)
     venues/
       park-props.glb
       tropical-props.glb
@@ -128,9 +128,22 @@ Important contracts:
 - `assets/manifest.js` is the runtime slot map.
 - The active selectable player slots are `player-ch01-v1`, `player-ch03-v1`,
   `player-ch04-v1`, `player-ch06-v1` through `player-ch12-v1`, `player-ch14-v1`,
-  and `player-ch15-v1` — 12 in all, resolved from `src/characters.js`
-  (`ch02`/`ch05`/`ch13` are intentionally absent). Non-`ch01` slots fall back to
-  `player-ch01-v1` if their GLB is absent or fails to load.
+  `player-ch15-v1`, and `player-ch18-v1` — 13 in all, resolved from
+  `src/characters.js` (`ch02`/`ch05`/`ch13` are intentionally absent).
+  `ch18` (Remy) was imported from a user-supplied FBX rather than
+  mixamo.com directly, and needed two per-character manifest corrections
+  beyond the usual playerScale calibration — see its comment in
+  `assets/manifest.js` (a measured `playerOffset.y` fixing a ~0.43m hip sink
+  during the shared idle clip, and a recalculated `paddleSocketScale` since
+  the standard `100` value assumes `playerScale` near 1, which doesn't hold
+  at `ch18`'s 0.48). Two sibling imports from the same session (`ch16`/`ch17`,
+  "Kai"/"Zane") were removed after visual review found their hair meshes
+  rendering visibly detached from the head in the ready stance (a roster-wide
+  bug in the shared animation pipeline that also affects `ch18` and others,
+  but was far more visually jarring on their specific hair color/style — see
+  character-preview/CONTEXT.md's "READ THIS FIRST" for the open
+  investigation). Non-`ch01` slots fall back to `player-ch01-v1` if their GLB
+  is absent or fails to load.
 - `src/assets.js` loads optional GLB assets and provides fallback-safe access.
 - Optional entries should stay optional until their procedural fallback has been
   replaced and verified.
@@ -278,18 +291,44 @@ there is no separate dev-server process anymore. Status summary:
   tiles, and the not-yet-shipped `hit_react` state (needs gameplay hooks,
   not just a clip). Full tracked list:
   `character-preview/CONTEXT.md`'s "Open TODOs" section.
-- **Licensing is resolved.** The 12 characters are confirmed Mixamo content,
-  free for unlimited commercial use (checked against Adobe's current terms)
-  — no restriction on shipping them in this game. The project owner also
-  confirmed there are no remaining licensing blockers for the swing/sports
-  mocap clips. See `character-preview/CONTEXT.md`'s "Licensing status"
-  section.
+- **Licensing is resolved.** The original 12 characters are confirmed Mixamo
+  content, free for unlimited commercial use (checked against Adobe's current
+  terms) — no restriction on shipping them in this game. The project owner
+  also confirmed there are no remaining licensing blockers for the
+  swing/sports mocap clips. See `character-preview/CONTEXT.md`'s "Licensing
+  status" section. `ch18` was supplied directly by the project owner
+  as a local FBX file, not downloaded from mixamo.com for this session, so
+  its licensing provenance lives with the owner, not this doc.
+- **`ch18` (Remy) added** via the same `blender-fbx-to-gltf.py` +
+  `build-mixamo-character.mjs` pipeline as the original 12, from a
+  user-supplied FBX rather than a fresh mixamo.com download. Two sibling
+  imports from the same session (`ch16`/`ch17`, "Kai"/"Zane") were removed
+  after visual review — see the removal note above and
+  character-preview/CONTEXT.md's "READ THIS FIRST". `ch18` surfaced two NEW,
+  general per-character manifest gotchas worth knowing before importing
+  another non-Mixamo-native asset: (1) its raw bind-pose height measured 3.78m,
+  roughly 2x every other character's raw scale, and applying the shared
+  `pickleball-locomotion.glb` idle clip onto that oversized skeleton sank the
+  Hips ~0.43m below where the identical clip puts them on a normal-scale
+  character (measured via live `mixamorigHips`/`mixamorigLeftFoot` world
+  positions, not guessed) — likely because the shared clip's Hips position
+  track carries an absolute delta calibrated against genuine Mixamo-scale
+  rigs, which doesn't scale correctly onto a skeleton authored at a very
+  different absolute size. Fixed with a measured `playerOffset: [0, 0.43, 0]`
+  in that entry, NOT by re-baking the shared clip (which would risk every
+  other character). (2) `paddleSocketScale: 100` is only correct when
+  `playerScale` is close to 1 — it's compensating a FIXED 0.01
+  Armature-wrapper scale, so the real formula is `100 / playerScale`; at
+  `ch18`'s `playerScale: 0.48` the paddle rendered at roughly half size until
+  corrected to `208.33`. Both are measured, documented inline in
+  `assets/manifest.js`'s `player-ch18-v1` entry — re-derive them the same way
+  (don't copy the numbers) if `ch18`'s scale/offset ever changes.
 
 ### Roster-Wide Players
 
 The full doubles roster resolves all active slots through `src/characters.js`.
-Each slot independently picks one of the 12 characters (`ch01`, `ch03`, `ch04`,
-`ch06`-`ch12`, `ch14`, `ch15`), while team/role identity
+Each slot independently picks one of the 13 characters (`ch01`, `ch03`, `ch04`,
+`ch06`-`ch12`, `ch14`, `ch15`, `ch18`), while team/role identity
 stays keyed by slot rather than by character. Keep the primitive rig
 authoritative for every player and reuse the same socket/material/clip contract
 for any future replacement or upgrade of these models. The legacy

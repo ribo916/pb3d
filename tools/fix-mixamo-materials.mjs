@@ -31,7 +31,7 @@ const MIXAMO_DIR = path.join(ROOT, 'assets', 'models', 'players', 'mixamo');
 
 // Active roster (ch13 is intentionally excluded -- not selectable).
 const ROSTER = ['ch01', 'ch03', 'ch04', 'ch06', 'ch07',
-  'ch08', 'ch09', 'ch10', 'ch11', 'ch12', 'ch14', 'ch15'];
+  'ch08', 'ch09', 'ch10', 'ch11', 'ch12', 'ch14', 'ch15', 'ch18'];
 
 await MeshoptDecoder.ready;
 await MeshoptEncoder.ready;

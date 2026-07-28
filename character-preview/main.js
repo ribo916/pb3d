@@ -2073,6 +2073,24 @@ async function activateCharacter(key) {
         obj.receiveShadow = true;
       }
     });
+    // Apply the SAME manifest playerScale/playerRotation the real game applies
+    // via src/players.js's configureAuthoredModel() -- without this, every
+    // character renders at its raw, un-calibrated GLB scale. Went unnoticed as
+    // long as every character's raw scale was close to 1x; ch18 (Remy)'s raw
+    // asset is ~2x the rest of the roster, which without this correction
+    // rendered him roughly twice normal height. playerOffset is applied
+    // separately, AFTER frameCameraToObject below -- that call grounds the
+    // object at y=0 from its OWN measured bind-pose bounds
+    // (frameCameraToBounds: `object.position.y -= box.min.y`), which would
+    // silently overwrite an offset set beforehand.
+    const manifestEntry = MANIFEST_MODELS.get(key);
+    if (manifestEntry) {
+      if (manifestEntry.playerRotation) scene3.rotation.set(...manifestEntry.playerRotation);
+      if (manifestEntry.playerScale !== undefined) {
+        if (Array.isArray(manifestEntry.playerScale)) scene3.scale.set(...manifestEntry.playerScale);
+        else scene3.scale.setScalar(manifestEntry.playerScale);
+      }
+    }
 
     exitSkeletonPreview();
     if (character) scene.remove(character);
@@ -2087,6 +2105,18 @@ async function activateCharacter(key) {
     character = scene3;
     scene.add(character);
     frameCameraToObject(character);
+    // Applied AFTER grounding (see the comment above) so it isn't wiped out
+    // by frameCameraToBounds's `position.y -= box.min.y`. This is a static
+    // per-character correction for a bind-pose origin quirk, not related to
+    // ch18's separate animated-pose hip-sink issue (see character-preview/
+    // CONTEXT.md's "READ THIS FIRST" -- that one is a property of the shared
+    // clip interacting with an oversized skeleton and isn't fixable by any
+    // fixed offset, since the sink amount depends on which clip is playing).
+    if (manifestEntry && manifestEntry.playerOffset) {
+      scene3.position.x += manifestEntry.playerOffset[0];
+      scene3.position.y += manifestEntry.playerOffset[1];
+      scene3.position.z += manifestEntry.playerOffset[2];
+    }
     skeletonOverlayHelper = new THREE.SkeletonHelper(character);
     skeletonOverlayHelper.visible = skeletonOverlayVisible;
     scene.add(skeletonOverlayHelper);
