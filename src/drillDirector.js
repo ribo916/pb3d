@@ -415,6 +415,11 @@ export function getScriptedShot(game, drillData, scriptIndex, hitterPlayer) {
   var isSuper = entry.shotType === 'supersmash';
   return {
     target: { x: landing.x, z: landing.z * zSign },
+    // True only when the beat authored an explicit `landing` (not the
+    // receiver-position fallback) — game.js's _cpuHit uses this to let a
+    // scripted supersmash's placement win over auto-tracking the victim's
+    // live position, which is otherwise the whole point of a body-bag super.
+    explicitLanding: !!(entry && entry.landing),
     apex: sp.apex,
     margin: sp.margin,
     spin: { x: sp.spinX || 0, y: sp.spinY || 0, z: 0 },

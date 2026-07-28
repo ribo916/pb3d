@@ -475,10 +475,12 @@ test('supersmash is NOT selectable via classify (state-triggered only)', () => {
 // into launch speed ~1:1 AND the ball always lands short of target — it can
 // never sail out, no matter how hard it is hit.
 test('direct-family launch speed tracks vMax and never sails long', () => {
+  // erne is the remaining direct-family shot (smash moved to driven — see
+  // "smash clears the net from a contact right on top of the net" above).
   const p0 = Physics.vec(0, 2.2, 3.0);
   const target = { x: 0, z: -C.HALF_L * 0.66 };
   for (const vMax of [22, 30, 40]) {
-    const spec = Shots.specV2('smash', C.KITCHEN, C.HALF_L);
+    const spec = Shots.specV2('erne', C.KITCHEN, C.HALF_L);
     spec.vMax = vMax;
     const sol = Physics.solveArc(p0, target, spec);
     const speed = Math.hypot(sol.v0.x, sol.v0.y, sol.v0.z);
@@ -1046,8 +1048,30 @@ test('specV2 returns physical envelopes with the inlined shots present', () => {
   });
   const drop = Shots.specV2('drop', C.KITCHEN, C.HALF_L);
   assert.ok(Math.abs(drop.landZ - C.KITCHEN * 0.55) < 1e-9, 'drop still dies in the kitchen');
-  assert.ok(Shots.specV2('smash', C.KITCHEN, C.HALF_L).direct, 'smash is a direct shot');
+  assert.ok(Shots.specV2('smash', C.KITCHEN, C.HALF_L).driven, 'smash is a driven shot');
+  assert.ok(Shots.specV2('erne', C.KITCHEN, C.HALF_L).direct, 'erne is still a direct shot');
   assert.ok(Shots.specV2('atp', C.KITCHEN, C.HALF_L).allowNet, 'atp bypasses net raising');
+});
+
+// The bug this guards: a net player's contact can sit only ~0.5m of flight
+// before the net (out of several meters total to the baseline). A `direct`
+// smash — a straight geometric line to the target — barely tilts upward over
+// that short a span regardless of contact height, so it nets almost every
+// time from right on top of the kitchen. `driven` solves for clearing height
+// AT THE NET PLANE specifically, independent of target distance, so it
+// clears from a close-in contact the same way it does from deep court.
+test('smash clears the net from a contact right on top of the net, not just deep court', () => {
+  const spec = Shots.specV2('smash', C.KITCHEN, C.HALF_L);
+  for (const z of [0.5, 1.0, 2.0, 4.0]) {
+    for (const y of [0.5, 0.9, 1.5]) {
+      const p0 = Physics.vec(0, y, z);
+      const target = { x: 0, z: -C.HALF_L * 0.95 };
+      const sol = Physics.solveArc(p0, target, spec);
+      const sim = Physics.simulateFlight(p0, sol.v0, spec.spin);
+      assert.ok(sim.clearedNet,
+        `contact z=${z}m y=${y}m must clear the net, crossed at ${sim.netCrossY}`);
+    }
+  }
 });
 
 test('resolveV2 maps intent+zone+height to a type with an envelope', () => {

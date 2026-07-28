@@ -1761,7 +1761,13 @@ Game.prototype._executeSuper = function (p, fwd, at) {
   var victim = (at && at.victim) || this._pickSuperVictim(p, blend);
   var spec = Shots.specV2('supersmash', C.KITCHEN, C.HALF_L);
   var targetX, targetZ;
-  if (victim) {
+  if (at && at.landing) {
+    // Scripted drill beat with an explicit authored landing — placement was
+    // the point of writing it, so it overrides tracking the victim's live
+    // position.
+    targetX = at.landing.x;
+    targetZ = at.landing.z;
+  } else if (victim) {
     // Clamp into the court so aiming at someone stretched wide or standing
     // behind the baseline can't turn the super into an out-of-bounds fault.
     targetX = clamp(victim.pos.x, -C.HALF_W * 0.94, C.HALF_W * 0.94);
@@ -1782,7 +1788,15 @@ Game.prototype._executeSuper = function (p, fwd, at) {
   this.excitement = 1.0;
   if (this.audio && this.audio.sfx.superHit) this.audio.sfx.superHit();
 
-  var tm = this._humanTiming(p, Shots.swingSide(pos.x, this.ball.pos.x, fwd), fwd);
+  // p.isHuman branch, same as every other shot path (_hit vs _cpuHit): a CPU
+  // or scripted supersmash must use _cpuTiming, whose targetXSkew is hardcoded
+  // to 0 (lateral variance already comes from AI aim scatter — see its own
+  // comment). Calling _humanTiming here unconditionally used to bolt a human's
+  // contact-geometry lateral skew (up to ~1m) onto every AI/scripted super,
+  // which is what made a drill's explicit `landing` miss by that much even
+  // after it was correctly threaded through as the aim target.
+  var swingSide = Shots.swingSide(pos.x, this.ball.pos.x, fwd);
+  var tm = p.isHuman ? this._humanTiming(p, swingSide, fwd) : this._cpuTiming(p.ai, swingSide, fwd);
   this._executeShotV2(targetX + tm.targetXSkew, targetZ,
     POWER_CAP.NET_H + 0.06, 0.04, spin,
     { type: 'supersmash', paceMul: tm.paceMul, apexAdd: 0 });
@@ -1968,9 +1982,17 @@ Game.prototype._cpuHit = function (p) {
   // harmless no-op.
   if (shot.isSuper && (firedScriptedShot || (p.power && p.power.armed))) {
     if (p.power) Power.spend(p.power);
+    // An explicitly-authored drill `landing` is a deliberate placement — it
+    // should win over _executeSuper's default of auto-tracking the victim's
+    // live position (shot.target.z needs the same near/far flip _cpuHit's
+    // non-super path applies below; see getScriptedShot's comment).
+    var superLanding = shot.explicitLanding
+      ? { x: shot.target.x, z: (p.team === 'near') ? -shot.target.z : shot.target.z }
+      : undefined;
     this._executeSuper(p, fwd, {
       aim: clamp(shot.target.x / (C.HALF_W * 0.92), -1, 1),
-      victim: shot.victim
+      victim: shot.victim,
+      landing: superLanding
     });
     return;
   }

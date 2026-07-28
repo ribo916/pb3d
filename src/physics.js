@@ -248,10 +248,23 @@ export function solveArc(p0, target, spec) {
   }
 
   // Build an initial launch velocity from a ballistic seed at the given apex.
+  //
+  // `direct` mode aims a straight geometric line from contact to ground-level
+  // at the target — it has no apex to arc over, so the caller's net-clip
+  // retry loop (which just increments `apx`) used to be a complete no-op here:
+  // a fixed direction that clips the net clips it at every speed, since a
+  // higher launch speed shortens flight time but does not change the line's
+  // shape. `lift` (the retry's excess above the base apex) instead raises
+  // WHERE ON THE TARGET LINE the aim points — ground level, then progressively
+  // higher — steepening the initial climb enough to clear the tape while the
+  // speed search below still lands it at the same spot. Real smash/erne
+  // contacts sit below the net-clearing threshold often enough (median ~0.49m
+  // contact, net 0.86m) that this fires on nearly every such shot, not as a
+  // rare edge case — see shots.js's supersmash comment for the measured story.
   function makeAim(apx) {
     if (spec.direct) {
-      // aim straight along the p0->target line; speed from a rough time estimate
-      var dx = target.x - p0.x, dy = COURT.BALL_R - p0.y, dz = target.z - p0.z;
+      var lift = Math.max(0, apx - apex);
+      var dx = target.x - p0.x, dy = (COURT.BALL_R + lift) - p0.y, dz = target.z - p0.z;
       var dl = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1e-4;
       var guess = Math.min(vMax, 18);
       return { x: dx / dl * guess, y: dy / dl * guess, z: dz / dl * guess };
@@ -278,8 +291,11 @@ export function solveArc(p0, target, spec) {
       return { err: along - gdist, res: r, aim: a };
     }
     function scaleDir(h) {
-      // direct mode: full 3D direction scaled to speed h (h ~ total speed)
-      var dx = target.x - p0.x, dy = COURT.BALL_R - p0.y, dz = target.z - p0.z;
+      // direct mode: full 3D direction scaled to speed h (h ~ total speed) —
+      // same lifted target point makeAim used, so the secant speed search
+      // stays consistent with whatever climb angle this retry is trying.
+      var lift = Math.max(0, apx - apex);
+      var dx = target.x - p0.x, dy = (COURT.BALL_R + lift) - p0.y, dz = target.z - p0.z;
       var dl = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1e-4;
       return { x: dx / dl * h, y: dy / dl * h, z: dz / dl * h };
     }
@@ -392,7 +408,15 @@ export function solveArc(p0, target, spec) {
   while (true) {
     var sol = solveSpeed(apx);
     best = sol;
-    if (allowNet || sol.res.clearedNet || raised >= 12) break;
+    // direct mode's lift changes the launch angle each retry, which shifts
+    // how speed maps to ground distance — the inner secant (6 iterations)
+    // doesn't always re-converge on distance within a single call, so a
+    // net-clip fix must also check landing accuracy here, or it can accept a
+    // lift that clears the tape but lands nowhere near the aimed target. The
+    // arc family doesn't need this: its seed apex doesn't change direction,
+    // only height, so distance convergence already holds across raises.
+    var landOk = !spec.direct || Math.sqrt(dist2(sol.res.landing, target)) < 0.6;
+    if (allowNet || (sol.res.clearedNet && landOk) || raised >= 12) break;
     apx += 0.25;
     raised++;
   }

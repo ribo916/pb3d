@@ -37,7 +37,18 @@ const PROFILES_V2 = {
   lob:     { apex: 4.60, depthFrac: 0.86, spinX: -1.0, spinY: 0, margin: 0.35, vMax: 14 },
   speedup: { apex: 1.05, depthFrac: 0.55, spinX:  5.5, spinY: 0, margin: 0.12, vMax: 17, driven: true },
   serve:   { apex: 2.30, depthFrac: 0.75, spinX:  2.5, spinY: 0, margin: 0.30, vMax: 16 },
-  smash:   { apex: 0.95, depthFrac: 0.70, spinX:  7.0, spinY: 0, margin: 0.05, vMax: 22, direct: true },
+  // DRIVEN, not direct — same measured correction supersmash needed below, and
+  // for the same reason: `direct` pins the launch straight down the p0->target
+  // line, which only clears the net when contact is high AND far enough from
+  // the net that a straight line has room to sit above the tape. A net
+  // smasher (P1 standing right on top of the kitchen, contact only ~0.5m from
+  // the net out of a multi-meter shot) puts almost none of the flight before
+  // the net — a straight line to a target meters away barely tilts upward in
+  // that first half-meter, so it nets essentially every time regardless of
+  // contact height. Driven solves for clearing height AT THE NET PLANE
+  // specifically, independent of how far past it the target sits, so it
+  // clears from any contact position, not just distant ones.
+  smash:   { apex: 0.95, depthFrac: 0.70, spinX:  7.0, spinY: 0, margin: 0.05, vMax: 22, driven: true },
   // Super smash — the power-meter spend.
   //
   // DRIVEN, not direct, and that was a measured correction. The `direct` family
