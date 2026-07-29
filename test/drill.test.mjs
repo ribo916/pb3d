@@ -907,6 +907,32 @@ test('engine _checkPoach: still works normally for genuine (non-scripted) free-p
   assert.doesNotThrow(() => stub._checkPoach('near', false));
 });
 
+test('engine _checkContacts: the human-poach override is excluded in drill mode, even if swingWindow is somehow armed (defensive — currently latent since main.js never calls setInput() for a drill Game)', () => {
+  // players[0] (P1) is NOT the scripted hitter for this beat (P2 is), but is
+  // deliberately placed within reach of the ball too — exactly the geometry
+  // that would let the (mode-unaware) human-poach override in _checkContacts
+  // steal the contact from P2 if this drill-mode guard were ever removed or
+  // bypassed. swingWindow/swingUsed are set directly (not via a real
+  // game.input, which drill mode never wires up) specifically to prove the
+  // guard holds even if that separate invariant (in main.js) is ever broken.
+  const p1 = makeStubPlayer('near', 0, 'P1', 0, 3.0);
+  const p2 = makeStubPlayer('near', 1, 'P2', 0.3, 3.0);
+  const p3 = makeStubPlayer('far', 0, 'P3', 0, -3.0);
+  const stub = makeDrillStub([p1, p2, p3], {
+    drillForcedShot: { hitter: p2 },
+    rally: { lastHitter: 'far' }, // the ball is INCOMING to 'near' — must not equal the receiving team
+    ball: { live: true, vel: { x: 0, y: -1, z: 5 }, pos: { x: 0.1, y: 0.5, z: 3.0 } }
+  });
+  stub.swingWindow = 1;
+  stub.swingUsed = false;
+  p2.aiSwingTimer = 0.001; p2.aiReactTarget = 0; // guarantee _cpuHit fires this call
+  let dispatchedTo = null;
+  stub._cpuHit = function (p) { dispatchedTo = p; };
+  stub._hit = function (p) { dispatchedTo = p; };
+  stub._checkContacts(0.016);
+  assert.equal(dispatchedTo, p2, 'the scripted hitter (P2) receives the contact, not players[0] (P1) via the human-poach path');
+});
+
 test('DrillDirector.resetRep: zeroes power/stun for every active player (defensive — currently latent since drills hardcode superMode:\'off\')', () => {
   const p1 = makeStubPlayer('near', 0, 'P1', 0, 0);
   const p3 = makeStubPlayer('far', 0, 'P3', 0, 0);

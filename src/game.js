@@ -1353,8 +1353,20 @@ Game.prototype._checkContacts = function (dt) {
   // Human poach: the human may take a ball assigned to their partner by
   // stepping in front and timing a swing while within reach.
   // A stunned human can't poach — they're on the ground.
+  //
+  // Explicitly excluded in drill mode, not just implicitly safe because
+  // main.js never calls game.setInput() for a drill Game (the only reason
+  // this.swingWindow could ever go nonzero here) — that is an invariant
+  // held in a DIFFERENT file with no enforcement at this call site. Every
+  // other real-input/real-AI override that could conflict with a scripted
+  // beat is guarded HERE, at the point of conflict (see the drillForcedShot
+  // override just above, and DRILLS.md's Golden Rule: scripted instructions
+  // always have authority over gameplay systems) — this one silently wasn't,
+  // so a future caller that ever did wire input into a drill session would
+  // let a mistimed real swing steal a teammate's scripted contact with no
+  // guard at all.
   var human = this.players[0];
-  if (human.team === team && human !== p && !Power.stunBlocksInput(human.stun) &&
+  if (this.mode !== 'drill' && human.team === team && human !== p && !Power.stunBlocksInput(human.stun) &&
       this.swingWindow > 0 && !this.swingUsed && this._reachOK(human.pos)) {
     p = human;
   }
@@ -1901,6 +1913,41 @@ Game.prototype._checkBlastContact = function () {
 
   if (rallyOver(res)) { this._endPoint(res); return; }
 
+  // A scripted `supersmash` beat that ISN'T the drill's final beat arms
+  // drillForcedShot for the victim (script[i+1].hitter === the victim, per
+  // validateDrill's receiver-chain rule) the instant the attacker's swing
+  // fires — same "arm now, resolve later" shape as everywhere else. But the
+  // victim's actual contact happens HERE, not through _cpuHit (the ball
+  // never reaches _checkContacts/_cpuHit for them at all — that is the whole
+  // point of bypassing lastHitCooldown). Without this block, drillForcedShot
+  // stays permanently pinned to the victim forever after: drillHitCount/
+  // drillScriptIndex never advance past this beat, so every later authored
+  // shot silently never fires, AND _moveCPU's drill-mode "hold unless you're
+  // the armed hitter" gate (see its comment) keeps EVERY other player frozen
+  // in place too, since drillForcedShot is still truthy but points at a team
+  // that no longer matters — nobody ever moves to intercept the real ball
+  // that's now heading back across the net. Observed: the rep just strands,
+  // silently dropping every remaining scripted shot, until an eventual
+  // untended double-bounce ends it as a generic fault instead of "REP
+  // COMPLETE". Mirrors exactly the bookkeeping _cpuHit does for a normal
+  // drill contact — the blast's fixed pop-up recovery shot below IS this
+  // beat's real-world fulfillment (a blasted player never gets to choose
+  // their own shotType/landing), so there is nothing else to "honor" from
+  // the authored beat besides consuming it and arming what comes next.
+  // Guarded to only the case the script actually anticipated (the victim is
+  // the currently-armed hitter) — a supersmash scripted as the drill's FINAL
+  // beat already has drillForcedShot null by the time this runs (armed and
+  // immediately exhausted at the attacker's own contact), and that
+  // already-verified completion path must stay untouched.
+  if (this.mode === 'drill' && this.drillForcedShot && this.drillForcedShot.hitter === v) {
+    this.drillHitCount++;
+    if (this.drillHitCount >= this._drillMaxShots()) this.drillEndGrace = DRILL.END_GRACE;
+    var blastBeat = this.drillData && this.drillData.script[this.drillScriptIndex];
+    DrillDirector.armMovesForBeat(this, blastBeat, this.drillScriptIndex);
+    this.drillScriptIndex++;
+    DrillDirector.armNextScriptedShot(this, this.drillData);
+  }
+
   // The forced return: a weak, high, short sitter back over the net. Not a
   // guaranteed put-away — its hang time is tuned to outlast the stun so a
   // doubles partner can cover. In singles there is nobody to cover, which is
@@ -1911,7 +1958,14 @@ Game.prototype._checkBlastContact = function () {
   this._flashShot('BLASTED!');
   this._executeShotV2(popX, popZ, popSpec.apex, popSpec.margin,
     Physics.vec(popSpec.spinX * -fwd, 0, 0), { type: 'blastpop' });
-  this._checkPoach(v.team);
+  // A real auto-poach on the blast's forced return would hijack a scripted
+  // drill's next receiver exactly like an unguarded auto-poach after any
+  // other drill contact (see _checkPoach's own comment) — every blast in
+  // drill mode is definitionally part of a scripted sequence (drills
+  // hardcode superMode:'off', so a supersmash can only ever fire from an
+  // authored beat), so this is never a real, undirected free-play poach to
+  // suppress incorrectly.
+  this._checkPoach(v.team, this.mode === 'drill');
 };
 
 // CPU paddle strike. Shot chosen by AI using the shot solver + stability.
@@ -2963,8 +3017,19 @@ Game.prototype._tickDrillReplay = function (dt) {
     this._drillLoopHoldTimer -= dt;
     if (this._drillLoopHoldTimer <= 0) { pb.seek(0); pb.play(); }
   } else {
+    // Only arm the auto-loop hold on the actual TRANSITION from playing to
+    // stopped-at-the-end THIS tick (pb.advance() itself is what just made
+    // isPlaying() false) — never merely because playback HAPPENS to already
+    // be sitting paused at/past the end, which is indistinguishable from
+    // the first case by isPlaying()+playhead alone and is exactly what "the
+    // viewer paused, then scrubbed to the very end" looks like. Regression:
+    // without wasPlaying, an explicit pause at the end silently self-resumed
+    // and looped ~1s later regardless of viewer intent — pause must mean
+    // pause, full stop, until the viewer acts again, same as drillToggle/
+    // drillSeek below now canceling a hold already in progress.
+    var wasPlaying = pb.isPlaying();
     pb.advance(dt);
-    if (!pb.isPlaying() && pb.getPlayhead() >= pb.getDuration()) {
+    if (wasPlaying && !pb.isPlaying() && pb.getPlayhead() >= pb.getDuration()) {
       this._drillLoopHoldTimer = DRILL.LOOP_END_HOLD;
     }
   }
@@ -2995,8 +3060,13 @@ Game.prototype._tickDrillReplay = function (dt) {
   // them again here.
 };
 
-Game.prototype.drillToggle = function () { if (this.drillPlayback) this.drillPlayback.toggle(); };
-Game.prototype.drillSeek = function (t) { if (this.drillPlayback) this.drillPlayback.seek(t); };
+// Any explicit viewer interaction cancels a pending auto-loop-restart hold —
+// covers the sibling case to the wasPlaying fix above (a viewer who pauses
+// DURING the ~1s hold-on-final-frame window, after a natural end-of-replay
+// stop, must stay paused too; the countdown was previously unconditional and
+// would still fire pb.play() out from under them).
+Game.prototype.drillToggle = function () { if (this.drillPlayback) { this.drillPlayback.toggle(); this._drillLoopHoldTimer = 0; } };
+Game.prototype.drillSeek = function (t) { if (this.drillPlayback) { this.drillPlayback.seek(t); this._drillLoopHoldTimer = 0; } };
 Game.prototype.drillReplayInfo = function () {
   var pb = this.drillPlayback;
   if (!pb) return null;
