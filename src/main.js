@@ -12,7 +12,7 @@ import { CHARACTERS, DEFAULT_ROSTER, DRILL_ROSTER, getCharacter, resolveSlotChar
 import { makeCharacterPreview } from './characterPreview.js';
 import { normalizeMode } from './modes.js';
 import { loadDrills, normalizeDrill, activeSlotsOf, isPlayerCountTag } from './drillStore.js';
-import { openNewDrill, openEditDrill } from './drillAdmin.js';
+import { openNewDrill, openEditDrill, reopenWipDrill } from './drillAdmin.js';
 import { SLOT_INFO } from './drillDirector.js';
 import * as Power from './power.js';
 import * as AI from './ai.js';
@@ -344,6 +344,35 @@ function quitToMenu() {
   // Return to the arcade flow; #menu stays a hidden harness. flowState
   // (radios + rosterPicks) persists, so prior picks are remembered.
   $('flowRoot').style.display = '';
+
+  // A "Test Live" launch from the in-app drill editor (drillAdmin.js) sets
+  // this before opening ?testDrill=1 — see its own comment for why: on
+  // mobile Safari / an installed PWA (this app's primary target device),
+  // window.open(url,'_blank') often degrades to a same-tab navigation
+  // instead of a real new tab, which would otherwise silently discard
+  // whatever was being edited the instant the drill exits back here. Using
+  // presence (not truthiness) so the "was authoring a new, unsaved drill"
+  // case (stored as '') is still honored, and clearing it immediately so a
+  // later, unrelated drill exit in this same tab doesn't misfire.
+  var returnEditId = sessionStorage.getItem('pb3dReturnToDrillEditId');
+  var wipRaw = sessionStorage.getItem('pb3dWipDrill');
+  if (wasDrilling && returnEditId !== null && wipRaw) {
+    sessionStorage.removeItem('pb3dReturnToDrillEditId');
+    var wip = null;
+    try { wip = JSON.parse(wipRaw); } catch (e) { /* fall through to the normal drills-library landing below */ }
+    if (wip) {
+      loadDrills().then(function (drills) {
+        reopenWipDrill(wip, drills, returnEditId || null);
+        goToFlow('drillEdit');
+      });
+      game = null;
+      input = null;
+      last = 0;
+      updateAudioUI();
+      return;
+    }
+  }
+
   goToFlow(wasDrilling ? 'drills' : 'start');
   game = null;
   input = null;
@@ -1166,9 +1195,19 @@ function escapeHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-async function startDrillView(drill) {
+async function startDrillView(drill, viaEditorTestLive) {
   if (starting || running) return;
   starting = true;
+  // A pending "return to editor on exit" flag (see quitToMenu()) is only
+  // ever meaningful for the exact launch that set it — the ?testDrill=1
+  // deep-link consuming a WIP drill just staged by drillAdmin.js's Test Live
+  // button. Every OTHER way to reach a live drill (a normal library card
+  // click, a ?drill=<id> deep link) must invalidate any flag left over from
+  // an earlier editor session, or exiting THIS unrelated drill would
+  // incorrectly restore stale editor content. This can only ever happen
+  // when window.open really did open a separate tab — see drillAdmin.js's
+  // comment — since the flag is otherwise cleared the moment it's consumed.
+  if (!viaEditorTestLive) sessionStorage.removeItem('pb3dReturnToDrillEditId');
   // Show #drillBar immediately on tap — asset preload + Game construction
   // below can take a real, visible amount of time on a real device (this
   // was previously masked by #hud already being visible during that gap;
@@ -1306,7 +1345,12 @@ $('drillStepsModal').addEventListener('click', function (e) { if (e.target === $
   if (!raw) return;
   try {
     var drill = normalizeDrill(JSON.parse(raw));
-    startDrillView(drill);
+    // true: this is the one launch path a pending "return to editor on
+    // exit" flag can legitimately apply to — see startDrillView's comment.
+    // A harmless no-op when the flag isn't actually set (e.g. the
+    // standalone builder's own Test Live, which stages pb3dWipDrill the
+    // same way but never sets pb3dReturnToDrillEditId).
+    startDrillView(drill, true);
   } catch (e) {
     console.error('PB3D: failed to load WIP drill from sessionStorage', e);
   }

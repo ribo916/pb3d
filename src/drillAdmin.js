@@ -302,6 +302,22 @@ function ensureInit() {
       return;
     }
     sessionStorage.setItem('pb3dWipDrill', JSON.stringify(buildDrill()));
+    // Remembered so exiting the live test lands back HERE, with these exact
+    // in-progress edits restored — not at the Drills library (main.js's
+    // quitToMenu() checks this). Needed because window.open(url,'_blank')
+    // is not reliably a real new tab: mobile Safari and installed-PWA
+    // standalone mode — this app's primary target device, a phone at the
+    // park — routinely degrade it to a same-tab navigation, which reloads
+    // the whole page and would otherwise silently discard everything typed
+    // here. Harmless in the case window.open DOES open a real new tab: that
+    // tab reads the very same flag (sessionStorage is cloned into a
+    // same-origin window.open() target) and restores into an editor there
+    // too, while THIS tab is simply never touched again — quitToMenu() only
+    // ever runs in response to actually exiting a live drill view.
+    // Empty string is the "was authoring a brand-new, not-yet-saved drill"
+    // sentinel (editingId itself is null in that case) — distinct from the
+    // key being entirely absent, which means "no pending test-live return".
+    sessionStorage.setItem('pb3dReturnToDrillEditId', editingId || '');
     window.open(window.location.origin + '/?testDrill=1', '_blank');
     status.textContent = 'Opened in a new tab.';
     status.style.color = '#8fd9a8';
@@ -402,5 +418,29 @@ export function openEditDrill(drill, drills) {
   $('deFGoal').value = drill.goal || '';
   $('deFTags').value = stripPlayerCountTag(drill.tags).join(', ');
   $('deStatus').textContent = '';
+  renderAll();
+}
+
+// Called by main.js's quitToMenu() after exiting a "Test Live" launch — see
+// the deTestLiveBtn handler above for why this is needed at all. Deliberately
+// NOT the same as openEditDrill(drill, drills): `wasEditingId` is whatever
+// editingId was BEFORE Test Live was clicked (null for a brand-new,
+// never-saved drill), not `drill.id` — a new drill's id is just a slug
+// buildDrill() derived from its name at staging time, with no corresponding
+// server row, so treating it like an existing drill would wrongly enable
+// Delete and route the next Save through the update-only PUT path.
+export function reopenWipDrill(drill, drills, wasEditingId) {
+  currentDrills = drills || [];
+  editingId = wasEditingId || null;
+  loadDrillIntoState(drill);
+  ensureInit();
+  $('deScreenTitle').textContent = editingId ? 'Edit Drill' : 'New Drill';
+  $('deDeleteBtn').style.display = editingId ? '' : 'none';
+  $('deFName').value = drill.name || '';
+  $('deFDesc').value = drill.desc || '';
+  $('deFGoal').value = drill.goal || '';
+  $('deFTags').value = stripPlayerCountTag(drill.tags).join(', ');
+  $('deStatus').textContent = 'Restored your in-progress edits after testing live.';
+  $('deStatus').style.color = '#8fd9a8';
   renderAll();
 }
