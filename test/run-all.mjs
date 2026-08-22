@@ -6,3 +6,4 @@
 // naturally propagates regardless of which file it came from.
 import './logic.test.mjs';
 import './drill.test.mjs';
+import './drillsApi.test.mjs';

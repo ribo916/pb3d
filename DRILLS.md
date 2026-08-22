@@ -460,6 +460,49 @@ for real now, falling back to the bundled `DEFAULT_DRILLS` on any failure
 works. New `createDrill`/`updateDrill`/`deleteDrill` exports back both the
 in-app editor and the standalone builder tool.
 
+### Latency: never block a render on the database
+
+Assume every uncached read of `/api/drills` is slow — Neon autosuspend means
+the first query after a few idle minutes wakes the compute, which can take
+seconds. Nothing on a render path is allowed to wait for that. Four rules,
+each of which fixed a real stall:
+
+- **`loadDrills()` is stale-while-revalidate, not fetch-then-render.**
+  `peekDrills()` returns the last known list synchronously (memory, then a
+  `localStorage` copy under `pb3dDrillsCache`), so `renderDrillLibrary()`
+  paints cards on the same frame as the tap; `Loading…` is only ever seen on
+  a genuine cold start. The background refresh notifies via
+  `onDrillsUpdated()`. **The failure result is cached too** (behind
+  `FAIL_TTL_MS`) — the original cached only on success, so a slow or dead API
+  cost a full round trip on *every* call, including every card tap.
+- **One request per session, not per interaction.** `_inflight` dedupes
+  concurrent callers, and the list is prefetched at boot (idle-scheduled in
+  `main.js`) so the round trip overlaps the title screen.
+- **The GET is CDN-cacheable** (`s-maxage` + `stale-while-revalidate` +
+  ETag/304 in `api/drills.js`), so most opens never reach Neon at all. A
+  local mutation opens a `MUTATION_QUIET_MS` window in `drillStore.js` that
+  suppresses the background refresh — it **must stay longer than the
+  handler's `s-maxage`**, or a refresh can serve a pre-save CDN copy and
+  visibly revert a drill the user just saved.
+- **Every write is one round trip.** POST/PUT use
+  `ON CONFLICT … RETURNING` / `UPDATE … RETURNING`; an empty result set *is*
+  the 409/404 answer. The old SELECT-then-write pairs doubled save latency
+  and raced on duplicate ids. Seeding an empty table is likewise one batched
+  `jsonb_to_recordset` INSERT, guarded by a module-level flag so it isn't
+  retried on every list GET. `test/drillsApi.test.mjs` asserts these
+  round-trip counts against a stubbed Neon endpoint — the count is part of
+  the contract now, so read it before "simplifying" the handler.
+
+Drill *launch* latency is a separate, non-database problem:
+`preloadAssetPack()` is cached per config in `src/assets.js` and loads its
+manifest entries in parallel, and `main.js` prewarms the pack when the Drills
+library opens. `drillAssetConfig()` deliberately resolves all four
+`DRILL_ROSTER` slots rather than the ones a given drill declares, so every
+drill shares one cache entry — scoping it per drill meant a 2-player drill
+could not reuse a 4-player drill's pack and the prewarm covered nothing.
+Consumers clone via `cloneModelScene`/`SkeletonUtils`, which is what makes
+sharing one pack across launches safe.
+
 **In-app create/edit/delete**: a new `#scrDrillEdit` flow screen
 (`src/drillAdmin.js`) reuses `tools/drill-builder/{state,court-svg,
 step-view}.js` — the same merged step-by-step court+editor view the

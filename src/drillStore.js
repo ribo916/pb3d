@@ -385,7 +385,93 @@ export function validateDrill(drill) {
   return errors;
 }
 
-var _drills = null;
+// ---------------------------------------------------------------- drill cache
+// The library screen used to hard-block its first paint on a live /api/drills
+// read, on EVERY entry to the screen, and only cached the result on the
+// success path -- so a slow or unreachable API cost a full round trip per
+// interaction (including every card tap). The cache below is
+// stale-while-revalidate: a `localStorage` copy of the last known-good list
+// is served synchronously so the screen paints instantly, while a background
+// refresh updates it and notifies subscribers via onDrillsUpdated().
+var _drills = null;            // best-known list (server, localStorage, or bundled defaults)
+var _drillsFresh = false;      // true once a live server list has landed this session
+var _hydrated = false;         // localStorage read is attempted exactly once
+var _inflight = null;          // shared promise, so concurrent callers make ONE request
+var _lastFailAt = 0;           // negative cache: don't hammer a dead API
+var _suppressRefreshUntil = 0; // after a local mutation, ignore a possibly-stale CDN copy
+var _listeners = [];
+
+var DRILLS_CACHE_KEY = 'pb3dDrillsCache';
+// Bump when normalizeDrill's output shape changes, so old cached rows are dropped.
+var DRILLS_CACHE_VERSION = 1;
+var FAIL_TTL_MS = 30000;
+// Must exceed api/drills.js's `s-maxage`, or a background refresh could serve
+// a pre-save CDN copy and visibly revert a drill the user just saved.
+var MUTATION_QUIET_MS = 90000;
+
+// drillStore is imported by node (test/drill.test.mjs) and by the serverless
+// handler (api/drills.js), neither of which has localStorage.
+function lsGet(key) {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    return localStorage.getItem(key);
+  } catch (e) { return null; }
+}
+
+function lsSet(key, value) {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(key, value);
+  } catch (e) { /* private mode / quota — the in-memory cache still works */ }
+}
+
+function hydrateFromStorage() {
+  if (_hydrated) return;
+  _hydrated = true;
+  if (_drills) return;
+  var raw = lsGet(DRILLS_CACHE_KEY);
+  if (!raw) return;
+  try {
+    var parsed = JSON.parse(raw);
+    if (!parsed || parsed.v !== DRILLS_CACHE_VERSION) return;
+    if (!Array.isArray(parsed.drills) || !parsed.drills.length) return;
+    _drills = parsed.drills.map(normalizeDrill);
+  } catch (e) { /* corrupt entry — fall through to the network */ }
+}
+
+function writeStorage() {
+  if (!_drills) return;
+  lsSet(DRILLS_CACHE_KEY, JSON.stringify({
+    v: DRILLS_CACHE_VERSION, savedAt: Date.now(), drills: _drills
+  }));
+}
+
+function notifyDrillsUpdated() {
+  var snapshot = _drills || [];
+  for (var i = 0; i < _listeners.length; i++) {
+    try { _listeners[i](snapshot.slice()); } catch (e) { /* a bad subscriber must not break the rest */ }
+  }
+}
+
+// Subscribe to background refreshes and local mutations. Returns an
+// unsubscribe function. Used by the library screen so cards rendered from the
+// stale cache get swapped for the fresh list the moment it lands.
+export function onDrillsUpdated(cb) {
+  _listeners.push(cb);
+  return function () {
+    var i = _listeners.indexOf(cb);
+    if (i !== -1) _listeners.splice(i, 1);
+  };
+}
+
+// Synchronous best-known list, or null if nothing is cached yet. Lets the
+// library screen paint on the same frame as the tap instead of showing
+// "Loading..." while a database round trip resolves.
+export function peekDrills() {
+  hydrateFromStorage();
+  return _drills ? _drills.slice() : null;
+}
+
 
 // Played out as real live simulated gameplay (see src/drillDirector.js)
 // rather than scripted/animated. `startPositions` and `script` are the only
@@ -529,31 +615,62 @@ for (var _i = 0; _i < DEFAULT_DRILLS.length; _i++) {
   DEFAULT_DRILLS[_i] = normalizeDrill(DEFAULT_DRILLS[_i]);
 }
 
-// Fetches the live table via /api/drills. Any failure — network error,
-// non-2xx, a non-JSON response (e.g. plain `vite`-only dev with no
-// server.dev.js/proxy running, which 404s with an HTML body, not JSON) —
-// falls back to the bundled DEFAULT_DRILLS, so the app keeps working with no
-// database at all. Caches the result in `_drills` so subsequent calls (and
-// getDrillById) reflect the live list without refetching.
-export function loadDrills() {
-  if (_drills) return Promise.resolve(_drills.slice());
-  return fetch('/api/drills')
+// The one live read. Any failure — network error, non-2xx, a non-JSON
+// response (e.g. plain `vite`-only dev with no server.dev.js/proxy running,
+// which 404s with an HTML body, not JSON) — falls back to the bundled
+// DEFAULT_DRILLS, so the app keeps working with no database at all. Unlike
+// the original, the failure result IS cached (behind FAIL_TTL_MS) so a dead
+// API costs one request per half-minute, not one per tap.
+function refreshDrills() {
+  if (_inflight) return _inflight;
+  var settle = function (list) {
+    _inflight = null;
+    return list;
+  };
+  var fail = function () {
+    _lastFailAt = Date.now();
+    if (!_drills) {
+      _drills = DEFAULT_DRILLS.slice();
+      notifyDrillsUpdated();
+    }
+    return settle(_drills.slice());
+  };
+  _inflight = fetch('/api/drills')
     .then(function (res) {
       var ct = res.headers.get('content-type') || '';
       if (!res.ok || ct.indexOf('application/json') === -1) return null;
       return res.json();
     })
     .then(function (body) {
-      if (!body || !Array.isArray(body.drills)) return DEFAULT_DRILLS.slice();
+      if (!body || !Array.isArray(body.drills)) return fail();
       _drills = body.drills.map(normalizeDrill);
-      return _drills.slice();
+      _drillsFresh = true;
+      _lastFailAt = 0;
+      writeStorage();
+      notifyDrillsUpdated();
+      return settle(_drills.slice());
     })
-    .catch(function () {
-      return DEFAULT_DRILLS.slice();
-    });
+    .catch(fail);
+  return _inflight;
+}
+
+// Resolves with the best list available RIGHT NOW: the in-memory copy, the
+// localStorage copy, or (cold start only) whatever the network returns. When
+// it hands back a stale list it kicks off a background refresh; subscribe via
+// onDrillsUpdated() to render the fresh one when it lands.
+export function loadDrills() {
+  hydrateFromStorage();
+  if (!_drills) return refreshDrills();
+  var now = Date.now();
+  var quiet = _drillsFresh ||
+              now - _lastFailAt < FAIL_TTL_MS ||
+              now < _suppressRefreshUntil;
+  if (!quiet) refreshDrills();
+  return Promise.resolve(_drills.slice());
 }
 
 export function getDrillById(id) {
+  hydrateFromStorage();
   var drills = _drills || DEFAULT_DRILLS;
   for (var i = 0; i < drills.length; i++) {
     if (drills[i].id === id) return drills[i];
@@ -561,15 +678,27 @@ export function getDrillById(id) {
   return null;
 }
 
+// Both write through to localStorage and notify subscribers, so a save is
+// reflected everywhere without a refetch. They also open a quiet window: the
+// GET is CDN-cached (see api/drills.js), so an immediate background refresh
+// could serve a pre-save copy and visibly revert what was just written.
 function cacheUpsert(drill) {
+  hydrateFromStorage();
   var list = (_drills || DEFAULT_DRILLS).slice();
   var idx = list.findIndex(function (d) { return d.id === drill.id; });
   if (idx === -1) list.push(drill); else list[idx] = drill;
   _drills = list;
+  _suppressRefreshUntil = Date.now() + MUTATION_QUIET_MS;
+  writeStorage();
+  notifyDrillsUpdated();
 }
 
 function cacheRemove(id) {
+  hydrateFromStorage();
   _drills = (_drills || DEFAULT_DRILLS).filter(function (d) { return d.id !== id; });
+  _suppressRefreshUntil = Date.now() + MUTATION_QUIET_MS;
+  writeStorage();
+  notifyDrillsUpdated();
 }
 
 // createDrill/updateDrill/deleteDrill are the save-path counterparts to

@@ -11,7 +11,7 @@ import { preloadAssetPack, assetStatusSummary } from './assets.js';
 import { CHARACTERS, DEFAULT_ROSTER, DRILL_ROSTER, getCharacter, resolveSlotCharacter } from './characters.js';
 import { makeCharacterPreview } from './characterPreview.js';
 import { normalizeMode } from './modes.js';
-import { loadDrills, normalizeDrill, activeSlotsOf, isPlayerCountTag } from './drillStore.js';
+import { loadDrills, peekDrills, onDrillsUpdated, normalizeDrill, activeSlotsOf, isPlayerCountTag } from './drillStore.js';
 import { openNewDrill, openEditDrill, reopenWipDrill } from './drillAdmin.js';
 import { SLOT_INFO } from './drillDirector.js';
 import * as Power from './power.js';
@@ -809,6 +809,7 @@ function enterFlowScreen(id) {
   } else if (id === 'drills') {
     disposeFlowPreview();
     renderDrillLibrary();
+    prewarmDrillAssets();
   } else {
     if (flowPreview) flowPreview.stop();
   }
@@ -1021,22 +1022,45 @@ function toggleDrillFavorite(id) {
 // client-side by name search + selected tags so typing/toggling stays instant.
 var drillLibState = { drills: [], search: '', tags: [], favoritesOnly: false };
 
+// Screen entry always resets the filters, but it must NOT blank the cards
+// while a database read resolves. peekDrills() returns the last known list
+// synchronously (memory or localStorage), so the grid paints on the same
+// frame as the tap; "Loading…" is now only ever seen on a genuine cold start.
 function renderDrillLibrary() {
   var list = $('drillCardList');
-  list.innerHTML = '<div class="drill-lib-empty">Loading…</div>';
-  $('drillQuickFilters').innerHTML = '';
-  $('drillTagRow').innerHTML = '';
   drillLibState.search = '';
   drillLibState.tags = [];
   drillLibState.favoritesOnly = false;
   $('drillSearchInput').value = '';
   $('drillSearchClear').hidden = true;
+
+  var cached = peekDrills();
+  if (cached) {
+    drillLibState.drills = cached;
+    renderDrillTagFilters();
+    renderDrillCards();
+  } else {
+    list.innerHTML = '<div class="drill-lib-empty">Loading…</div>';
+    $('drillQuickFilters').innerHTML = '';
+    $('drillTagRow').innerHTML = '';
+  }
+
   loadDrills().then(function (drills) {
     drillLibState.drills = drills;
     renderDrillTagFilters();
     renderDrillCards();
   });
 }
+
+// loadDrills() is stale-while-revalidate, so the list above may be the cached
+// one; swap in the fresh list (or a just-saved/deleted drill) when it lands.
+// Only touches the DOM while the Drills screen is the active flow screen.
+onDrillsUpdated(function (drills) {
+  if (FLOW_ACTIVE !== 'drills') { drillLibState.drills = drills; return; }
+  drillLibState.drills = drills;
+  renderDrillTagFilters();
+  renderDrillCards();
+});
 
 // Favorites and player-count ("2-player" etc.) are still ordinary tags
 // under the hood — drillMatchesFilters/drillLibState.tags treat them no
@@ -1197,6 +1221,40 @@ function escapeHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+// Shared by startDrillView and the Drills-screen prewarm below, so both ask
+// preloadAssetPack for the SAME config and therefore hit the same cache entry.
+//
+// Deliberately resolves all four DRILL_ROSTER slots rather than just the ones
+// a given drill declares. Real matches scope neededPlayerKeys per roster
+// because the full character set is ~11MB; DRILL_ROSTER is a FIXED four
+// (Owen/Nina/AJ/Leo, ~3.75MB total), so scoping it per drill only bought a
+// smaller download in exchange for a distinct cache key per drill shape —
+// which meant a 2-player drill couldn't reuse a 4-player drill's pack, and
+// the prewarm below couldn't cover anything. One superset entry warms every
+// drill in the library.
+function drillAssetConfig() {
+  var cfg = { mode: 'drill', venue: 'park', courtPalette: 'blue', timeOfDay: 'day',
+              difficulty: 'normal', cameraMode: 'broadcast', superMode: 'off',
+              roster: Object.assign({}, DRILL_ROSTER) };
+  cfg.neededPlayerKeys = Object.keys(SLOT_INFO).map(function (slotKey) {
+    var rosterKey = SLOT_INFO[slotKey].rosterKey;
+    return resolveSlotCharacter(rosterKey, cfg.roster[rosterKey]).playerModelKey;
+  });
+  return cfg;
+}
+
+// Start fetching drill assets as soon as the library opens, so the several MB
+// of player/venue GLB downloads overlap browsing instead of blocking the tap.
+// preloadAssetPack is cached per config, so startDrillView's await then
+// resolves against this same in-flight (or already-settled) promise.
+// Warms all four slots — the superset every drill's roster draws from.
+function prewarmDrillAssets() {
+  try {
+    var cfg = drillAssetConfig();
+    preloadAssetPack(cfg).catch(function () { /* startDrillView reports it */ });
+  } catch (e) { /* prewarm is best-effort */ }
+}
+
 async function startDrillView(drill, viaEditorTestLive) {
   if (starting || running) return;
   starting = true;
@@ -1222,16 +1280,10 @@ async function startDrillView(drill, viaEditorTestLive) {
   $('drillTransport').style.display = 'none';
   renderDrillSteps(drill);
   // Variable roster (2/3/4 players) — only the slots this drill actually
-  // declares in startPositions get spawned/preloaded, not always all 4.
+  // declares in startPositions get SPAWNED (drillActiveSlots below). The
+  // asset pack itself is the fixed four-slot superset — see drillAssetConfig.
   var activeSlots = activeSlotsOf(drill);
-  var cfg = { mode: 'drill', venue: 'park', courtPalette: 'blue', timeOfDay: 'day',
-              difficulty: 'normal', cameraMode: 'broadcast', superMode: 'off',
-              roster: Object.assign({}, DRILL_ROSTER) };
-  var neededPlayerKeys = activeSlots.map(function (slotKey) {
-    var rosterKey = SLOT_INFO[slotKey].rosterKey;
-    return resolveSlotCharacter(rosterKey, cfg.roster[rosterKey]).playerModelKey;
-  });
-  cfg.neededPlayerKeys = neededPlayerKeys;
+  var cfg = drillAssetConfig();
   var assetPack = null;
   try {
     assetPack = await preloadAssetPack(cfg);
@@ -1356,6 +1408,16 @@ $('drillStepsModal').addEventListener('click', function (e) { if (e.target === $
   } catch (e) {
     console.error('PB3D: failed to load WIP drill from sessionStorage', e);
   }
+})();
+
+// Warm the drill list (and its localStorage cache) while the user is still on
+// the title screen, so the Neon round trip overlaps the menus instead of
+// blocking the Drills screen's first paint. Idle-scheduled so it does not
+// compete with AJ's turntable for the first frames.
+(function () {
+  var warm = function () { loadDrills(); };
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(warm, { timeout: 2000 });
+  else setTimeout(warm, 600);
 })();
 
 // Boot the flow on the Start screen (kicks off AJ's turntable).

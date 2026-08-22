@@ -141,7 +141,47 @@ async function loadManifestItem(pack, loaders, kind, item) {
   }
 }
 
-export async function preloadAssetPack(opts, onProgress) {
+/* Cache key over exactly the fields shouldPreload() discriminates on, so two
+ * launches that would fetch the same set share one pack. Every drill launch
+ * uses the same park/day/blue + DRILL_ROSTER config, which is why an uncached
+ * preload meant re-downloading and re-parsing several MB of GLB on each one. */
+function packCacheKey(opts) {
+  var o = opts || {};
+  return [
+    o.venue || '*',
+    o.courtPalette || '*',
+    o.timeOfDay || '*',
+    (o.neededPlayerKeys ? o.neededPlayerKeys.slice().sort().join('+') : '*')
+  ].join('|');
+}
+
+var assetPackPromises = new Map();
+
+/* Loads every manifest entry that applies to `opts`. Cached per config (see
+ * preloadPlayerModels below for the same pattern) so repeat matches/drills
+ * reuse the resolved pack instead of refetching and reparsing it, and the
+ * items load in PARALLEL rather than as a serial await-in-a-loop waterfall. */
+export function preloadAssetPack(opts, onProgress) {
+  var key = packCacheKey(opts);
+  var existing = assetPackPromises.get(key);
+  // A cached pack has nothing left to load; report it as complete so callers
+  // wired to a progress bar don't stall at 0.
+  if (existing) {
+    if (onProgress) {
+      existing.then(function (pack) {
+        onProgress({ loaded: pack.loaded.length, skipped: pack.skipped.length,
+                     errors: pack.errors.length, index: 0, total: 0, cached: true });
+      }, function () {});
+    }
+    return existing;
+  }
+  var promise = buildAssetPack(opts, onProgress);
+  assetPackPromises.set(key, promise);
+  promise.catch(function () { assetPackPromises.delete(key); });
+  return promise;
+}
+
+async function buildAssetPack(opts, onProgress) {
   var pack = makePack();
   pack.options = opts || {};
   if (pack.options.neededPlayerKeys) {
@@ -159,19 +199,24 @@ export async function preloadAssetPack(opts, onProgress) {
     });
   });
 
-  for (var i = 0; i < entries.length; i++) {
-    var entry = entries[i];
-    await loadManifestItem(pack, loaders, entry.kind, entry.item);
-    if (onProgress) {
-      onProgress({
-        loaded: pack.loaded.length,
-        skipped: pack.skipped.length,
-        errors: pack.errors.length,
-        index: i + 1,
-        total: entries.length
-      });
-    }
-  }
+  // loadManifestItem rethrows for non-optional items, so a single Promise.all
+  // preserves the original "a required asset failing fails the pack" contract
+  // while letting the (many, multi-MB) player GLBs download concurrently.
+  var done = 0;
+  await Promise.all(entries.map(function (entry) {
+    return loadManifestItem(pack, loaders, entry.kind, entry.item).then(function () {
+      done++;
+      if (onProgress) {
+        onProgress({
+          loaded: pack.loaded.length,
+          skipped: pack.skipped.length,
+          errors: pack.errors.length,
+          index: done,
+          total: entries.length
+        });
+      }
+    });
+  }));
   delete pack.options;
   return pack;
 }

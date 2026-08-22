@@ -2,7 +2,8 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "installCommand": "npm install",
+  "regions": ["iad1"],
   "functions": {
-    "api/*.js": { "memory": 128, "maxDuration": 10 }
+    "api/*.js": { "memory": 1024, "maxDuration": 10 }
   }
 }
