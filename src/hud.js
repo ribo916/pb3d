@@ -7,15 +7,20 @@
 
 export function makeHUD(refs, onServe, onSuper) {
   // refs is a map of pre-built DOM elements (see index.html).
+  var disposers = [];
+  function on(target, type, fn, opts) {
+    target.addEventListener(type, fn, opts);
+    disposers.push(function () { target.removeEventListener(type, fn, opts); });
+  }
   if (onServe && refs.serveBtn) {
     var fire = function (e) { e.preventDefault(); onServe(); };
-    refs.serveBtn.addEventListener('click', fire);
-    refs.serveBtn.addEventListener('touchstart', fire, { passive: false });
+    on(refs.serveBtn, 'click', fire);
+    on(refs.serveBtn, 'touchstart', fire, { passive: false });
   }
   if (onSuper && refs.superBtn) {
     var fireSuper = function (e) { e.preventDefault(); onSuper(); };
-    refs.superBtn.addEventListener('click', fireSuper);
-    refs.superBtn.addEventListener('touchstart', fireSuper, { passive: false });
+    on(refs.superBtn, 'click', fireSuper);
+    on(refs.superBtn, 'touchstart', fireSuper, { passive: false });
   }
 
   // Opponent/partner pips are built once on first sight of the payload, so the
@@ -94,5 +99,12 @@ export function makeHUD(refs, onServe, onSuper) {
     updatePower(s);
   }
 
-  return { update: update };
+  function dispose() {
+    while (disposers.length) disposers.pop()();
+    if (refs.serveBtn) refs.serveBtn.style.display = 'none';
+    if (refs.superBtnWrap) refs.superBtnWrap.classList.remove('armed');
+    if (refs.powerMeter) refs.powerMeter.style.display = 'none';
+  }
+
+  return { update: update, dispose: dispose };
 }

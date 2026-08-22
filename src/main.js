@@ -26,6 +26,10 @@ let running = false;
 let paused  = false;
 let replaying = false;
 let starting = false;
+let hud = null;
+let rafId = 0;
+let loopToken = 0;
+let removeCamListeners = null;
 
 const MENU_META = {
   mode: {
@@ -154,12 +158,24 @@ if (IS_TOUCH_DEVICE) {
   document.body.classList.add('touch-device');
 }
 
-function loop(now) {
-  if (!running) return;
+function requestLoop(token) {
+  rafId = requestAnimationFrame(function (now) { loop(now, token); });
+}
+
+function stopLoop() {
+  running = false;
+  loopToken++;
+  if (rafId) cancelAnimationFrame(rafId);
+  rafId = 0;
+  last = 0;
+}
+
+function loop(now, token) {
+  if (!running || token !== loopToken || !game) return;
   if (paused) {
     if (game) game.render();
     last = now;
-    requestAnimationFrame(loop);
+    requestLoop(token);
     return;
   }
   const dt = last ? (now - last) / 1000 : 1 / 60;
@@ -171,7 +187,7 @@ function loop(now) {
     game.update(dt);
   }
   game.render();
-  requestAnimationFrame(loop);
+  requestLoop(token);
 }
 
 function musicState() {
@@ -323,9 +339,8 @@ function updateReplayBar() {
 }
 
 function quitToMenu() {
-  running = false;
   paused = false;
-  if (replaying) exitReplayMode();
+  teardownMatch();
   closeMusicModal();
   $('pauseModal').classList.remove('active');
   $('hud').style.display = 'none';
@@ -333,14 +348,26 @@ function quitToMenu() {
   // flowState (radios + rosterPicks) persists, so prior picks are remembered.
   $('flowRoot').style.display = '';
   goToFlow('start');
-  game = null;
-  input = null;
-  last = 0;
   updateAudioUI();
+}
+
+function teardownMatch() {
+  if (replaying) exitReplayMode();
+  stopLoop();
+  if (removeCamListeners) { removeCamListeners(); removeCamListeners = null; }
+  if (hud && hud.dispose) hud.dispose();
+  hud = null;
+  if (input && input.dispose) input.dispose();
+  input = null;
+  if (game && game.dispose) game.dispose();
+  game = null;
+  if (window.__game) window.__game = null;
+  if (window.__input) window.__input = null;
 }
 
 async function startMatch(difficulty, config) {
   if (starting) return;
+  if (game || input || hud || running) teardownMatch();
   starting = true;
   var startBtn = $('startBtn');
   var startLabel = startBtn.textContent;
@@ -394,13 +421,19 @@ async function startMatch(difficulty, config) {
   input = makeInput($('game'), $('joy'), $('joyKnob'));
   game.setInput(input);
 
-  const hud = makeHUD(hudRefs,
+  hud = makeHUD(hudRefs,
     function () { input.state.serveQueued = true; },
     function () { input.state.superQueued = true; });
   game.hud = hud;
 
-  $('camBtn').addEventListener('click', function (e) { e.preventDefault(); input.state.camCycleQueued = true; });
-  $('camBtn').addEventListener('touchstart', function (e) { e.preventDefault(); input.state.camCycleQueued = true; }, { passive: false });
+  var camClick = function (e) { e.preventDefault(); input.state.camCycleQueued = true; };
+  var camTouch = function (e) { e.preventDefault(); input.state.camCycleQueued = true; };
+  $('camBtn').addEventListener('click', camClick);
+  $('camBtn').addEventListener('touchstart', camTouch, { passive: false });
+  removeCamListeners = function () {
+    $('camBtn').removeEventListener('click', camClick);
+    $('camBtn').removeEventListener('touchstart', camTouch, { passive: false });
+  };
 
   $('hud').style.display = 'block';
   updateAudioUI();
@@ -414,7 +447,8 @@ async function startMatch(difficulty, config) {
   running = true;
   paused = false;
   last = 0;
-  requestAnimationFrame(loop);
+  loopToken++;
+  requestLoop(loopToken);
 }
 
 document.querySelectorAll('input[name="mode"], input[name="venue"], input[name="palette"], input[name="tod"], input[name="difficulty"], input[name="cameraMode"], input[name="superMode"]').forEach(function (el) {

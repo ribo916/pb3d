@@ -86,6 +86,20 @@ function makeNetFxTexture() {
   return tex;
 }
 
+function disposeMaterial(mat) {
+  if (mat && mat.dispose) mat.dispose();
+}
+
+function disposeObject(root) {
+  if (!root) return;
+  root.traverse(function (node) {
+    if (node.geometry && node.geometry.dispose) node.geometry.dispose();
+    if (node.material) {
+      (Array.isArray(node.material) ? node.material : [node.material]).forEach(disposeMaterial);
+    }
+  });
+}
+
 // Approx. normal deviate (mean, sd) via the central-limit sum of uniforms.
 // Cheap and good enough for reaction-time jitter; no dependency needed.
 function gaussian(mean, sd) {
@@ -182,6 +196,8 @@ export function Game(opts) {
   this.replayOrbit = null;
   this.replayFreeCam = false;   // true = free-orbit; false = reuse camMode presets
   this._replayStash = null;
+  this._disposed = false;
+  this._resizeHandler = null;
   this._initThree();
   this._initWorld();
   this._bindResize();
@@ -500,6 +516,7 @@ Game.prototype._formationServe = function () {
 Game.prototype._bindResize = function () {
   var self = this;
   function resize() {
+    if (self._disposed) return;
     var w = window.innerWidth, h = window.innerHeight;
     self.canvas.style.width = w + 'px';
     self.canvas.style.height = h + 'px';
@@ -508,9 +525,32 @@ Game.prototype._bindResize = function () {
     self.camera.aspect = w / h;
     self.camera.updateProjectionMatrix();
   }
+  this._resizeHandler = resize;
   window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', resize);
   resize();
+};
+
+Game.prototype.dispose = function () {
+  if (this._disposed) return;
+  this._disposed = true;
+  if (this._resizeHandler) {
+    window.removeEventListener('resize', this._resizeHandler);
+    window.removeEventListener('orientationchange', this._resizeHandler);
+    this._resizeHandler = null;
+  }
+  if (this.replaying) this.exitReplay();
+  this.hud = null;
+  this.input = null;
+  this.players = [];
+  this.practiceReturns = [];
+  this.blast = null;
+  this.pendingPoach = null;
+  disposeObject(this.scene);
+  if (this.composer && this.composer.dispose) this.composer.dispose();
+  if (this.renderer) {
+    this.renderer.dispose();
+  }
 };
 
 /* ----------------------------- match flow ----------------------------- */

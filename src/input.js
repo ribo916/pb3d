@@ -29,6 +29,12 @@ export function makeInput(el, joyEl, joyKnob) {
   var rightTouch = { active: false, id: null, sx: 0, sy: 0, lastx: 0, lasty: 0, t0: 0 };
   var IS_TOUCH = (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0) ||
                  (typeof window !== 'undefined' && 'ontouchstart' in window);
+  var disposers = [];
+
+  function on(target, type, fn, opts) {
+    target.addEventListener(type, fn, opts);
+    disposers.push(function () { target.removeEventListener(type, fn, opts); });
+  }
 
   // Park the joystick at a resting anchor on the lower-left so touch players can
   // see it before they touch. onStart floats it to the thumb; this returns it.
@@ -47,7 +53,7 @@ export function makeInput(el, joyEl, joyKnob) {
   // time from the ball's position relative to the hitter (see
   // Shots.swingSide in game.js), so it works identically regardless of
   // control scheme instead of depending on where the mouse happens to sit.
-  window.addEventListener('keydown', function (e) {
+  on(window, 'keydown', function (e) {
     keys[e.code] = true;
     if (e.code === 'Space') { queueSwing('power'); e.preventDefault(); }
     else if (e.code === 'KeyV') { queueSwing('touch'); e.preventDefault(); }
@@ -58,7 +64,7 @@ export function makeInput(el, joyEl, joyKnob) {
     if (e.code === 'Enter') state.serveQueued = true;
     if (e.code === 'KeyC') { state.camCycleQueued = true; e.preventDefault(); }
   });
-  window.addEventListener('keyup', function (e) { keys[e.code] = false; });
+  on(window, 'keyup', function (e) { keys[e.code] = false; });
 
   function queueSwing(power, shot) {
     state.swingQueued = true;
@@ -149,24 +155,24 @@ export function makeInput(el, joyEl, joyKnob) {
     }
   }
 
-  el.addEventListener('touchstart', function (e) {
+  on(el, 'touchstart', function (e) {
     for (var i = 0; i < e.changedTouches.length; i++) onStart(e.changedTouches[i]);
     e.preventDefault();
   }, { passive: false });
-  el.addEventListener('touchmove', function (e) {
+  on(el, 'touchmove', function (e) {
     for (var i = 0; i < e.changedTouches.length; i++) onMove(e.changedTouches[i]);
     e.preventDefault();
   }, { passive: false });
-  el.addEventListener('touchend', function (e) {
+  on(el, 'touchend', function (e) {
     for (var i = 0; i < e.changedTouches.length; i++) onEnd(e.changedTouches[i]);
     e.preventDefault();
   }, { passive: false });
-  el.addEventListener('touchcancel', function (e) {
+  on(el, 'touchcancel', function (e) {
     for (var i = 0; i < e.changedTouches.length; i++) onEnd(e.changedTouches[i]);
   });
 
   // --- mouse (desktop) --- left = power, right = touch, middle/shift = lob.
-  el.addEventListener('mousedown', function (e) {
+  on(el, 'mousedown', function (e) {
     var r = el.getBoundingClientRect();
     state.aim = Math.max(-1, Math.min(1, ((e.clientX - r.left) / r.width - 0.5) * 2));
     if (e.button === 1 || e.shiftKey) { queueSwing('touch', 'lob'); }
@@ -174,8 +180,8 @@ export function makeInput(el, joyEl, joyKnob) {
     else { queueSwing('power'); }
     e.preventDefault();
   });
-  el.addEventListener('contextmenu', function (e) { e.preventDefault(); });
-  el.addEventListener('mousemove', function (e) {
+  on(el, 'contextmenu', function (e) { e.preventDefault(); });
+  on(el, 'mousemove', function (e) {
     var r = el.getBoundingClientRect();
     state.aim = Math.max(-1, Math.min(1, ((e.clientX - r.left) / r.width - 0.5) * 2));
   });
@@ -221,9 +227,21 @@ export function makeInput(el, joyEl, joyKnob) {
   if (IS_TOUCH) {
     restJoystick();
     if (typeof window !== 'undefined') {
-      window.addEventListener('resize', function () { if (!joy.active) restJoystick(); });
+      on(window, 'resize', function () { if (!joy.active) restJoystick(); });
     }
   }
 
-  return { state: state, poll: poll, consumeSwing: consumeSwing, consumeServe: consumeServe, consumeCamCycle: consumeCamCycle };
+  function dispose() {
+    while (disposers.length) disposers.pop()();
+    keys = {};
+    state.move.x = 0; state.move.z = 0;
+    state.swingQueued = false; state.serveQueued = false; state.superQueued = false;
+    state.camCycleQueued = false; state.usingJoystick = false;
+    joy.active = false; rightTouch.active = false;
+    if (joyEl) joyEl.style.display = 'none';
+    queueKnob(0, 0);
+  }
+
+  return { state: state, poll: poll, consumeSwing: consumeSwing, consumeServe: consumeServe,
+    consumeCamCycle: consumeCamCycle, dispose: dispose };
 }
