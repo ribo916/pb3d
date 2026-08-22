@@ -5,13 +5,13 @@
  * Space or click to swing, mouse X aims.
  * Ported from the original Picklelife js/input.js (ESM).
  *
- * makeInput(el, joyEl, joyKnob) -> { state, poll(), consumeSwing(), consumeServe() }
+ * makeInput(el, joyEl, joyKnob, padEl) -> { state, poll(), consumeSwing(), consumeServe() }
  * ==========================================================================*/
 'use strict';
 
 import { dist2D } from './utils.js';
 
-export function makeInput(el, joyEl, joyKnob) {
+export function makeInput(el, joyEl, joyKnob, padEl) {
   var state = {
     move: { x: 0, z: 0 },   // -1..1 each
     aim: 0,                  // -1 (left) .. 1 (right)
@@ -40,6 +40,28 @@ export function makeInput(el, joyEl, joyKnob) {
     joyEl.style.left = Math.max(90, w * 0.14) + 'px';
     joyEl.style.top = (h - 130) + 'px';
     queueKnob(0, 0);
+  }
+
+  // Swipe-hint lifecycle. #swipePad mirrors the joystick's resting ring on the
+  // swing half and animates a flick until the player lands SWIPE_HINT_GOAL
+  // committed swipes, then retires to a bare ring forever. Committed-only on
+  // purpose: a soft tap is the exact misconception the hint exists to correct,
+  // so taps must never dismiss it.
+  var SWIPE_HINT_KEY = 'pb3d.swipeHint.v1';
+  var SWIPE_HINT_GOAL = 3;
+  var swipeLearned = 0;
+  try { swipeLearned = parseInt(window.localStorage.getItem(SWIPE_HINT_KEY), 10) || 0; } catch (e) {}
+
+  function applySwipeHint() {
+    if (!padEl) return;
+    padEl.classList.toggle('learned', swipeLearned >= SWIPE_HINT_GOAL);
+    padEl.classList.remove('thumb');   // clear stale state across match restarts
+  }
+  function markSwipeLearned() {
+    if (!IS_TOUCH || !padEl || swipeLearned >= SWIPE_HINT_GOAL) return;
+    swipeLearned++;
+    try { window.localStorage.setItem(SWIPE_HINT_KEY, String(swipeLearned)); } catch (e) {}
+    applySwipeHint();
   }
 
   // --- keyboard --- Space = power swing, V = touch swing, B = lob.
@@ -112,6 +134,7 @@ export function makeInput(el, joyEl, joyKnob) {
       rightTouch.active = true; rightTouch.id = t.identifier;
       rightTouch.sx = p.x; rightTouch.sy = p.y; rightTouch.lastx = p.x; rightTouch.lasty = p.y;
       rightTouch.t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+      if (padEl) padEl.classList.add('thumb');
     }
   }
   function onMove(t) {
@@ -133,6 +156,7 @@ export function makeInput(el, joyEl, joyKnob) {
       else { if (joyEl) joyEl.style.display = 'none'; queueKnob(0, 0); }
     } else if (rightTouch.active && t.identifier === rightTouch.id) {
       rightTouch.active = false;
+      if (padEl) padEl.classList.remove('thumb');
       // Direction picks the shot: a committed vertical flick UP = drive, DOWN =
       // lob; a short/soft swipe = drop; a committed horizontal swipe = drive.
       // (Horizontal drag also sets aim continuously in onMove.)
@@ -142,6 +166,7 @@ export function makeInput(el, joyEl, joyKnob) {
       var dist = dist2D(dx, dy), speed = dist / ms; // px per ms
       var committed = dist > 55 || speed > 0.6;     // a deliberate swipe vs a soft tap
       if (!committed) { queueSwing('touch'); return; }        // small/soft = DROP
+      markSwipeLearned();                                     // hint retires after 3 of these
       var vertical = Math.abs(dy) > Math.abs(dx);
       if (vertical && dy < 0) { queueSwing('power'); return; }        // UP  = DRIVE
       if (vertical && dy > 0) { queueSwing('touch', 'lob'); return; } // DOWN = LOB
@@ -220,6 +245,7 @@ export function makeInput(el, joyEl, joyKnob) {
   // anchor sensible across orientation/viewport changes (only while idle).
   if (IS_TOUCH) {
     restJoystick();
+    applySwipeHint();
     if (typeof window !== 'undefined') {
       window.addEventListener('resize', function () { if (!joy.active) restJoystick(); });
     }

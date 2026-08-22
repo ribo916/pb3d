@@ -977,6 +977,7 @@
       #powerMeter { bottom: calc(26px + env(safe-area-inset-bottom, 0px)); width: min(190px, 52vw); }
       #powerPips { top: 46px; gap: 8px; }
       .btns-br { bottom: 84px; right: 10px; }
+      #swipePad .swipe-arrow { font-size: 10px; }
     }
 
     /* ---- Instant replay DVR bar ---- */
@@ -1723,6 +1724,54 @@
     #joyKnob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px;
       border-radius: 50%; background: rgba(255,255,255,0.35); }
 
+    /* ---- right-thumb swipe pad (touch) ----
+       Mirror image of #joy's resting ring, on the swing half. restJoystick()
+       sets left:max(90, w*0.14) / top:(h-130) with -60px margins, so the ring's
+       far edge sits max(90,14vw)-60 from its side and its bottom edge 70px above
+       the viewport floor. Reproduced here in pure CSS — no JS anchor needed.
+       z-index -1 inside #hud's stacking context so every other HUD element
+       paints over it; pointer-events:none because the canvas underneath owns
+       the swipe this advertises. */
+    #swipePad { display: none; position: absolute; z-index: -1;
+      right: calc(max(90px, 14vw) - 60px); bottom: 70px; width: 120px; height: 120px;
+      border-radius: 50%; border: 2px solid rgba(255,255,255,0.25);
+      background: rgba(255,255,255,0.06); pointer-events: none;
+      transition: opacity 0.3s ease; }
+    body.touch-device #swipePad { display: block; }
+    /* ghost thumb: rises and fades, demonstrating the flick */
+    .swipe-dot { position: absolute; left: 50%; top: 50%; width: 20px; height: 20px;
+      margin: -10px 0 0 -10px; border-radius: 50%; background: rgba(255,255,255,0.35);
+      animation: swipeFlick 2.4s ease-out infinite; }
+    @keyframes swipeFlick {
+      0%   { transform: translateY(26px);  opacity: 0; }
+      18%  { transform: translateY(26px);  opacity: 0.9; }
+      70%  { transform: translateY(-26px); opacity: 0.9; }
+      100% { transform: translateY(-34px); opacity: 0; }
+    }
+    /* up = drive, down = lob — same shot language as onEnd's classification */
+    .swipe-arrow { position: absolute; left: 50%; transform: translateX(-50%);
+      font-size: 11px; line-height: 1; color: rgba(255,255,255,0.35);
+      animation: flowBlink 2.4s ease-in-out infinite; }
+    .swipe-arrow.up   { top: 7px; }
+    .swipe-arrow.down { bottom: 7px; animation-delay: 1.2s; }
+    /* Learned (3 committed swipes, persisted): moving parts retire, ring stays. */
+    #swipePad.learned .swipe-dot,
+    #swipePad.learned .swipe-arrow { display: none; }
+    /* Thumb down in the swing zone — step aside for the stroke itself. */
+    #swipePad.thumb { opacity: 0; }
+    /* #superBtn parks dead centre of this ring; while armed it wins outright.
+       display, not opacity: these two are hard hides, and an opacity
+       transition can stall mid-fade under the live WebGL loop (measured
+       sticking at 0.887), leaving a ghost ring behind the super button. */
+    .btns-br.armed ~ #swipePad { display: none; }
+    /* Replay: the DVR bar covers only the lower ~114px, and a swipe does
+       nothing while reviewing. */
+    #hud.replaying #swipePad { display: none; }
+    @media (prefers-reduced-motion: reduce) {
+      #swipePad .swipe-dot { animation: none; transform: none; opacity: 0.35; }
+      #swipePad .swipe-arrow { animation: none; }
+    }
+
     /* ---- in-app drill editor (create/edit/delete) — adapted from
        tools/drill-builder.html's own stylesheet, which uses these exact same
        theme tokens (--card-bg/--accent/--seg-bg/etc. already defined above
@@ -1941,6 +1990,19 @@
     <div class="btns-br">
       <button id="superBtn" class="hud-icon-btn" title="Super Smash">💥</button>
     </div>
+
+    <!-- right-thumb swipe affordance: mirrors the joystick's resting ring on
+         the other half of the screen so touch players discover the swing zone
+         is a SWIPE, not a tap. Dot + arrows retire after 3 committed swipes
+         (input.js markSwipeLearned), leaving the bare ring as a thumb anchor.
+         MUST stay pointer-events:none — the canvas underneath owns the very
+         gesture this advertises. Must remain the last #hud child: the
+         `.btns-br.armed ~ #swipePad` rule above depends on that order. -->
+    <div id="swipePad" aria-hidden="true">
+      <div class="swipe-arrow up">▲</div>
+      <div class="swipe-dot"></div>
+      <div class="swipe-arrow down">▼</div>
+    </div>
   </div>
 
   <div id="joy"><div id="joyKnob"></div></div>
@@ -2082,11 +2144,12 @@
         <p>
           <strong>Left thumb</strong> — joystick to move (bottom-left)<br>
           <strong>Right thumb</strong> — swing &amp; aim<br>
+          &nbsp;&nbsp;<em>Swipe</em>, don't tap — the faint right-side ring shows how<br>
           &nbsp;&nbsp;Flick <em>up</em> = drive (power)<br>
           &nbsp;&nbsp;Flick <em>down</em> = lob<br>
           &nbsp;&nbsp;Short / gentle swipe = <em>drop / dink</em><br>
           Drag right thumb left/right to aim cross-court<br>
-          <strong>SERVE button</strong> — tap to serve<br>
+          <strong>To serve</strong> — same right-thumb swipe as any shot<br>
           <strong>💥 button</strong> — super smash (appears when charged)
         </p>
       </div>

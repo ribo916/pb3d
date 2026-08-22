@@ -286,6 +286,7 @@ function enterReplayMode() {
   }
   replaying = true;
   $('replayBar').classList.add('active');
+  $('hud').classList.add('replaying');   // parks the swipe hint while reviewing
   renderReplaySpeeds();
   updateReplayBar();
 }
@@ -294,6 +295,7 @@ function exitReplayMode() {
   if (!replaying) return;
   replaying = false;
   $('replayBar').classList.remove('active');
+  $('hud').classList.remove('replaying');
   if (game) game.exitReplay();
   // Drop any input queued while reviewing so it can't fire on resume.
   clearTransientInput();
@@ -436,7 +438,7 @@ async function startMatch(difficulty, config) {
     roster: config.roster,
     assets: assetPack
   });
-  input = makeInput($('game'), $('joy'), $('joyKnob'));
+  input = makeInput($('game'), $('joy'), $('joyKnob'), $('swipePad'));
   game.setInput(input);
 
   const hud = makeHUD(hudRefs,

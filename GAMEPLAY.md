@@ -369,6 +369,23 @@ regardless of button. See [Power Cap](#power-cap) and [Intent → Shot Type](#in
   swipe (`dist > 55px || speed > 0.6px·ms⁻¹`) resolves by direction —
   **up = drive, down = lob**, committed-horizontal = drive; anything softer =
   **drop**. Horizontal travel also sets `aim` continuously in `onMove`.
+- **No SERVE button on touch.** `queueSwing()` sets `serveQueued` ("a swing
+  also serves when in serve state"), so the right-half swipe already starts
+  the point. `hud.js` hides `#serveBtn` on `body.touch-device`: it was pure
+  redundancy there, and it taught players the game was tap-driven — the exact
+  confusion `#swipePad` exists to undo. The serve prompt in `game.js` reads
+  "swipe to serve" on touch and "tap SERVE or Space" on desktop.
+- **Right-thumb swipe affordance.** `#swipePad` mirrors the joystick's resting
+  ring on the right half — same 120px box and rgba values, anchored in pure CSS
+  at `right: calc(max(90px,14vw) - 60px); bottom: 70px`. A ghost dot rises and
+  fades with ▲/▼ arrows to show the flick, because players otherwise assume the
+  swing zone is a *tap*. It retires to a bare static ring (kept as a thumb-rest
+  anchor) after 3 **committed** swipes — taps deliberately do not count, since
+  tapping is the misconception being corrected. Progress persists in
+  `localStorage` under `pb3d.swipeHint.v1`. Purely visual: it never touches
+  classification, and is `pointer-events: none` so it cannot swallow the gesture
+  it advertises. It yields to `#superBtn` while the meter is armed
+  (`.btns-br.armed ~ #swipePad`), so it must stay the last `#hud` child.
 
 ---
 

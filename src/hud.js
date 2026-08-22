@@ -7,7 +7,15 @@
 
 export function makeHUD(refs, onServe, onSuper) {
   // refs is a map of pre-built DOM elements (see index.html).
-  if (onServe && refs.serveBtn) {
+  // The SERVE button is a desktop/mouse affordance only. On touch it is pure
+  // redundancy — any right-half gesture already serves, because queueSwing()
+  // sets serveQueued ("a swing also serves when in serve state", input.js) —
+  // and it actively teaches the wrong thing: players tap it and conclude the
+  // whole game is tap-driven, which is exactly the confusion #swipePad exists
+  // to undo. Serving on touch is the same swipe as every other shot.
+  var IS_TOUCH = typeof document !== 'undefined' &&
+    document.body.classList.contains('touch-device');
+  if (onServe && refs.serveBtn && !IS_TOUCH) {
     var fire = function (e) { e.preventDefault(); onServe(); };
     refs.serveBtn.addEventListener('click', fire);
     refs.serveBtn.addEventListener('touchstart', fire, { passive: false });
@@ -89,7 +97,10 @@ export function makeHUD(refs, onServe, onSuper) {
     refs.levelBadge.textContent = s.level.label;
     refs.levelBadge.style.background = s.level.tint;
 
-    refs.serveBtn.style.display = (!scoreless && s.isHumanServe) ? 'block' : 'none';
+    if (refs.serveBtn) {
+      refs.serveBtn.style.display =
+        (!IS_TOUCH && !scoreless && s.isHumanServe) ? 'block' : 'none';
+    }
 
     updatePower(s);
   }

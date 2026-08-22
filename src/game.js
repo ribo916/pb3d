@@ -565,7 +565,11 @@ Game.prototype.start = function () {
   var humanServes = this._serverEntry().isHuman;
   this.serveDelay = humanServes ? 0 : 0.9;
   this._clearServeInput();
-  this._message(humanServes ? 'YOUR SERVE — tap SERVE or Space' : 'OPPONENT SERVE', 2.2);
+  // Touch serves with the same right-half swipe as every other shot (there is
+  // no SERVE button on touch — see hud.js), so the prompt must not say 'tap'.
+  var servePrompt = this.isMobile ? 'YOUR SERVE — swipe to serve'
+                                  : 'YOUR SERVE — tap SERVE or Space';
+  this._message(humanServes ? servePrompt : 'OPPONENT SERVE', 2.2);
 };
 
 // Drop any swing/serve input queued during the previous rally so a stale press

@@ -50,15 +50,17 @@ you face the red opponent one-on-one.
 | Touch swing (drop / dink) | `V` or right-click |
 | Lob | `B` or middle-click / Shift+click |
 | **SUPER SMASH** | `R` (only with a full meter) |
-| Serve | `Enter` / `Space` (or the on-screen SERVE button) |
+| Serve | `Enter` / `Space` (or the on-screen SERVE button — desktop only) |
 
 **Touch (mobile)**
 - **Left thumb** = virtual move stick. It rests on the lower-left so you can always
   see it, and jumps to your thumb while you hold.
 - **Right thumb** = swing & aim: drag left/right to aim, release to hit. Direction
   picks the shot — **flick up = drive (power)**, **flick down = lob**, a short/soft
-  swipe = drop / dink.
-- A **SERVE** button appears when it's your serve.
+  swipe = drop / dink. A faint ring on the right mirrors the move stick and
+  animates the flick until you've swiped a few times, then quiets down.
+- **To serve**, swipe with your right thumb — same gesture as any other shot.
+  (The on-screen SERVE button is desktop-only.)
 - A **💥 button** appears bottom-right once your super meter is full.
 
 **The feel:** a swing opens a ~0.3-second timing window; your hit fires the instant
