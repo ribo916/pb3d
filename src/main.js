@@ -794,7 +794,7 @@ function enterFlowScreen(id) {
   if (id === 'start') {
     var p = ensureFlowPreview($('startPreviewMount'), 'full');
     p.start();
-    // Title screen always shows AJ (CH01), regardless of roster picks.
+    // Title screen always shows Stewart (CH01), regardless of roster picks.
     p.show(resolveSlotCharacter('nearYou', 'ch01'));
   } else if (id === 'character') {
     enterCharacter();
@@ -1227,7 +1227,7 @@ function escapeHtml(s) {
 // Deliberately resolves all four DRILL_ROSTER slots rather than just the ones
 // a given drill declares. Real matches scope neededPlayerKeys per roster
 // because the full character set is ~11MB; DRILL_ROSTER is a FIXED four
-// (Owen/Nina/AJ/Leo, ~3.75MB total), so scoping it per drill only bought a
+// (Owen/Nina/Stewart/Leo, ~3.75MB total), so scoping it per drill only bought a
 // smaller download in exchange for a distinct cache key per drill shape —
 // which meant a 2-player drill couldn't reuse a 4-player drill's pack, and
 // the prewarm below couldn't cover anything. One superset entry warms every
@@ -1413,12 +1413,12 @@ $('drillStepsModal').addEventListener('click', function (e) { if (e.target === $
 // Warm the drill list (and its localStorage cache) while the user is still on
 // the title screen, so the Neon round trip overlaps the menus instead of
 // blocking the Drills screen's first paint. Idle-scheduled so it does not
-// compete with AJ's turntable for the first frames.
+// compete with Stewart's turntable for the first frames.
 (function () {
   var warm = function () { loadDrills(); };
   if (typeof requestIdleCallback === 'function') requestIdleCallback(warm, { timeout: 2000 });
   else setTimeout(warm, 600);
 })();
 
-// Boot the flow on the Start screen (kicks off AJ's turntable).
+// Boot the flow on the Start screen (kicks off Stewart's turntable).
 enterFlowScreen('start');

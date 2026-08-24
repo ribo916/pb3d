@@ -862,7 +862,7 @@ joint under suspicion.
 
 8. **The "creepy horror film" bug — item 4/6's "world-space FK" fix turned
    out to have items 1/3's exact disease, just hidden one level deeper.**
-   Reported directly by the user on `ch01`/AJ, `Run (Fwd Jog)`: the raw
+   Reported directly by the user on `ch01`/Stewart, `Run (Fwd Jog)`: the raw
    skeleton preview of this clip looked perfect (correct running motion,
    knees/elbows swinging naturally) while the SAME clip retargeted onto the
    character mesh looked grotesque — a splayed hand reaching toward the
@@ -958,7 +958,7 @@ joint under suspicion.
 
 9. **Immediately after item 8 shipped, the user caught a second, distinct bug
    by eye: retargeted arms "run like a fairy" — held out stiffly, not
-   swinging/bending like the raw-skeleton ground truth, on `ch01`/AJ/Run.**
+   swinging/bending like the raw-skeleton ground truth, on `ch01`/Stewart/Run.**
    This was NOT a regression of item 8's fix (legs/spine/shoulders were
    correct) -- it was a second, narrower failure mode of the SAME swing
    method, specific to the forearm. Numeric measurement (limb-segment aim

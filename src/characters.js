@@ -11,7 +11,7 @@
 'use strict';
 
 // The shippable Mixamo characters. `label` is the character's display name
-// (AJ is the established name for ch01). `swatch` is a purely decorative
+// (Stewart is the established name for ch01). `swatch` is a purely decorative
 // per-tile accent color for the picker grid (no gameplay meaning). `persona`
 // is the AI play-style (see src/strategies/personas.js) used when this
 // character is CPU-controlled; it makes character choice tactically meaningful.
@@ -23,7 +23,7 @@
 // are girls. Several other names here are deliberately unisex. A new character
 // added without a `voice` should be corrected explicitly, not guessed at.
 export const CHARACTERS = [
-  { id: 'ch01', playerModelKey: 'player-ch01-v1', label: 'AJ', swatch: 0xff6b6b, persona: 'balanced', voice: 'boy' },
+  { id: 'ch01', playerModelKey: 'player-ch01-v1', label: 'Stewart', swatch: 0xff6b6b, persona: 'balanced', voice: 'boy' },
   { id: 'ch03', playerModelKey: 'player-ch03-v1', label: 'Leo', swatch: 0xffd43b, persona: 'banger', voice: 'girl' },
   { id: 'ch04', playerModelKey: 'player-ch04-v1', label: 'Milo', swatch: 0x94d82d, persona: 'defensive', voice: 'boy' },
   { id: 'ch06', playerModelKey: 'player-ch06-v1', label: 'Nina', swatch: 0x12b886, persona: 'balanced', voice: 'girl' },
@@ -57,7 +57,7 @@ export const DEFAULT_ROSTER = {
 export const DRILL_ROSTER = {
   nearYou: 'ch08',  // Owen — P1
   nearMate: 'ch06', // Nina — P2
-  farA: 'ch01',     // AJ   — P3
+  farA: 'ch01',     // Stewart — P3
   farB: 'ch03'      // Leo  — P4
 };
 
